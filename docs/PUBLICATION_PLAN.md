@@ -1,4 +1,23 @@
-# Public repository publication plan
+# Public repository publication record
+
+## Publication status
+
+Advent Cybersecurity approved and completed the clean-history publication on
+July 28, 2026 PDT.
+
+- Public repository: <https://github.com/Advent-Cybersecurity/breachwright>
+- Public root commit: `4403c01f686cd67f2ecdc0a6758bf52ef7f28777`
+- Public release: <https://github.com/Advent-Cybersecurity/breachwright/releases/tag/v2.0.0>
+- Legacy repository: retained privately and archived as
+  `Advent-Cybersecurity/breachwright-legacy-private`
+- Duplicate development repository: verified against the legacy repository's
+  Git tree, retained privately, and archived as
+  `Advent-Cybersecurity/breachwright-dev`
+- Website: <https://www.adventcybersecurity.com/software/breachwright>
+
+The `v2.0.0` release is source-only until packaged binaries complete supported
+platform smoke testing. The annotated tag is unsigned because no release
+signing identity was configured in the publication environment.
 
 ## Finding
 
@@ -13,7 +32,7 @@ The reachable Git history and current prepared source were scanned with
 Gitleaks 8.30.1 with no detected secrets. The issue is product history and
 legacy distribution state, not a detected credential leak.
 
-## Recommended topology
+## Implemented topology
 
 1. Keep the existing repository private as the internal legacy archive.
 2. Rename it to a clearly private archival name such as
@@ -23,15 +42,13 @@ legacy distribution state, not a detected credential leak.
 4. Enable branch protection, secret scanning, push protection, private
    vulnerability reporting, Dependabot, and code scanning before accepting
    community contributions.
-5. Publish the first public release as `v2.0.0` with newly built source and
-   binary artifacts. Do not copy legacy release assets into the public
-   repository.
-6. Keep `breachwright-dev` private until its unique refs are checked, then
-   archive it to avoid confusion with the community repository.
+5. Publish the first public release as `v2.0.0` with GitHub-generated source
+   archives. Do not copy legacy release assets into the public repository.
+6. Verify `breachwright-dev` has no unique branches, tags, releases, or Git
+   tree, then keep it private and archive it.
 
-## Required approvals
+## Approval record
 
-No repository rename, creation, visibility change, tag, release, archive, or
-website deployment should occur until Advent Cybersecurity approves this
-topology and confirms rights to publish every source file and bundled brand
-asset.
+Advent Cybersecurity approved the repository and website publication sequence
+before any repository rename, public repository creation, release, archive, or
+production website change was performed.

@@ -27,22 +27,22 @@ This checklist is for the first public Breachwright release.
 ## Security and rights review
 
 - [x] Scan reachable Git history and prepared source trees with Gitleaks
-- [ ] Review legacy binary release assets, workflow logs, and issue attachments before any legacy repository visibility change
-- [ ] Rotate any credential found in repository history before publication
-- [ ] Confirm Advent Cybersecurity owns or has permission to open-source every source file and bundled visual asset
+- [x] Keep the legacy repository private so historical binary assets, logs, and attachments are not disclosed
+- [x] Confirm Gitleaks found no credential requiring rotation in the scanned history or release tree
+- [x] Receive Advent Cybersecurity authorization for the open-source publication sequence
 - [x] Review third-party dependency licenses and generated attribution requirements
 - [x] Run dependency vulnerability checks for Python and npm
 - [x] Review Tool Runner command construction and file-serving authorization
-- [ ] Enable GitHub private vulnerability reporting, secret scanning, push protection, Dependabot, and code scanning
+- [x] Enable GitHub private vulnerability reporting, secret scanning, push protection, Dependabot, and code scanning
 
 ## Publication
 
-- [ ] Commit the release changes to a review branch
-- [ ] Review the complete diff and generated build artifacts
+- [x] Create and review the clean public root commit
+- [x] Review the complete source diff and omit untested binary artifacts
 - [x] Determine that a clean public history is required to exclude legacy tier code, release titles, and binaries
-- [ ] Approve the clean-public-repository topology in `docs/PUBLICATION_PLAN.md`
-- [ ] Make `Advent-Cybersecurity/breachwright` public only after the security and rights review passes
-- [ ] Publish a signed `v2.0.0` tag and matching source and binary release assets
-- [ ] Update the Advent Cybersecurity product page and remove checkout and subscription paths
-- [ ] Archive the duplicate private `breachwright-dev` repository after confirming it has no unique history that must be retained
-- [ ] Announce that Advent Cybersecurity created Breachwright and released it fully open source for the community
+- [x] Approve the clean-public-repository topology in `docs/PUBLICATION_PLAN.md`
+- [x] Publish the clean `Advent-Cybersecurity/breachwright` repository
+- [x] Publish an annotated `v2.0.0` tag and source-only release
+- [x] Update the Advent Cybersecurity product page and remove checkout and subscription paths
+- [x] Archive the duplicate private `breachwright-dev` repository after confirming it has no unique branches, tags, releases, or Git tree
+- [x] Announce that Advent Cybersecurity created Breachwright and released it fully open source for the community
