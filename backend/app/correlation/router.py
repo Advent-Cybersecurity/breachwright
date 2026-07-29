@@ -1,0 +1,183 @@
+"""Tool Output Correlation — API Endpoints.
+
+Provides:
+  1. Standalone correlation endpoint (view correlated results without AI)
+  2. Enhanced analysis endpoint that correlates first, then sends to AI
+
+The standalone endpoint is useful for pentesters who want to see the
+cross-referenced host/service map before running AI analysis.
+"""
+import logging
+import os
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.session import get_db
+from app.auth.dependencies import get_current_user
+from app.auth.models import User
+from app.engagements.models import Engagement, ScanUpload
+from app.config import settings
+from app.correlation.structured_parsers import parse_structured
+from app.correlation.engine import correlate, to_ai_prompt
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["correlation"])
+
+
+@router.post("/correlate")
+async def correlate_scans(
+    engagement_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Correlate all uploaded scans without running AI analysis.
+
+    Returns the unified host map, correlated findings with confidence
+    scores, and dedup stats. Useful for reviewing what the tools found
+    before spending AI tokens.
+    """
+    correlated = await _load_and_correlate(db, engagement_id)
+    if "error" in correlated:
+        status = 404 if "not found" in correlated["error"].lower() else 400
+        raise HTTPException(status_code=status, detail=correlated["error"])
+
+    # Don't send the full descriptions in the response (too verbose)
+    # Instead, send a clean summary per finding
+    findings_summary = []
+    for f in correlated["findings"]:
+        findings_summary.append({
+            "title": f["title"],
+            "severity": f["severity"],
+            "cvss": f.get("cvss"),
+            "cve": f.get("cve"),
+            "hosts": f["hosts"],
+            "port": f.get("port"),
+            "sources": f["sources"],
+            "confidence": f["confidence"],
+            "description": _best_description(f),
+            "solution": _best_solution(f),
+        })
+
+    # Clean host map for response
+    hosts_summary = {}
+    for key, h in correlated["hosts"].items():
+        hosts_summary[key] = {
+            "host": h["host"],
+            "hostnames": h["hostnames"],
+            "os": h["os"],
+            "port_count": len(h["ports"]),
+            "ports": [
+                {
+                    "port": p["port"],
+                    "protocol": p["protocol"],
+                    "service": p["service"],
+                    "product": p.get("product", ""),
+                    "version": p.get("version", ""),
+                }
+                for p in h["ports"]
+            ],
+            "sources": h["sources"],
+        }
+
+    return {
+        "hosts": hosts_summary,
+        "findings": findings_summary,
+        "stats": correlated["stats"],
+    }
+
+
+def _best_description(finding: dict) -> str:
+    """Pick the best description from available sources."""
+    # Prefer Nessus > Burp > Nuclei > nmap_nse
+    preference = ["nessus", "burp", "nuclei", "nmap_nse"]
+    for src in preference:
+        if src in finding.get("descriptions", {}):
+            return finding["descriptions"][src]
+    # Fall back to first available
+    descs = finding.get("descriptions", {})
+    return next(iter(descs.values()), "") if descs else ""
+
+
+def _best_solution(finding: dict) -> str:
+    """Pick the best remediation from available sources."""
+    preference = ["nessus", "burp", "nuclei", "nmap_nse"]
+    for src in preference:
+        if src in finding.get("solutions", {}):
+            return finding["solutions"][src]
+    sols = finding.get("solutions", {})
+    return next(iter(sols.values()), "") if sols else ""
+
+
+async def _load_and_correlate(db: AsyncSession, engagement_id: str) -> dict:
+    """Load scans from DB, parse structurally, and correlate."""
+    # Verify engagement
+    result = await db.execute(
+        select(Engagement).where(Engagement.id == engagement_id)
+    )
+    if not result.scalar_one_or_none():
+        return {"error": "Engagement not found"}
+
+    # Load scans
+    scan_result = await db.execute(
+        select(ScanUpload).where(ScanUpload.engagement_id == engagement_id)
+    )
+    scans = scan_result.scalars().all()
+    if not scans:
+        return {"error": "No scan files uploaded for this engagement"}
+
+    # Parse each scan structurally
+    by_tool = {}
+    text_fallbacks = []
+
+    for scan in scans:
+        try:
+            with open(scan.file_path, "r", errors="replace") as f:
+                raw = f.read()
+        except Exception as e:
+            logger.warning("Could not read scan file %s: %s", scan.file_path, e)
+            continue
+
+        records = parse_structured(raw, scan.scan_type)
+
+        if records:
+            tool_key = scan.scan_type
+            by_tool.setdefault(tool_key, []).extend(records)
+            logger.info(
+                "Structured parse: %s (%s) → %d host records",
+                scan.filename, scan.scan_type, len(records),
+            )
+        else:
+            # Structured parser couldn't handle it — keep raw for text fallback
+            text_fallbacks.append(f"--- {scan.scan_type.upper()}: {scan.filename} ---\n{raw[:10000]}")
+            logger.info(
+                "Structured parse failed for %s, using text fallback",
+                scan.filename,
+            )
+
+    if not by_tool and not text_fallbacks:
+        return {"error": "Could not parse any scan files"}
+
+    if not by_tool:
+        # No structured data — return minimal result with text hint
+        return {
+            "hosts": {},
+            "findings": [],
+            "stats": {
+                "total_hosts": 0, "total_ports": 0, "total_raw_vulns": 0,
+                "correlated_findings": 0, "tools_used": [],
+                "multi_source_findings": 0, "dedup_ratio": 0,
+            },
+            "text_fallback": "\n\n".join(text_fallbacks),
+        }
+
+    # Correlate
+    correlated = correlate(by_tool)
+
+    # Attach text fallbacks for formats we couldn't structurally parse
+    if text_fallbacks:
+        correlated["text_fallback"] = "\n\n".join(text_fallbacks)
+
+    return correlated

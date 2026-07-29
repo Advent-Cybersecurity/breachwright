@@ -1,0 +1,62 @@
+@echo off
+REM ================================================================
+REM  BREACHWRIGHT WINDOWS UNINSTALLER
+REM  An Advent Cybersecurity Product
+REM ================================================================
+
+echo.
+echo  ========================================
+echo   BREACHWRIGHT UNINSTALLER
+echo  ========================================
+echo.
+
+set "INSTALL_DIR=%LOCALAPPDATA%\Breachwright"
+set "DATA_DIR=%APPDATA%\Breachwright"
+set "START_MENU=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
+
+echo This will remove Breachwright from your system.
+echo.
+echo   Install directory: %INSTALL_DIR%
+echo   Data directory:    %DATA_DIR%
+echo.
+
+set /p CONFIRM="Remove Breachwright? (y/n): "
+if /i not "%CONFIRM%"=="y" (
+    echo Cancelled.
+    pause
+    exit /b 0
+)
+
+REM Remove Start Menu shortcut
+if exist "%START_MENU%\Breachwright.lnk" (
+    del "%START_MENU%\Breachwright.lnk"
+    echo [+] Start Menu shortcut removed
+)
+
+REM Remove Desktop shortcut
+powershell -NoProfile -Command "$desktop = [Environment]::GetFolderPath('Desktop'); $lnk = Join-Path $desktop 'Breachwright.lnk'; if (Test-Path $lnk) { Remove-Item $lnk; Write-Host '[+] Desktop shortcut removed' }"
+
+REM Remove install directory
+if exist "%INSTALL_DIR%" (
+    rmdir /s /q "%INSTALL_DIR%"
+    echo [+] Application files removed
+)
+
+echo.
+set /p REMOVEDATA="Also remove your data (database, settings, reports)? (y/n): "
+if /i "%REMOVEDATA%"=="y" (
+    if exist "%DATA_DIR%" (
+        rmdir /s /q "%DATA_DIR%"
+        echo [+] Data directory removed
+    )
+) else (
+    echo [*] Data preserved at %DATA_DIR%
+)
+
+echo.
+echo  ========================================
+echo   UNINSTALL COMPLETE
+echo  ========================================
+echo.
+
+pause

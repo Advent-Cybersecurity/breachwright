@@ -1,0 +1,150 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-900: #0a0a0f;
+    --bg-800: #12121a;
+    --bg-700: #1a1a25;
+    --bg-600: #222230;
+    --bg-500: #2a2a3a;
+    --text-primary: #e4e4e7;
+    --text-secondary: #a1a1aa;
+    --text-muted: #71717a;
+    --border: #222230;
+    --accent-red: #ef4444;
+    --scrollbar-track: #12121a;
+    --scrollbar-thumb: #2a2a3a;
+  }
+
+  [data-theme="light"] {
+    --bg-900: #f8f9fa;
+    --bg-800: #ffffff;
+    --bg-700: #f1f3f5;
+    --bg-600: #dee2e6;
+    --bg-500: #ced4da;
+    --text-primary: #1a1a2e;
+    --text-secondary: #495057;
+    --text-muted: #868e96;
+    --border: #dee2e6;
+    --accent-red: #dc2626;
+    --scrollbar-track: #f1f3f5;
+    --scrollbar-thumb: #ced4da;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+
+  *::-webkit-scrollbar { width: 6px; height: 6px; }
+  *::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+  *::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+  *::-webkit-scrollbar-thumb:hover { background: var(--bg-500); }
+
+  ::selection {
+    background: rgba(239, 68, 68, 0.3);
+    color: #fff;
+  }
+
+  [data-theme="light"] ::selection {
+    color: #1a1a2e;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--bg-900);
+    color: var(--text-primary);
+  }
+
+  input, textarea, select {
+    color-scheme: dark;
+  }
+
+  [data-theme="light"] input,
+  [data-theme="light"] textarea,
+  [data-theme="light"] select {
+    color-scheme: light;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 text-white font-medium rounded
+           hover:opacity-90 active:opacity-80
+           transition-opacity duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed;
+    background-color: var(--accent-red);
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 font-medium rounded
+           transition-colors duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed;
+    background-color: var(--bg-600);
+    color: var(--text-primary);
+    border: 1px solid var(--bg-500);
+  }
+  .btn-secondary:hover { background-color: var(--bg-500); }
+
+  .btn-ghost {
+    @apply px-3 py-1.5 font-medium rounded transition-colors duration-150;
+    color: var(--text-secondary);
+  }
+  .btn-ghost:hover { background-color: var(--bg-600); color: var(--text-primary); }
+
+  .input-field {
+    @apply w-full px-3 py-2 rounded transition-colors duration-150;
+    background-color: var(--bg-800);
+    border: 1px solid var(--bg-500);
+    color: var(--text-primary);
+  }
+  .input-field::placeholder { color: var(--text-muted); }
+  .input-field:focus {
+    outline: none;
+    border-color: var(--accent-red);
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+  }
+
+  .card {
+    border-radius: 0.5rem;
+    background-color: var(--bg-800);
+    border: 1px solid var(--border);
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium uppercase tracking-wider;
+  }
+
+  .themed-bg-900 { background-color: var(--bg-900); }
+  .themed-bg-800 { background-color: var(--bg-800); }
+  .themed-bg-700 { background-color: var(--bg-700); }
+  .themed-bg-600 { background-color: var(--bg-600); }
+  .themed-bg-500 { background-color: var(--bg-500); }
+  .themed-text-primary { color: var(--text-primary); }
+  .themed-text-secondary { color: var(--text-secondary); }
+  .themed-text-muted { color: var(--text-muted); }
+  .themed-border { border-color: var(--border); }
+}
+
+.scanline {
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(128, 128, 128, 0.015) 2px,
+    rgba(128, 128, 128, 0.015) 4px
+  );
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }
