@@ -149,6 +149,9 @@
   confirmation, and command text is no longer copied into application logs.
   Packaged Windows and Linux journeys verify that injection-shaped preset
   targets are rejected before process creation.
+- The local API now rejects non-loopback HTTP Host headers, reducing
+  DNS-rebinding exposure to assessment data while preserving the supported
+  desktop, localhost Docker, and test entry points.
 
 ## v2.2.0 (2026-07-31)
 
