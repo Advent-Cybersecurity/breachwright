@@ -103,7 +103,7 @@ function OutOfScopeSection({ items }) {
               style={{ backgroundColor: 'var(--bg-700)' }}>
               <CheckCircle2 size={14} style={{ color: '#10b981' }} className="shrink-0 mt-0.5" />
               <div>
-                <span className="text-sm themed-text-primary">{item.category} — {item.item}</span>
+                <span className="text-sm themed-text-primary">{item.category}: {item.item}</span>
                 <p className="text-xs themed-text-muted mt-0.5">{item.reason}</p>
               </div>
             </div>

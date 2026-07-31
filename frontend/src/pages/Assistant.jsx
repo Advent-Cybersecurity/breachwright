@@ -117,7 +117,9 @@ export default function Assistant() {
     engApi.list().then(engs => {
       setEngagementList(engs);
       if (engs.length > 0) setSelectedEng(engs[0].id);
-    }).catch(() => {});
+    }).catch((err) => {
+      setToast({ message: `Could not load engagements: ${err.message}`, type: 'error' });
+    });
   }, []);
 
   useEffect(() => {

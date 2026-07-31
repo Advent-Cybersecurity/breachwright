@@ -424,7 +424,7 @@ def to_ai_prompt(correlated: dict) -> str:
         if host["hostnames"]:
             header += f" ({', '.join(host['hostnames'])})"
         if host["os"]:
-            header += f" — {host['os']}"
+            header += f"; {host['os']}"
         header += f"  [sources: {', '.join(host['sources'])}]"
         lines.append(header)
 
@@ -451,7 +451,7 @@ def to_ai_prompt(correlated: dict) -> str:
         cvss_str = f" | CVSS: {f['cvss']}" if f.get('cvss') is not None else ""
         cve_str = f" | CVE: {f['cve']}" if f.get('cve') else ""
         lines.append(f"  Severity: {f['severity'].upper()}{cvss_str}{cve_str}")
-        lines.append(f"  Confidence: {conf_label} ({f['confidence']}) — confirmed by {', '.join(f['sources'])}")
+        lines.append(f"  Confidence: {conf_label} ({f['confidence']}); confirmed by {', '.join(f['sources'])}")
         lines.append(f"  Affected hosts: {', '.join(f['hosts'])}")
         if f.get("port"):
             lines.append(f"  Port: {f['port']}")

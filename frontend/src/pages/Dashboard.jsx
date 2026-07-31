@@ -62,7 +62,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadEngagements();
-    engApi.analytics().then(setAnalytics).catch(() => {});
+    engApi.analytics().then(setAnalytics).catch((err) => {
+      setToast({ message: `Could not load engagement analytics: ${err.message}`, type: 'error' });
+    });
   }, []);
 
   const handleCreate = async (e) => {

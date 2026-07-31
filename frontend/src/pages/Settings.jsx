@@ -161,7 +161,7 @@ export default function Settings() {
                   <div className="flex-1">
                     <span className="text-sm font-medium" style={{ color: localStatus?.online ? '#10b981' : '#ef4444' }}>
                       {localStatus === null ? 'Not checked' : localStatus.online
-                        ? `Connected — ${localStatus.server_type}${localStatus.models?.length ? ` (${localStatus.models.length} model${localStatus.models.length !== 1 ? 's' : ''})` : ''}`
+                        ? `Connected: ${localStatus.server_type}${localStatus.models?.length ? ` (${localStatus.models.length} model${localStatus.models.length !== 1 ? 's' : ''})` : ''}`
                         : 'Server offline'}
                     </span>
                     {localStatus?.error && !localStatus.online && (

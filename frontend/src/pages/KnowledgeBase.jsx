@@ -78,15 +78,22 @@ function EntryRow({ entry, onClick }) {
 function EntryDetail({ entry, onClose }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    knowledge.getEntry(entry.id).then(setDetail).catch(() => {}).finally(() => setLoading(false));
+    setError('');
+    knowledge.getEntry(entry.id)
+      .then(setDetail)
+      .catch((err) => setError(`Could not load finding details: ${err.message}`))
+      .finally(() => setLoading(false));
   }, [entry.id]);
 
   return (
     <Modal open={true} onClose={onClose} title={entry.canonical_title} wide>
       {loading ? (
         <div className="flex justify-center py-8"><Spinner /></div>
+      ) : error ? (
+        <p className="text-sm text-red-400 py-6 text-center">{error}</p>
       ) : detail ? (
         <div className="space-y-5">
           <div className="flex items-center gap-3 flex-wrap">
@@ -130,7 +137,7 @@ function EntryDetail({ entry, onClose }) {
                     <span className="themed-text-primary font-medium">{occ.client_name}</span>
                   </div>
                   <span className="text-xs themed-text-muted font-mono">
-                    {occ.linked_at ? new Date(occ.linked_at).toLocaleDateString() : '—'}
+                    {occ.linked_at ? new Date(occ.linked_at).toLocaleDateString() : 'Not recorded'}
                   </span>
                 </div>
               ))}
@@ -184,7 +191,7 @@ function RecommendationsPanel({ engagements }) {
       {recs !== null && (
         recs.length === 0 ? (
           <p className="text-sm themed-text-muted py-4 text-center">
-            No recommendations — this engagement's coverage looks thorough, or there aren't enough similar engagements yet.
+            No recommendations. This engagement's coverage looks thorough, or there are not enough similar engagements yet.
           </p>
         ) : (
           <div className="space-y-2">
@@ -211,7 +218,7 @@ function RecommendationsPanel({ engagements }) {
   );
 }
 
-function ClientsPanel() {
+function ClientsPanel({ setToast }) {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedClient, setSelectedClient] = useState(null);
@@ -219,14 +226,20 @@ function ClientsPanel() {
   const [profileLoading, setProfileLoading] = useState(false);
 
   useEffect(() => {
-    knowledge.clients().then(setClients).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    knowledge.clients()
+      .then(setClients)
+      .catch((err) => setToast({ message: `Could not load client profiles: ${err.message}`, type: 'error' }))
+      .finally(() => setLoading(false));
+  }, [setToast]);
 
   const loadProfile = async (clientName) => {
     setSelectedClient(clientName);
     setProfileLoading(true);
     try { setProfile(await knowledge.clientProfile(clientName)); }
-    catch { setProfile(null); }
+    catch (err) {
+      setProfile(null);
+      setToast({ message: `Could not load the client profile: ${err.message}`, type: 'error' });
+    }
     finally { setProfileLoading(false); }
   };
 
@@ -261,7 +274,7 @@ function ClientsPanel() {
 
       {profile && !profileLoading && (
         <div className="card p-5">
-          <h3 className="text-base font-semibold themed-text-primary mb-4">{profile.client_name} — Risk Profile</h3>
+          <h3 className="text-base font-semibold themed-text-primary mb-4">{profile.client_name}: Risk Profile</h3>
           <div className="grid grid-cols-3 gap-4 mb-5">
             <div className="text-center p-3 rounded-lg" style={{ backgroundColor: 'var(--bg-700)' }}>
               <p className="text-xl font-bold themed-text-primary">{profile.engagement_count}</p>
@@ -327,12 +340,14 @@ export default function KnowledgeBase() {
       const [s, t, e] = await Promise.all([
         knowledge.stats(),
         knowledge.trending(),
-        engApi.list().catch(() => []),
+        engApi.list(),
       ]);
       setStats(s);
       setTrending(t);
       setEngagements(e);
-    } catch {}
+    } catch (err) {
+      setToast({ message: `Could not load the knowledge base: ${err.message}`, type: 'error' });
+    }
     finally { setLoading(false); }
   };
 
@@ -344,7 +359,9 @@ export default function KnowledgeBase() {
       if (sevFilter) params.set('severity', sevFilter);
       const data = await knowledge.list(params.toString());
       setEntries(data.entries || []);
-    } catch {}
+    } catch (err) {
+      setToast({ message: `Could not load knowledge entries: ${err.message}`, type: 'error' });
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -379,7 +396,7 @@ export default function KnowledgeBase() {
     <>
       <SectionHeader
         title="Knowledge Base"
-        description="Cross-engagement intelligence — track patterns, trends, and gaps across all your assessments"
+        description="Cross-engagement intelligence: track patterns, trends, and gaps across all your assessments"
         action={
           <button className="btn-primary flex items-center gap-2 text-sm" onClick={indexAll} disabled={indexing}>
             {indexing ? <Spinner className="w-4 h-4" /> : <RefreshCw size={15} />}
@@ -529,7 +546,7 @@ export default function KnowledgeBase() {
           )}
 
           {/* ── CLIENTS ── */}
-          {tab === 'clients' && <ClientsPanel />}
+          {tab === 'clients' && <ClientsPanel setToast={setToast} />}
 
           {/* ── RECOMMENDATIONS ── */}
           {tab === 'recommendations' && <RecommendationsPanel engagements={engagements} />}

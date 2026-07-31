@@ -164,6 +164,25 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertNotIn("useState(() => {\n    gapAnalysis.methodologies", coverage_review)
         self.assertNotIn("methodologies(engId).then(setMethodologies).catch(() => {})", coverage_review)
 
+    def test_primary_workspace_load_failures_are_visible(self):
+        pages = (
+            ROOT / "frontend" / "src" / "pages" / "Dashboard.jsx",
+            ROOT / "frontend" / "src" / "pages" / "Assistant.jsx",
+            ROOT / "frontend" / "src" / "pages" / "KnowledgeBase.jsx",
+            ROOT / "frontend" / "src" / "pages" / "EngagementDetail.jsx",
+        )
+        for path in pages:
+            source = path.read_text(encoding="utf-8")
+            self.assertNotIn("catch(() => {})", source, path)
+
+    def test_generated_report_inputs_do_not_use_em_dashes(self):
+        for path in (
+            ROOT / "backend" / "app" / "narrative" / "service.py",
+            ROOT / "backend" / "app" / "correlation" / "engine.py",
+            ROOT / "backend" / "app" / "gap_detection" / "service.py",
+        ):
+            self.assertNotIn("—", path.read_text(encoding="utf-8"), path)
+
     def test_docker_application_data_is_persistent(self):
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         self.assertIn("- DATA_DIR=/app/data", compose)

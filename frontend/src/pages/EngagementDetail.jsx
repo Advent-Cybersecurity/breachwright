@@ -883,15 +883,15 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
         setSnapshots(loadedSnapshots);
         setSelectedScanIds(new Set());
       })
-      .catch(() => {})
+      .catch((err) => toast({ message: `Could not load scans: ${err.message}`, type: 'error' }))
       .finally(() => setLoadingScans(false));
-  }, [engId]);
+  }, [engId, toast]);
 
   useEffect(() => {
     analysisApi.listDrafts(engId)
       .then(setDrafts)
-      .catch(() => {});
-  }, [engId]);
+      .catch((err) => toast({ message: `Could not load AI review drafts: ${err.message}`, type: 'error' }));
+  }, [engId, toast]);
 
   const handleUpload = async (e) => {
     const file = e.target.files[0];
@@ -1185,14 +1185,16 @@ function AttackPathsTab({ engId, toast, fullNarrative, setFullNarrative }) {
       setPaths(data);
       const withNarrative = new Set(data.filter(p => p.narrative).map(p => p.id));
       if (withNarrative.size > 0) setExpanded(withNarrative);
-    }).catch(() => {}).finally(() => setLoading(false));
-    // Load saved full narrative
-    if (!fullNarrative) {
-      narrativeApi.getSaved(engId).then(saved => {
-        if (saved) setFullNarrative(saved);
-      }).catch(() => {});
-    }
-  }, [engId]);
+    }).catch((err) => {
+      toast({ message: `Could not load exploitation chains: ${err.message}`, type: 'error' });
+    }).finally(() => setLoading(false));
+    // Load the saved full narrative once for this engagement.
+    narrativeApi.getSaved(engId).then(saved => {
+      setFullNarrative(saved || null);
+    }).catch((err) => {
+      toast({ message: `Could not load the saved attack narrative: ${err.message}`, type: 'error' });
+    });
+  }, [engId, setFullNarrative, toast]);
 
   const handleGenerate = async () => {
     if (paths.length > 0) {
@@ -1203,8 +1205,8 @@ function AttackPathsTab({ engId, toast, fullNarrative, setFullNarrative }) {
     }
     setGenerating(true);
     setFullNarrative(null);
-    narrativeApi.deleteFull(engId).catch(() => {});
     try {
+      await narrativeApi.deleteFull(engId);
       const result = await apApi.generate(engId);
       setPaths(result);
       toast({ message: `Generated ${result.length} exploitation chains`, type: 'success' });
@@ -1239,9 +1241,9 @@ function AttackPathsTab({ engId, toast, fullNarrative, setFullNarrative }) {
               if (!confirmed) return;
               try {
                 await apApi.clear(engId);
+                await narrativeApi.deleteFull(engId);
                 setPaths([]);
                 setFullNarrative(null);
-                narrativeApi.deleteFull(engId).catch(() => {});
                 toast({ message: 'Exploitation chains and narrative cleared', type: 'success' });
               } catch (err) {
                 toast({ message: err.message, type: 'error' });
@@ -1260,10 +1262,9 @@ function AttackPathsTab({ engId, toast, fullNarrative, setFullNarrative }) {
               setGeneratingNarrative(true);
               try {
                 const result = await narrativeApi.generateFull(engId);
+                await narrativeApi.saveFull(engId, result);
                 setFullNarrative(result);
-                // Save to DB for persistence
-                narrativeApi.saveFull(engId, result).catch(() => {});
-                toast({ message: 'Attack narrative generated', type: 'success' });
+                toast({ message: 'Attack narrative generated and saved', type: 'success' });
               } catch (err) { toast({ message: err.message, type: 'error' }); }
               finally { setGeneratingNarrative(false); }
             }} disabled={generatingNarrative}
@@ -1277,9 +1278,13 @@ function AttackPathsTab({ engId, toast, fullNarrative, setFullNarrative }) {
 
       {/* Full Engagement Narrative */}
       <CollapsibleNarrative narrative={fullNarrative} toast={toast} onDelete={async () => {
-        setFullNarrative(null);
-        narrativeApi.deleteFull(engId).catch(() => {});
-        toast({ message: 'Narrative deleted', type: 'success' });
+        try {
+          await narrativeApi.deleteFull(engId);
+          setFullNarrative(null);
+          toast({ message: 'Narrative deleted', type: 'success' });
+        } catch (err) {
+          toast({ message: `Could not delete the narrative: ${err.message}`, type: 'error' });
+        }
       }} />
 
       {paths.length === 0 ? (

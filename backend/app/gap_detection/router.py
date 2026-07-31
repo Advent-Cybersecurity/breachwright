@@ -1,4 +1,4 @@
-"""Methodology Gap Detection — API Endpoints.
+"""Methodology Gap Detection: API Endpoints.
 
 Provides scope-aware coverage analysis
 by cross-referencing findings, checklists, and scan data against
@@ -32,7 +32,7 @@ async def run_gap_analysis(
 
     Analyzes the engagement's findings, checklist progress, and scan data
     against the selected methodology. The AI understands the engagement scope
-    and only flags gaps that are relevant — not every checklist item.
+    and only flags relevant gaps, not every checklist item.
 
     Returns:
       - engagement_type: inferred from scope and findings
