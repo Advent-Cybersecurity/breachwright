@@ -460,8 +460,8 @@ export const checklists = {
 export const jobs = {
   presets: () =>
     request('/jobs/presets'),
-  list: (engId) =>
-    request(`/jobs?engagement_id=${engId}`),
+  list: (engId, limit = 50) =>
+    request(`/jobs?engagement_id=${encodeURIComponent(engId)}&limit=${limit}`),
   get: (jobId) =>
     request(`/jobs/${jobId}`),
   create: (engId, tool, command) =>

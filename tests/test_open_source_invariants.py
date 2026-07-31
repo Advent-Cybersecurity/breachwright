@@ -275,6 +275,19 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("Support snapshots exclude logs", frontend)
         self.assertIn('client.get("/api/system/support-snapshot"', smoke)
 
+    def test_tool_runner_analysis_is_scoped_and_history_is_bounded(self):
+        router = (ROOT / "backend" / "app" / "jobs" / "router.py").read_text(
+            encoding="utf-8"
+        )
+        frontend = (ROOT / "frontend" / "src" / "pages" / "ToolRunner.jsx").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("limit: int = Query(default=50, ge=1, le=200)", router)
+        self.assertIn(".limit(limit)", router)
+        self.assertIn("analysisApi.run(selectedEng, [scanId])", frontend)
+        self.assertIn("window.confirm(confirmation)", frontend)
+        self.assertIn("Stop &amp; Delete", frontend)
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")

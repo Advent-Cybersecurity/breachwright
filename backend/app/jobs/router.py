@@ -130,13 +130,15 @@ async def create_job(
 @router.get("", response_model=list[JobResponse])
 async def list_jobs(
     engagement_id: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
         select(Job)
         .where(Job.engagement_id == engagement_id)
-        .order_by(Job.created_at.desc())
+        .order_by(Job.created_at.desc(), Job.started_at.desc(), Job.id.desc())
+        .limit(limit)
     )
     jobs = result.scalars().all()
     job_ids = [job.id for job in jobs]
@@ -430,11 +432,18 @@ async def delete_job(
     stop_job(job_id)
     cleanup_job(job_id)
 
-    # Clean up output directory
+    # Clean up output directory before removing the record so a failed cleanup
+    # remains visible and can be retried by the operator.
     output_dir = os.path.join(settings.data_dir, "jobs", job_id)
     if os.path.isdir(output_dir):
         import shutil
-        shutil.rmtree(output_dir, ignore_errors=True)
+        try:
+            shutil.rmtree(output_dir)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Tool Runner output could not be removed: {exc}",
+            ) from exc
 
     await db.delete(job)
 
