@@ -6,14 +6,26 @@
 
 - Added versioned scan snapshots with deterministic new, persistent, resolved,
   and regressed classifications.
+- Large comparisons retain complete counts while bounding rendered detail rows
+  per status to keep the local interface responsive.
 - Added finding change history, retest due dates, and an engagement retest queue.
+- Finding and retest views now use risk-first ordering with deterministic ties.
 - Added built-in web, API, network, Active Directory, and cloud engagement
   templates.
+- API engagements now receive a dedicated OWASP API Security Top 10 (2023)
+  checklist instead of the general web checklist.
 - Added report readiness checks with actionable blockers and warnings.
+- Report readiness now warns when uploaded scans are not represented in any
+  versioned snapshot.
 - Added Nuclei JSONL and SARIF 2.1 import support, plus SARIF finding export.
 - Engagement exports now use format 1.1 and preserve status, template,
-  checklist progress, normalized scan snapshot history, CVSS zero scores, and
-  retest scheduling metadata.
+  checklist progress, finding change history, normalized scan snapshot
+  history, AI review provenance, CVSS zero scores, and retest scheduling
+  metadata. Generated attack narratives and MITRE technique mappings also
+  round-trip without requiring an AI provider, including the saved
+  engagement-wide narrative. Finding references inside imported exploitation
+  chains and saved narrative citations are remapped to the new local finding
+  IDs.
 
 ## v2.1.0 (unreleased foundation)
 

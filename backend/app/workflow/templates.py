@@ -8,8 +8,8 @@ ENGAGEMENT_TEMPLATES = {
     },
     "api": {
         "name": "API Security",
-        "description": "API assessment using the OWASP-oriented application checklist.",
-        "methodologies": ["owasp_top10"],
+        "description": "API assessment using OWASP API Security Top 10 coverage.",
+        "methodologies": ["owasp_api_top10"],
     },
     "external": {
         "name": "External Network",

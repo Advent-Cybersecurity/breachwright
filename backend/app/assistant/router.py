@@ -3,7 +3,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -74,14 +74,25 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
             finding_result = await db.execute(
                 select(Finding)
                 .where(Finding.engagement_id == engagement_id)
-                .order_by(Finding.severity)
+                .order_by(
+                    case(
+                        (Finding.severity == "critical", 0),
+                        (Finding.severity == "high", 1),
+                        (Finding.severity == "medium", 2),
+                        (Finding.severity == "low", 3),
+                        else_=4,
+                    ),
+                    Finding.cvss_score.desc(),
+                    Finding.created_at,
+                    Finding.id,
+                )
                 .limit(200)
             )
             findings = finding_result.scalars().all()
             if findings:
                 findings_text = "\n".join(
                     f"  [FINDING:{f.id}] [{f.severity.value.upper() if hasattr(f.severity, 'value') else f.severity.upper()}] "
-                    f"{f.title} (CVSS: {f.cvss_score or 'N/A'}) "
+                    f"{f.title} (CVSS: {f.cvss_score if f.cvss_score is not None else 'N/A'}) "
                     f"Hosts: {f.affected_hosts or 'N/A'}"
                     f"{' | Retest: ' + f.retest_status if f.retest_status else ''}"
                     for f in findings
@@ -98,7 +109,7 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
                     detail_text = "\n\n".join(
                         f"[FINDING:{f.id}] Finding: {f.title}\n"
                         f"Severity: {f.severity.value.upper() if hasattr(f.severity, 'value') else f.severity.upper()}\n"
-                        f"CVSS: {f.cvss_score or 'N/A'}\n"
+                        f"CVSS: {f.cvss_score if f.cvss_score is not None else 'N/A'}\n"
                         f"Hosts: {f.affected_hosts or 'N/A'}\n"
                         f"Description: {f.description or 'N/A'}\n"
                         f"Evidence: {f.evidence or 'N/A'}\n"

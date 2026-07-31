@@ -1,6 +1,8 @@
 import json
 import logging
+import math
 import re
+import uuid
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import Response
@@ -13,9 +15,11 @@ from app.auth.models import User
 from app.checklists.models import ChecklistItem
 from app.engagements.models import (
     AttackPath,
+    AppSetting,
     Engagement,
     EngagementStatus,
     Finding,
+    FindingHistory,
     Report,
     ScanObservation,
     ScanSnapshot,
@@ -35,9 +39,13 @@ MAX_IMPORT_ATTACK_PATHS = 1000
 MAX_IMPORT_CHECKLIST_ITEMS = 10000
 MAX_IMPORT_SCAN_SNAPSHOTS = 1000
 MAX_IMPORT_SCAN_OBSERVATIONS = 100000
+MAX_IMPORT_FINDING_HISTORY_ITEMS = 50000
 MAX_ATTACK_PATH_DESCRIPTION_SIZE = 200000
 MAX_ATTACK_PATH_STEPS = 1000
 MAX_ATTACK_PATH_STEPS_SIZE = 500000
+MAX_ATTACK_PATH_NARRATIVE_SIZE = 500000
+MAX_ATTACK_PATH_MITRE_TECHNIQUES = 1000
+MAX_ATTACK_PATH_MITRE_SIZE = 500000
 VALID_RETEST_STATUSES = {
     None,
     "",
@@ -52,6 +60,8 @@ SUPPORTED_IMPORT_VERSIONS = {"1.0", "1.1"}
 VALID_CHECKLIST_STATUSES = {"pending", "in_progress", "done", "na"}
 VALID_OBSERVATION_SEVERITIES = {"critical", "high", "medium", "low", "info"}
 MAX_OBSERVATION_EVIDENCE_SIZE = 500_000
+MAX_HISTORY_CHANGES_SIZE = 500_000
+MAX_ENGAGEMENT_NARRATIVE_SIZE = 2 * 1024 * 1024
 
 
 def _validate_evidence_refs(value: object, finding_index: int) -> list[dict] | None:
@@ -106,6 +116,21 @@ async def export_engagement(
         .order_by(Finding.created_at, Finding.id)
     )
     findings = result.scalars().all()
+    history_by_finding: dict[str, list[FindingHistory]] = {
+        item.id: [] for item in findings
+    }
+    if history_by_finding:
+        result = await db.execute(
+            select(FindingHistory)
+            .where(FindingHistory.finding_id.in_(list(history_by_finding)))
+            .order_by(
+                FindingHistory.finding_id,
+                FindingHistory.created_at,
+                FindingHistory.id,
+            )
+        )
+        for entry in result.scalars().all():
+            history_by_finding[entry.finding_id].append(entry)
 
     # Get attack paths
     result = await db.execute(
@@ -140,6 +165,22 @@ async def export_engagement(
         for observation in result.scalars().all():
             observations_by_snapshot[observation.snapshot_id].append(observation)
 
+    result = await db.execute(
+        select(AppSetting).where(AppSetting.key == f"narrative_{engagement_id}")
+    )
+    narrative_setting = result.scalar_one_or_none()
+    engagement_narrative = None
+    if narrative_setting:
+        try:
+            parsed_narrative = json.loads(narrative_setting.value)
+            if isinstance(parsed_narrative, dict):
+                engagement_narrative = parsed_narrative
+        except json.JSONDecodeError:
+            logger.warning(
+                "Skipping malformed saved narrative for engagement %s",
+                engagement_id,
+            )
+
     export_data = {
         "version": "1.1",
         "exported_by": current_user.display_name,
@@ -154,6 +195,7 @@ async def export_engagement(
         },
         "findings": [
             {
+                "portable_id": f.id,
                 "title": f.title,
                 "description": f.description,
                 "severity": f.severity.value if hasattr(f.severity, 'value') else f.severity,
@@ -169,6 +211,16 @@ async def export_engagement(
                 "ai_inference": f.ai_inference,
                 "retest_status": f.retest_status,
                 "retest_due_date": _serialize(f.retest_due_date) if f.retest_due_date else None,
+                "created_at": _serialize(f.created_at),
+                "history": [
+                    {
+                        "action": entry.action,
+                        "changes": entry.changes,
+                        "source": entry.source,
+                        "created_at": _serialize(entry.created_at),
+                    }
+                    for entry in history_by_finding[f.id]
+                ],
             }
             for f in findings
         ],
@@ -178,6 +230,8 @@ async def export_engagement(
                 "description": ap.description,
                 "steps": ap.steps,
                 "risk_level": ap.risk_level,
+                "narrative": ap.narrative,
+                "mitre_techniques": ap.mitre_techniques,
             }
             for ap in attack_paths
         ],
@@ -216,6 +270,7 @@ async def export_engagement(
             }
             for snapshot in scan_snapshots
         ],
+        "engagement_narrative": engagement_narrative,
     }
 
     safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "_", eng.name).strip("._")
@@ -267,6 +322,7 @@ async def import_engagement(
     attack_path_data = data.get("attack_paths", [])
     checklist_data = data.get("checklists", [])
     snapshot_data = data.get("scan_snapshots", [])
+    engagement_narrative = data.get("engagement_narrative")
     if not isinstance(eng_data, dict):
         raise HTTPException(status_code=400, detail="Invalid engagement data")
     if not isinstance(finding_data, list):
@@ -277,6 +333,12 @@ async def import_engagement(
         raise HTTPException(status_code=400, detail="Checklists must be a list")
     if not isinstance(snapshot_data, list):
         raise HTTPException(status_code=400, detail="Scan snapshots must be a list")
+    if engagement_narrative is not None and (
+        not isinstance(engagement_narrative, dict)
+        or len(json.dumps(engagement_narrative).encode("utf-8"))
+        > MAX_ENGAGEMENT_NARRATIVE_SIZE
+    ):
+        raise HTTPException(status_code=422, detail="Invalid engagement narrative")
     if len(finding_data) > MAX_IMPORT_FINDINGS:
         raise HTTPException(
             status_code=413,
@@ -336,7 +398,9 @@ async def import_engagement(
 
     # Create findings
     finding_count = 0
-    imported_findings = []
+    imported_findings: list[tuple[Finding, list, int]] = []
+    finding_id_map: dict[str, str] = {}
+    input_history_count = 0
     for index, fd in enumerate(finding_data):
         if not isinstance(fd, dict):
             raise HTTPException(
@@ -348,6 +412,68 @@ async def import_engagement(
                 status_code=422,
                 detail=f"Finding {index + 1} has an invalid retest status",
             )
+        history_data = fd.get("history", [])
+        if not isinstance(history_data, list):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Finding {index + 1} has invalid history",
+            )
+        input_history_count += len(history_data)
+        if input_history_count > MAX_IMPORT_FINDING_HISTORY_ITEMS:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    "Import exceeds "
+                    f"{MAX_IMPORT_FINDING_HISTORY_ITEMS} finding history items"
+                ),
+            )
+        portable_id = fd.get("portable_id")
+        if portable_id is not None and (
+            not isinstance(portable_id, str)
+            or not portable_id.strip()
+            or len(portable_id) > 100
+            or portable_id in finding_id_map
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Finding {index + 1} has an invalid portable ID",
+            )
+        finding_source = fd.get("source", "imported")
+        if (
+            not isinstance(finding_source, str)
+            or not finding_source.strip()
+            or len(finding_source) > 50
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Finding {index + 1} has an invalid source",
+            )
+        ai_confidence = fd.get("ai_confidence")
+        if ai_confidence is not None and (
+            isinstance(ai_confidence, bool)
+            or not isinstance(ai_confidence, (int, float))
+            or not math.isfinite(float(ai_confidence))
+            or not 0 <= float(ai_confidence) <= 1
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Finding {index + 1} has invalid AI confidence",
+            )
+        ai_inference = fd.get("ai_inference", False)
+        if not isinstance(ai_inference, bool):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Finding {index + 1} has invalid AI provenance",
+            )
+        created_at = None
+        if fd.get("created_at") is not None:
+            try:
+                created_at = datetime.fromisoformat(fd["created_at"])
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Finding {index + 1} has an invalid creation time",
+                ) from exc
         try:
             validated_finding = FindingCreate(
                 title=fd.get("title", "Untitled"),
@@ -365,7 +491,8 @@ async def import_engagement(
                 status_code=422,
                 detail=f"Invalid finding {index + 1}: {exc.errors()[0]['msg']}",
             ) from exc
-        finding = Finding(
+        finding_values = dict(
+            id=str(uuid.uuid4()),
             engagement_id=engagement.id,
             title=validated_finding.title,
             description=validated_finding.description,
@@ -374,33 +501,97 @@ async def import_engagement(
             affected_hosts=validated_finding.affected_hosts,
             evidence=validated_finding.evidence,
             remediation=validated_finding.remediation,
-            source="imported",
+            source=finding_source.strip(),
             evidence_refs=_validate_evidence_refs(fd.get("evidence_refs"), index + 1),
-            ai_confidence=(
-                float(fd["ai_confidence"])
-                if isinstance(fd.get("ai_confidence"), (int, float))
-                and 0 <= float(fd["ai_confidence"]) <= 1
-                else None
-            ),
-            ai_inference=fd.get("ai_inference") is True,
+            ai_confidence=float(ai_confidence) if ai_confidence is not None else None,
+            ai_inference=ai_inference,
             retest_status=fd.get("retest_status"),
             retest_due_date=validated_finding.retest_due_date,
             created_by=current_user.id,
         )
+        if created_at is not None:
+            finding_values["created_at"] = created_at
+        finding = Finding(**finding_values)
         db.add(finding)
-        imported_findings.append(finding)
+        if portable_id is not None:
+            finding_id_map[portable_id] = finding.id
+        imported_findings.append((finding, history_data, index + 1))
         finding_count += 1
 
     await db.flush()
-    for finding in imported_findings:
-        await record_history(
-            db,
-            finding,
-            action="imported",
-            created_by=current_user.id,
-            changes={field: {"from": None, "to": value} for field, value in snapshot(finding).items() if value is not None},
-            source="imported",
-        )
+    finding_history_count = 0
+    for finding, history_data, finding_number in imported_findings:
+        if not history_data:
+            created_history = await record_history(
+                db,
+                finding,
+                action="imported",
+                created_by=current_user.id,
+                changes={
+                    field: {"from": None, "to": value}
+                    for field, value in snapshot(finding).items()
+                    if value is not None
+                },
+                source="imported",
+            )
+            finding_history_count += int(created_history is not None)
+            continue
+
+        last_history_created_at: datetime | None = None
+        for history_index, history_item in enumerate(history_data, 1):
+            if not isinstance(history_item, dict):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Finding {finding_number} history item {history_index} "
+                        "must be an object"
+                    ),
+                )
+            action = history_item.get("action")
+            source = history_item.get("source")
+            changes = history_item.get("changes")
+            if not isinstance(action, str) or not action.strip() or len(action) > 50:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Finding {finding_number} history item {history_index} has invalid action",
+                )
+            if not isinstance(source, str) or not source.strip() or len(source) > 50:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Finding {finding_number} history item {history_index} has invalid source",
+                )
+            if (
+                not isinstance(changes, dict)
+                or len(json.dumps(changes).encode("utf-8"))
+                > MAX_HISTORY_CHANGES_SIZE
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Finding {finding_number} history item {history_index} has invalid changes",
+                )
+            try:
+                created_at = datetime.fromisoformat(history_item.get("created_at"))
+                if (
+                    last_history_created_at is not None
+                    and created_at <= last_history_created_at
+                ):
+                    created_at = last_history_created_at + timedelta(microseconds=1)
+            except (OverflowError, TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Finding {finding_number} history item {history_index} has invalid creation time",
+                ) from exc
+            last_history_created_at = created_at
+            db.add(FindingHistory(
+                finding_id=finding.id,
+                engagement_id=engagement.id,
+                action=action.strip(),
+                changes=changes,
+                source=source.strip(),
+                created_by=current_user.id,
+                created_at=created_at,
+            ))
+            finding_history_count += 1
 
     checklist_count = 0
     for index, item_data in enumerate(checklist_data):
@@ -617,6 +808,26 @@ async def import_engagement(
                 status_code=422,
                 detail=f"Attack path {index + 1} has invalid steps",
             )
+        if steps is not None:
+            steps = json.loads(json.dumps(steps))
+            for step in steps:
+                if not isinstance(step, dict) or "finding_id" not in step:
+                    continue
+                old_finding_id = step["finding_id"]
+                if old_finding_id is None:
+                    continue
+                if not isinstance(old_finding_id, str):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Attack path {index + 1} has an invalid finding reference",
+                    )
+                if old_finding_id in finding_id_map:
+                    step["finding_id"] = finding_id_map[old_finding_id]
+                elif data["version"] == "1.1":
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Attack path {index + 1} references an unknown finding",
+                    )
         risk_level = apd.get("risk_level")
         if risk_level is not None and (
             not isinstance(risk_level, str) or len(risk_level) > 50
@@ -625,17 +836,59 @@ async def import_engagement(
                 status_code=422,
                 detail=f"Attack path {index + 1} has an invalid risk level",
             )
+        narrative = apd.get("narrative")
+        if narrative is not None and (
+            not isinstance(narrative, str)
+            or len(narrative) > MAX_ATTACK_PATH_NARRATIVE_SIZE
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Attack path {index + 1} has an invalid narrative",
+            )
+        mitre_techniques = apd.get("mitre_techniques")
+        if mitre_techniques is not None and (
+            not isinstance(mitre_techniques, list)
+            or len(mitre_techniques) > MAX_ATTACK_PATH_MITRE_TECHNIQUES
+            or len(json.dumps(mitre_techniques).encode("utf-8"))
+            > MAX_ATTACK_PATH_MITRE_SIZE
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Attack path {index + 1} has invalid MITRE techniques",
+            )
         ap = AttackPath(
             engagement_id=engagement.id,
             name=name,
             description=description,
             steps=steps,
             risk_level=risk_level,
+            narrative=narrative,
+            mitre_techniques=mitre_techniques,
         )
         db.add(ap)
         ap_count += 1
 
     await db.flush()
+
+    if engagement_narrative is not None:
+        engagement_narrative = json.loads(json.dumps(engagement_narrative))
+        citations = engagement_narrative.get("citations")
+        if isinstance(citations, list):
+            remapped_citations = []
+            for citation in citations:
+                if not isinstance(citation, str) or not citation.startswith("FINDING:"):
+                    remapped_citations.append(citation)
+                    continue
+                old_finding_id = citation.split(":", 1)[1]
+                remapped_citations.append(
+                    f"FINDING:{finding_id_map.get(old_finding_id, old_finding_id)}"
+                )
+            engagement_narrative["citations"] = remapped_citations
+        db.add(AppSetting(
+            key=f"narrative_{engagement.id}",
+            value=json.dumps(engagement_narrative),
+        ))
+        await db.flush()
 
     logger.info(
         "Imported engagement '%s' with %d findings, %d checklist items, %d scan snapshots, and %d attack paths",
@@ -646,6 +899,7 @@ async def import_engagement(
         "id": engagement.id,
         "name": engagement.name,
         "findings_imported": finding_count,
+        "finding_history_items_imported": finding_history_count,
         "checklist_items_imported": checklist_count,
         "scan_snapshots_imported": snapshot_count,
         "attack_paths_imported": ap_count,

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Annotated, Optional
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -32,7 +32,18 @@ async def list_findings(
     result = await db.execute(
         select(Finding)
         .where(Finding.engagement_id == engagement_id)
-        .order_by(Finding.severity, Finding.cvss_score.desc())
+        .order_by(
+            case(
+                (Finding.severity == "critical", 0),
+                (Finding.severity == "high", 1),
+                (Finding.severity == "medium", 2),
+                (Finding.severity == "low", 3),
+                else_=4,
+            ),
+            Finding.cvss_score.desc(),
+            Finding.created_at,
+            Finding.id,
+        )
     )
     return [FindingResponse.model_validate(f) for f in result.scalars().all()]
 

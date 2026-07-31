@@ -55,7 +55,8 @@ async def generate_attack_paths(
 
     # Build findings summary for AI
     findings_text = "\n".join(
-        f"- finding_id={f.id} [{f.severity.upper()}] {f.title} (CVSS: {f.cvss_score or 'N/A'}) "
+        f"- finding_id={f.id} [{f.severity.upper()}] {f.title} "
+        f"(CVSS: {f.cvss_score if f.cvss_score is not None else 'N/A'}) "
         f"Hosts: {f.affected_hosts or 'N/A'}\n  Description: {f.description or 'N/A'}"
         for f in findings
     )

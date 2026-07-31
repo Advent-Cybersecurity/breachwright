@@ -128,7 +128,7 @@ def correlate(host_records_by_tool: dict[str, list[dict]]) -> dict:
 
 def _normalize_host(host_str: str) -> str:
     """Normalize host identifier for matching."""
-    return host_str.strip().lower()
+    return str(host_str or "unknown").strip().lower()
 
 
 def _merge_hosts(by_tool: dict[str, list[dict]]) -> dict:
@@ -226,7 +226,7 @@ def _collect_vulns(by_tool: dict[str, list[dict]]) -> list[dict]:
 
 def _normalize_title(title: str) -> str:
     """Normalize vuln title for matching."""
-    t = title.lower().strip()
+    t = str(title or "Untitled finding").lower().strip()
     # Remove common noise
     for prefix in ("vulnerability:", "vuln:", "finding:"):
         if t.startswith(prefix):

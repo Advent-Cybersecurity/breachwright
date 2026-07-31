@@ -27,9 +27,10 @@ Third-party AI services may charge for API usage. Local model support does not r
 - Versioned scan snapshots with deterministic retest comparison
 - Finding change history, retest scheduling, and report readiness checks
 - Built-in engagement templates with automatic methodology checklists
+- Dedicated OWASP API Security Top 10 (2023) checklist for API engagements
 - Nuclei JSONL and SARIF 2.1 interoperability
-- Versioned engagement export and import that preserves checklist progress and
-  normalized scan comparison history
+- Versioned engagement export and import that preserves checklist progress,
+  finding history, and normalized scan comparison history
 - Exploitation chains and MITRE ATT&CK-aware attack narratives
 - SharpHound and BloodHound ZIP import with Active Directory attack-path analysis
 - Markdown and DOCX report generation
@@ -126,8 +127,9 @@ AI configuration is optional for manual findings, evidence management, checklist
 
 Engagement JSON exports are intended for sharing editable project records and
 normalized comparison history. They do not include raw scan files, binary
-evidence attachments, generated reports, or Tool Runner output. Use a verified
-full backup when moving or preserving an entire local workspace.
+evidence attachments, Active Directory datasets, pending AI proposals,
+generated reports, or Tool Runner output. Use a verified full backup when
+moving or preserving an entire local workspace.
 
 AI output is treated as untrusted. Scan and Active Directory analysis create
 review proposals rather than accepted findings. Each supported proposal cites

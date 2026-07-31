@@ -456,6 +456,15 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(finding.status_code, 201, finding.text)
         finding_id = finding.json()["id"]
+        saved_narrative = self.client.post(
+            f"/api/engagements/{engagement_id}/narrative/full/save",
+            headers=headers,
+            json={
+                "narrative": "Validated local narrative",
+                "citations": [f"FINDING:{finding_id}"],
+            },
+        )
+        self.assertEqual(saved_narrative.status_code, 200, saved_narrative.text)
         invalid_retest = self.client.put(
             f"/api/engagements/{engagement_id}/findings/{finding_id}",
             headers=headers,
@@ -763,6 +772,31 @@ class UserJourneyTests(unittest.TestCase):
             404,
         )
 
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            connection.execute(
+                "INSERT INTO attack_paths (id, engagement_id, name, description, "
+                "steps, risk_level, narrative, mitre_techniques) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    str(uuid.uuid4()),
+                    engagement_id,
+                    "Validated local chain",
+                    "A bounded attack chain.",
+                    json.dumps([{
+                        "order": 1,
+                        "title": "Initial access",
+                        "finding_id": finding_id,
+                    }]),
+                    "high",
+                    "The analyst-validated narrative.",
+                    json.dumps([{
+                        "technique_id": "T1190",
+                        "technique_name": "Exploit Public-Facing Application",
+                    }]),
+                ),
+            )
+            connection.commit()
+
         export = self.client.get(
             f"/api/engagements/{engagement_id}/export",
             headers=headers,
@@ -771,6 +805,22 @@ class UserJourneyTests(unittest.TestCase):
         exported = export.json()
         self.assertEqual(exported["engagement"]["name"], "Release Candidate Assessment")
         self.assertEqual(exported["findings"][0]["title"], "Outdated service")
+        self.assertEqual(
+            exported["attack_paths"][0]["narrative"],
+            "The analyst-validated narrative.",
+        )
+        self.assertEqual(exported["findings"][0]["portable_id"], finding_id)
+        self.assertEqual(
+            exported["attack_paths"][0]["mitre_techniques"][0]["technique_id"],
+            "T1190",
+        )
+        self.assertEqual(
+            exported["engagement_narrative"],
+            {
+                "narrative": "Validated local narrative",
+                "citations": [f"FINDING:{finding_id}"],
+            },
+        )
 
         invalid_export = json.loads(json.dumps(exported))
         invalid_export["findings"][0]["severity"] = "extreme"
@@ -834,6 +884,46 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(imported.status_code, 200, imported.text)
         self.assertEqual(imported.json()["findings_imported"], 1)
+        self.assertEqual(imported.json()["attack_paths_imported"], 1)
+        imported_paths = self.client.get(
+            f"/api/engagements/{imported.json()['id']}/attack-paths",
+            headers=headers,
+        )
+        self.assertEqual(imported_paths.status_code, 200, imported_paths.text)
+        self.assertEqual(
+            imported_paths.json()[0]["narrative"],
+            "The analyst-validated narrative.",
+        )
+        imported_findings_response = self.client.get(
+            f"/api/engagements/{imported.json()['id']}/findings",
+            headers=headers,
+        )
+        self.assertEqual(
+            imported_paths.json()[0]["steps"][0]["finding_id"],
+            imported_findings_response.json()[0]["id"],
+        )
+        self.assertNotEqual(
+            imported_paths.json()[0]["steps"][0]["finding_id"],
+            finding_id,
+        )
+        self.assertEqual(
+            imported_paths.json()[0]["mitre_techniques"][0]["technique_id"],
+            "T1190",
+        )
+        imported_narrative = self.client.get(
+            f"/api/engagements/{imported.json()['id']}/narrative/full",
+            headers=headers,
+        )
+        self.assertEqual(imported_narrative.status_code, 200, imported_narrative.text)
+        self.assertEqual(
+            imported_narrative.json(),
+            {
+                "narrative": "Validated local narrative",
+                "citations": [
+                    f"FINDING:{imported_findings_response.json()[0]['id']}"
+                ],
+            },
+        )
 
         engagements = self.client.get("/api/engagements", headers=headers)
         self.assertEqual(engagements.status_code, 200)
@@ -1016,7 +1106,30 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(exported.status_code, 200, exported.text)
         exported_finding = exported.json()["findings"][0]
         self.assertTrue(exported_finding["ai_inference"])
+        self.assertEqual(exported_finding["source"], "ai_reviewed")
         self.assertEqual(exported_finding["evidence_refs"][0]["id"], "CF-0001-E01")
+
+        imported = self.client.post(
+            "/api/engagements/import",
+            files={"file": ("ai-reviewed.json", exported.content, "application/json")},
+        )
+        self.assertEqual(imported.status_code, 200, imported.text)
+        imported_findings = self.client.get(
+            f"/api/engagements/{imported.json()['id']}/findings"
+        )
+        self.assertEqual(imported_findings.status_code, 200, imported_findings.text)
+        imported_finding = imported_findings.json()[0]
+        self.assertTrue(imported_finding["ai_inference"])
+        self.assertEqual(imported_finding["source"], "ai_reviewed")
+        self.assertEqual(imported_finding["ai_confidence"], 0.8)
+        self.assertEqual(
+            imported_finding["evidence_refs"][0]["id"],
+            "CF-0001-E01",
+        )
+        self.assertEqual(
+            self.client.delete(f"/api/engagements/{imported.json()['id']}").status_code,
+            204,
+        )
 
         deleted = self.client.delete(f"/api/engagements/{engagement_id}")
         self.assertEqual(deleted.status_code, 204, deleted.text)
@@ -1072,6 +1185,13 @@ class UserJourneyTests(unittest.TestCase):
             },
         )
         self.assertEqual(urgent_finding.status_code, 201, urgent_finding.text)
+        ordered_findings = self.client.get(
+            f"/api/engagements/{engagement_id}/findings"
+        )
+        self.assertEqual(
+            [item["severity"] for item in ordered_findings.json()[:2]],
+            ["critical", "high"],
+        )
         ordered_queue = self.client.get(
             f"/api/engagements/{engagement_id}/retest-queue"
         )
@@ -1155,12 +1275,33 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(snapshot2.json()["counts"], {"new": 1, "persistent": 0, "resolved": 1, "regressed": 0})
 
         scan_a2 = upload("retest-two.jsonl", nuclei_a + "\n" + nuclei_b)
+        pending_snapshot_readiness = self.client.get(
+            f"/api/engagements/{engagement_id}/report-readiness"
+        )
+        self.assertIn(
+            "unversioned_scans",
+            {
+                warning["code"]
+                for warning in pending_snapshot_readiness.json()["warnings"]
+            },
+        )
+        self.assertEqual(
+            pending_snapshot_readiness.json()["summary"]["unversioned_scans"],
+            1,
+        )
         snapshot3 = self.client.post(
             f"/api/engagements/{engagement_id}/scan-snapshots",
             json={"label": "Retest 2", "scan_ids": [scan_a2]},
         )
         self.assertEqual(snapshot3.status_code, 201, snapshot3.text)
         self.assertEqual(snapshot3.json()["counts"], {"new": 0, "persistent": 1, "resolved": 0, "regressed": 1})
+        current_readiness = self.client.get(
+            f"/api/engagements/{engagement_id}/report-readiness"
+        )
+        self.assertEqual(
+            current_readiness.json()["summary"]["unversioned_scans"],
+            0,
+        )
         replay = self.client.get(
             f"/api/engagements/{engagement_id}/scan-snapshots/{snapshot3.json()['snapshot']['id']}/comparison"
         )
@@ -1200,6 +1341,10 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(portable.json()["engagement"]["status"], "completed")
         self.assertEqual(portable.json()["findings"][0]["cvss_score"], 0.0)
         self.assertEqual(portable.json()["findings"][0]["retest_due_date"], "2020-01-02")
+        self.assertEqual(
+            [item["action"] for item in portable.json()["findings"][0]["history"]],
+            ["created", "updated"],
+        )
         self.assertEqual(len(portable.json()["checklists"]), len(checklist.json()))
         self.assertEqual(len(portable.json()["scan_snapshots"]), 4)
         exported_checklist_item = next(
@@ -1252,6 +1397,20 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(rejected_snapshot.status_code, 422, rejected_snapshot.text)
         self.assertEqual(len(self.client.get("/api/engagements").json()), 1)
+        invalid_history_export = portable.json()
+        invalid_history_export["findings"][0]["history"][0]["changes"] = []
+        rejected_history = self.client.post(
+            "/api/engagements/import",
+            files={
+                "file": (
+                    "invalid-history-export.json",
+                    json.dumps(invalid_history_export).encode("utf-8"),
+                    "application/json",
+                )
+            },
+        )
+        self.assertEqual(rejected_history.status_code, 422, rejected_history.text)
+        self.assertEqual(len(self.client.get("/api/engagements").json()), 1)
         portable_with_tied_times = portable.json()
         tied_time = portable_with_tied_times["scan_snapshots"][0]["created_at"]
         for item in portable_with_tied_times["scan_snapshots"]:
@@ -1272,11 +1431,13 @@ class UserJourneyTests(unittest.TestCase):
             len(checklist.json()),
         )
         self.assertEqual(imported.json()["scan_snapshots_imported"], 4)
+        self.assertEqual(imported.json()["finding_history_items_imported"], 2)
         imported_id = imported.json()["id"]
         imported_engagement = self.client.get(f"/api/engagements/{imported_id}")
         self.assertEqual(imported_engagement.json()["template_key"], "web")
         self.assertEqual(imported_engagement.json()["status"], "completed")
         imported_findings = self.client.get(f"/api/engagements/{imported_id}/findings")
+        self.assertEqual(imported_findings.json()[0]["source"], "manual")
         self.assertEqual(imported_findings.json()[0]["retest_due_date"], "2020-01-02")
         imported_checklist = self.client.get(
             f"/api/engagements/{imported_id}/checklists"
@@ -1307,10 +1468,33 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(imported_comparison.status_code, 200, imported_comparison.text)
         self.assertEqual(imported_comparison.json()["counts"], snapshot3.json()["counts"])
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            connection.execute(
+                "UPDATE scan_snapshots SET parser_version = ? WHERE id = ?",
+                ("structured-v0", imported_snapshots.json()[0]["id"]),
+            )
+            connection.commit()
+        imported_readiness = self.client.get(
+            f"/api/engagements/{imported_id}/report-readiness"
+        )
+        self.assertIn(
+            "mixed_snapshot_parsers",
+            {item["code"] for item in imported_readiness.json()["warnings"]},
+        )
+        imported_latest_comparison = self.client.get(
+            f"/api/engagements/{imported_id}/scan-snapshots/{imported_snapshots.json()[0]['id']}/comparison"
+        )
+        self.assertEqual(
+            imported_latest_comparison.json()["warnings"][0]["code"],
+            "mixed_snapshot_parsers",
+        )
         imported_history = self.client.get(
             f"/api/engagements/{imported_id}/findings/{imported_findings.json()[0]['id']}/history"
         )
-        self.assertEqual(imported_history.json()[0]["action"], "imported")
+        self.assertEqual(
+            [item["action"] for item in imported_history.json()],
+            ["updated", "created"],
+        )
         self.assertEqual(self.client.delete(f"/api/engagements/{imported_id}").status_code, 204)
 
         deleted = self.client.delete(f"/api/engagements/{engagement_id}")
@@ -1326,7 +1510,7 @@ class UserJourneyTests(unittest.TestCase):
     def test_all_engagement_templates_create_their_methodology(self):
         expected = {
             "web": "owasp_top10",
-            "api": "owasp_top10",
+            "api": "owasp_api_top10",
             "external": "network_pentest",
             "internal": "network_pentest",
             "active_directory": "ptes",
@@ -1353,6 +1537,15 @@ class UserJourneyTests(unittest.TestCase):
                     {item["methodology"] for item in checklist.json()},
                     {methodology},
                 )
+                if template_key == "api":
+                    self.assertEqual(len(checklist.json()), 10)
+                    self.assertEqual(
+                        {
+                            item["category"].split(":", 1)[0]
+                            for item in checklist.json()
+                        },
+                        {f"API{index}" for index in range(1, 11)},
+                    )
                 self.assertEqual(
                     self.client.delete(f"/api/engagements/{engagement_id}").status_code,
                     204,

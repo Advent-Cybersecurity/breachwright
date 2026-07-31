@@ -93,6 +93,37 @@ class StructuredInterchangeParserTests(unittest.TestCase):
         self.assertEqual(records[0]["host"], "unknown")
         self.assertEqual(records[0]["vulns"][0]["plugin_id"], "example-rule")
 
+    def test_malformed_scanner_numbers_are_bounded(self):
+        nmap = parse_structured(
+            """<nmaprun><host><status state="up"/><address addr="192.0.2.1"/>
+            <ports><port portid="not-a-port" protocol="tcp"><state state="open"/></port></ports>
+            </host></nmaprun>""",
+            "nmap",
+        )
+        self.assertEqual(nmap[0]["ports"], [])
+        nmap_text = parse_structured(
+            "Nmap scan report for 192.0.2.4\n99999/tcp open http",
+            "nmap",
+        )
+        self.assertEqual(nmap_text[0]["ports"], [])
+
+        nessus = parse_structured(
+            """<NessusClientData_v2><Report><ReportHost name="192.0.2.2">
+            <ReportItem port="invalid" protocol="tcp" severity="3" pluginName="Example" pluginID="1">
+            <cvss3_base_score>not-a-score</cvss3_base_score></ReportItem>
+            </ReportHost></Report></NessusClientData_v2>""",
+            "nessus",
+        )
+        self.assertEqual(nessus[0]["vulns"][0]["port"], 0)
+        self.assertIsNone(nessus[0]["vulns"][0]["cvss"])
+
+        burp = parse_structured(
+            """<issues><issue><host ip="192.0.2.3">example.test</host>
+            <port>70000</port><severity>High</severity><name>Example</name></issue></issues>""",
+            "burp",
+        )
+        self.assertEqual(burp[0]["vulns"][0]["port"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

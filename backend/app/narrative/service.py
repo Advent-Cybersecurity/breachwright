@@ -165,7 +165,11 @@ async def generate_narrative(
     lines.append("ALL FINDINGS ON THIS ENGAGEMENT:")
     for f in findings:
         sev = f.severity.value if hasattr(f.severity, 'value') else f.severity
-        lines.append(f"  - [FINDING:{f.id}] [{sev.upper()}] {f.title} | Hosts: {f.affected_hosts or 'N/A'} | CVSS: {f.cvss_score or 'N/A'}")
+        lines.append(
+            f"  - [FINDING:{f.id}] [{sev.upper()}] {f.title} | "
+            f"Hosts: {f.affected_hosts or 'N/A'} | "
+            f"CVSS: {f.cvss_score if f.cvss_score is not None else 'N/A'}"
+        )
 
     user_message = "\n".join(lines)
 
@@ -312,7 +316,10 @@ async def generate_engagement_narrative(
     for f in findings:
         sev = f.severity.value if hasattr(f.severity, 'value') else f.severity
         lines.append(f"[FINDING:{f.id}] [{sev.upper()}] {f.title}")
-        lines.append(f"  Hosts: {f.affected_hosts or 'N/A'} | CVSS: {f.cvss_score or 'N/A'}")
+        lines.append(
+            f"  Hosts: {f.affected_hosts or 'N/A'} | "
+            f"CVSS: {f.cvss_score if f.cvss_score is not None else 'N/A'}"
+        )
         evidence_markers = [
             f"[EVIDENCE:{ref['id']}]"
             for ref in (f.evidence_refs or [])

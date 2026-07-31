@@ -162,6 +162,12 @@ class OpenSourceReleaseTests(unittest.TestCase):
             self.assertNotIn("await file.read()", source, path)
             self.assertNotIn("await logo.read()", source, path)
 
+    def test_zero_cvss_is_not_treated_as_missing(self):
+        for path in (ROOT / "backend" / "app").rglob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            self.assertNotIn("cvss_score or 'N/A'", source, path)
+            self.assertNotIn('cvss_score or "N/A"', source, path)
+
     def test_advertised_bedrock_provider_is_installed_and_packaged(self):
         requirements = (ROOT / "backend" / "requirements.txt").read_text(
             encoding="utf-8"

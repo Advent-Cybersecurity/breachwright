@@ -34,6 +34,7 @@ router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["workflow"])
 SNAPSHOT_PARSER_VERSION = "structured-v1"
 MAX_SNAPSHOT_SCANS = 50
 MAX_SNAPSHOT_BYTES = 250 * 1024 * 1024
+MAX_COMPARISON_DETAILS_PER_STATUS = 500
 
 
 class SnapshotCreate(BaseModel):
@@ -117,6 +118,14 @@ def _observation_response(item: ScanObservation, status: str) -> dict:
     }
 
 
+def _limited_keys(keys: set[str]) -> tuple[list[str], int]:
+    ordered = sorted(keys)
+    return (
+        ordered[:MAX_COMPARISON_DETAILS_PER_STATUS],
+        max(0, len(ordered) - MAX_COMPARISON_DETAILS_PER_STATUS),
+    )
+
+
 async def _comparison(db: AsyncSession, engagement_id: str, current: ScanSnapshot) -> dict:
     prior_result = await db.execute(
         select(ScanSnapshot)
@@ -132,8 +141,14 @@ async def _comparison(db: AsyncSession, engagement_id: str, current: ScanSnapsho
     current_items = await _snapshot_observations(db, current.id)
     previous_items = await _snapshot_observations(db, previous.id) if previous else {}
     older_fingerprints: set[str] = set()
-    for snapshot in prior[1:]:
-        older_fingerprints.update((await _snapshot_observations(db, snapshot.id)).keys())
+    older_snapshot_ids = [snapshot.id for snapshot in prior[1:]]
+    for offset in range(0, len(older_snapshot_ids), 500):
+        batch = older_snapshot_ids[offset:offset + 500]
+        older_fingerprints.update((await db.execute(
+            select(ScanObservation.fingerprint)
+            .where(ScanObservation.snapshot_id.in_(batch))
+            .distinct()
+        )).scalars().all())
 
     current_keys = set(current_items)
     previous_keys = set(previous_items)
@@ -142,9 +157,31 @@ async def _comparison(db: AsyncSession, engagement_id: str, current: ScanSnapsho
     appeared_keys = current_keys - previous_keys
     regressed_keys = appeared_keys & older_fingerprints
     new_keys = appeared_keys - regressed_keys
+    warnings = []
+    if previous and previous.parser_version != current.parser_version:
+        warnings.append({
+            "code": "mixed_snapshot_parsers",
+            "message": (
+                "These snapshots use different normalization versions. "
+                "Treat the comparison as advisory and create a new baseline."
+            ),
+        })
 
-    def current_rows(keys, status):
-        return [_observation_response(current_items[key], status) for key in sorted(keys)]
+    detail_keys = {}
+    truncated = {}
+    for status, keys in (
+        ("new", new_keys),
+        ("persistent", persistent_keys),
+        ("resolved", resolved_keys),
+        ("regressed", regressed_keys),
+    ):
+        detail_keys[status], truncated[status] = _limited_keys(keys)
+
+    def current_rows(status):
+        return [
+            _observation_response(current_items[key], status)
+            for key in detail_keys[status]
+        ]
 
     return {
         "snapshot": _snapshot_response(current),
@@ -155,10 +192,18 @@ async def _comparison(db: AsyncSession, engagement_id: str, current: ScanSnapsho
             "resolved": len(resolved_keys),
             "regressed": len(regressed_keys),
         },
-        "new": current_rows(new_keys, "new"),
-        "persistent": current_rows(persistent_keys, "persistent"),
-        "resolved": [_observation_response(previous_items[key], "resolved") for key in sorted(resolved_keys)],
-        "regressed": current_rows(regressed_keys, "regressed"),
+        "new": current_rows("new"),
+        "persistent": current_rows("persistent"),
+        "resolved": [
+            _observation_response(previous_items[key], "resolved")
+            for key in detail_keys["resolved"]
+        ],
+        "regressed": current_rows("regressed"),
+        "warnings": warnings,
+        "detail_summary": {
+            "limit_per_status": MAX_COMPARISON_DETAILS_PER_STATUS,
+            "truncated": truncated,
+        },
     }
 
 
@@ -248,9 +293,25 @@ async def report_readiness(
             AIFindingDraft.status == "pending",
         )
     )).scalar_one())
-    snapshot_count = int((await db.execute(
-        select(func.count(ScanSnapshot.id)).where(ScanSnapshot.engagement_id == engagement_id)
-    )).scalar_one())
+    snapshots = list((await db.execute(
+        select(ScanSnapshot)
+        .where(ScanSnapshot.engagement_id == engagement_id)
+        .order_by(ScanSnapshot.created_at.desc(), ScanSnapshot.id.desc())
+    )).scalars().all())
+    snapshot_count = len(snapshots)
+    unversioned_scan_count = 0
+    if snapshots:
+        scan_ids = set((await db.execute(
+            select(ScanUpload.id).where(
+            ScanUpload.engagement_id == engagement_id
+            )
+        )).scalars().all())
+        versioned_scan_ids = {
+            scan_id
+            for snapshot_item in snapshots
+            for scan_id in (snapshot_item.source_scan_ids or [])
+        }
+        unversioned_scan_count = len(scan_ids - versioned_scan_ids)
 
     missing_evidence = [
         f for f in findings
@@ -278,6 +339,34 @@ async def report_readiness(
         warnings.append({"code": "pending_ai_drafts", "message": f"{pending_drafts} AI proposal(s) still require review."})
     if not snapshot_count:
         warnings.append({"code": "no_scan_snapshot", "message": "No versioned scan snapshot has been created."})
+    else:
+        if (
+            len(snapshots) > 1
+            and snapshots[0].parser_version != snapshots[1].parser_version
+        ):
+            warnings.append({
+                "code": "mixed_snapshot_parsers",
+                "message": (
+                    "The latest comparison spans different normalization "
+                    "versions. Create a new baseline before relying on it."
+                ),
+            })
+        elif snapshots[0].parser_version != SNAPSHOT_PARSER_VERSION:
+            warnings.append({
+                "code": "outdated_snapshot_parser",
+                "message": (
+                    "The latest snapshot uses an older normalization version. "
+                    "Create a new snapshot before relying on comparison results."
+                ),
+            })
+        if unversioned_scan_count:
+            warnings.append({
+                "code": "unversioned_scans",
+                "message": (
+                    f"{unversioned_scan_count} scan upload(s) are not included "
+                    "in any versioned snapshot."
+                ),
+            })
     score = max(0, 100 - 25 * len(blockers) - 5 * len(warnings))
     return {
         "ready": not blockers,
@@ -290,6 +379,7 @@ async def report_readiness(
             "unresolved_retests": len(unresolved),
             "checklist_incomplete": incomplete,
             "scan_snapshots": snapshot_count,
+            "unversioned_scans": unversioned_scan_count,
         },
     }
 

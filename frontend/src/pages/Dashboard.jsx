@@ -111,8 +111,10 @@ export default function Dashboard() {
                     const result = await exportImport.import(file);
                     const details = [
                       `${result.findings_imported} findings`,
+                      `${result.finding_history_items_imported || 0} history entries`,
                       `${result.checklist_items_imported || 0} checklist items`,
                       `${result.scan_snapshots_imported || 0} scan snapshots`,
+                      `${result.attack_paths_imported || 0} attack paths`,
                     ].join(', ');
                     setToast({ message: `Imported "${result.name}" with ${details}`, type: 'success' });
                     await loadEngagements();

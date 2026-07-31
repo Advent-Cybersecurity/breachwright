@@ -1014,6 +1014,7 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
         </div>
         {snapshots.length > 0 && <div className="mt-4 flex flex-wrap gap-2">
           {snapshots.map(snapshot => <button key={snapshot.id} className="btn-ghost text-xs"
+            title={`${snapshot.parser_version} · ${new Date(snapshot.created_at).toLocaleString()}`}
             onClick={async () => {
               try { setComparison(await workflowApi.compareSnapshot(engId, snapshot.id)); }
               catch (err) { toast({ message: err.message, type: 'error' }); }
@@ -1022,6 +1023,23 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
           </button>)}
         </div>}
         {comparison && <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="col-span-2 sm:col-span-4 text-xs themed-text-muted">
+            <span className="themed-text-primary font-medium">{comparison.snapshot.label}</span>
+            {comparison.baseline
+              ? ` compared with ${comparison.baseline.label}`
+              : ' is the first versioned baseline'}
+          </div>
+          {comparison.warnings?.map(warning => (
+            <div key={warning.code} className="col-span-2 sm:col-span-4 text-xs text-yellow-300 rounded p-3"
+              style={{ backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.25)' }}>
+              {warning.message}
+            </div>
+          ))}
+          {comparison.detail_summary && Object.values(comparison.detail_summary.truncated).some(Boolean) && (
+            <div className="col-span-2 sm:col-span-4 text-xs themed-text-muted">
+              Detail rows are limited to {comparison.detail_summary.limit_per_status} per status; counts remain complete.
+            </div>
+          )}
           {Object.entries(comparison.counts).map(([status, count]) => (
             <div key={status} className="rounded p-3" style={{ backgroundColor: 'var(--bg-700)', border: '1px solid var(--border)' }}>
               <div className="text-xl font-mono themed-text-primary">{count}</div>

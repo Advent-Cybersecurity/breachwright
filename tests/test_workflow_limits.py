@@ -13,8 +13,10 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from app.workflow.router import (
+    MAX_COMPARISON_DETAILS_PER_STATUS,
     MAX_SNAPSHOT_SCANS,
     SnapshotCreate,
+    _limited_keys,
     _read_snapshot_payload,
 )
 
@@ -44,6 +46,16 @@ class SnapshotInputLimitTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as raised:
             _read_snapshot_payload(str(missing), missing.name, 100)
         self.assertEqual(raised.exception.status_code, 409)
+
+    def test_comparison_details_are_deterministic_and_bounded(self):
+        keys = {
+            f"{index:064x}"
+            for index in range(MAX_COMPARISON_DETAILS_PER_STATUS + 25)
+        }
+        limited, truncated = _limited_keys(keys)
+        self.assertEqual(len(limited), MAX_COMPARISON_DETAILS_PER_STATUS)
+        self.assertEqual(limited, sorted(limited))
+        self.assertEqual(truncated, 25)
 
 
 if __name__ == "__main__":

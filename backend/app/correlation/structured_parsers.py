@@ -40,9 +40,26 @@ import re
 import xml.etree.ElementTree as ET
 import logging
 import json
+import math
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_port(value, default=None):
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        return default
+    return port if 0 <= port <= 65535 else default
+
+
+def _safe_cvss(value):
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    return score if math.isfinite(score) and 0 <= score <= 10 else None
 
 
 def parse_nmap_structured(content: str) -> list[dict]:
@@ -90,8 +107,11 @@ def parse_nmap_structured(content: str) -> list[dict]:
                 continue
 
             service_el = port_el.find("service")
+            port_number = _safe_port(port_el.get("portid"))
+            if port_number is None:
+                continue
             port_rec = {
-                "port": int(port_el.get("portid", 0)),
+                "port": port_number,
                 "protocol": port_el.get("protocol", "tcp"),
                 "state": state,
                 "service": service_el.get("name", "unknown") if service_el is not None else "unknown",
@@ -191,8 +211,11 @@ def _parse_nmap_text(content: str) -> list[dict]:
         # Port line: "445/tcp  open  microsoft-ds"
         m = re.match(r"(\d+)/(tcp|udp)\s+(open|open\|filtered)\s+(\S+)(?:\s+(.*))?", line.strip())
         if m and current_host:
+            port_number = _safe_port(m.group(1))
+            if port_number is None:
+                continue
             current_host["ports"].append({
-                "port": int(m.group(1)), "protocol": m.group(2), "state": m.group(3),
+                "port": port_number, "protocol": m.group(2), "state": m.group(3),
                 "service": m.group(4), "product": m.group(5) or "", "version": "",
                 "scripts": {},
             })
@@ -215,7 +238,7 @@ def parse_nessus_structured(content: str) -> list[dict]:
 
     for report_host in root.findall(".//{*}ReportHost"):
         host = {
-            "host": report_host.get("name", "unknown"),
+            "host": report_host.get("name") or "unknown",
             "hostnames": [],
             "os": None,
             "ports": [],
@@ -236,8 +259,8 @@ def parse_nessus_structured(content: str) -> list[dict]:
 
         # Report items
         for item in report_host.findall(".//{*}ReportItem"):
-            port_num = int(item.get("port", "0"))
-            protocol = item.get("protocol", "tcp")
+            port_num = _safe_port(item.get("port"), 0)
+            protocol = item.get("protocol") or "tcp"
             svc_name = item.get("svc_name", "")
             severity = sev_map.get(item.get("severity", "0"), "info")
             plugin_name = item.get("pluginName", "")
@@ -269,7 +292,7 @@ def parse_nessus_structured(content: str) -> list[dict]:
             host["vulns"].append({
                 "title": plugin_name,
                 "severity": severity,
-                "cvss": float(cvss_text) if cvss_text else None,
+                "cvss": _safe_cvss(cvss_text),
                 "cve": cve or None,
                 "port": port_num,
                 "description": _get_text("description")[:500],
@@ -310,7 +333,11 @@ def parse_nuclei_structured(content: str) -> list[dict]:
                 try:
                     parsed_target = urlparse(matched if "://" in matched else raw_host)
                     host_str = parsed_target.hostname or raw_host
-                    port = int(j.get("port")) if j.get("port") is not None else parsed_target.port
+                    port = (
+                        _safe_port(j.get("port"))
+                        if j.get("port") is not None
+                        else parsed_target.port
+                    )
                 except (TypeError, ValueError):
                     parsed_target = urlparse("")
                     host_str = raw_host
@@ -357,7 +384,7 @@ def parse_nuclei_structured(content: str) -> list[dict]:
             host_str = host_match.group(1) if host_match else url
             port_match = re.search(r':(\d+)', url)
             if port_match:
-                port = int(port_match.group(1))
+                port = _safe_port(port_match.group(1))
             elif url.startswith("https://"):
                 port = 443
             elif url.startswith("http://"):
@@ -397,9 +424,9 @@ def parse_burp_structured(content: str) -> list[dict]:
         if host_el is None:
             continue
 
-        host_ip = host_el.get("ip", host_el.text or "unknown")
+        host_ip = host_el.get("ip") or host_el.text or "unknown"
         host_name = host_el.text or host_ip
-        port = int(issue.findtext("port", "0") or "0")
+        port = _safe_port(issue.findtext("port"), 0)
 
         if host_ip not in hosts_map:
             hosts_map[host_ip] = {
@@ -414,7 +441,7 @@ def parse_burp_structured(content: str) -> list[dict]:
             continue
 
         hosts_map[host_ip]["vulns"].append({
-            "title": issue.findtext("name", "Unknown Issue"),
+            "title": issue.findtext("name") or "Unknown Issue",
             "severity": severity,
             "cvss": None,
             "cve": None,
@@ -466,7 +493,9 @@ def parse_sarif_structured(content: str) -> list[dict]:
             severity = str(properties.get("security-severity") or properties.get("severity") or "").lower()
             if severity not in allowed:
                 try:
-                    score = float(severity)
+                    score = _safe_cvss(severity)
+                    if score is None:
+                        raise ValueError
                     severity = "critical" if score >= 9 else "high" if score >= 7 else "medium" if score >= 4 else "low"
                 except (TypeError, ValueError):
                     severity = level_map.get(str(result.get("level") or "warning").lower(), "medium")
