@@ -52,6 +52,16 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("Created by [Advent Cybersecurity]", readme)
         self.assertIn("Apache License 2.0", readme)
 
+    def test_local_service_rejects_untrusted_host_headers(self):
+        main = (ROOT / "backend" / "app" / "main.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("TrustedHostMiddleware", main)
+        self.assertIn(
+            'allowed_hosts=["127.0.0.1", "localhost", "testserver"]',
+            main,
+        )
+
     def test_local_workspace_has_no_account_or_token_surface(self):
         reports_router = (
             ROOT / "backend" / "app" / "reports" / "router.py"

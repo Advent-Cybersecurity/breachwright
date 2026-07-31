@@ -144,6 +144,13 @@ class UserJourneyTests(unittest.TestCase):
         cls._stop_server()
         cls._cleanup_test_workspace()
 
+    def test_non_loopback_host_header_is_rejected(self):
+        response = self.client.get(
+            "/api/health",
+            headers={"Host": "rebind.attacker.example"},
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+
     def test_complete_local_workspace_to_report_and_export(self):
         health = self.client.get("/api/health")
         self.assertEqual(health.status_code, 200)
