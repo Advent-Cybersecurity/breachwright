@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import Response
 from sqlalchemy import select
@@ -10,7 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
-from app.engagements.models import Engagement, Finding, AttackPath, Report, ScanUpload
+from app.checklists.models import ChecklistItem
+from app.engagements.models import (
+    AttackPath,
+    Engagement,
+    EngagementStatus,
+    Finding,
+    Report,
+    ScanObservation,
+    ScanSnapshot,
+    ScanUpload,
+)
 from app.engagements.schemas import EngagementCreate, FindingCreate
 from pydantic import ValidationError
 from app.findings.history import record_history, snapshot
@@ -22,6 +32,9 @@ router = APIRouter(prefix="/api/engagements", tags=["export_import"])
 MAX_IMPORT_SIZE = 25 * 1024 * 1024
 MAX_IMPORT_FINDINGS = 5000
 MAX_IMPORT_ATTACK_PATHS = 1000
+MAX_IMPORT_CHECKLIST_ITEMS = 10000
+MAX_IMPORT_SCAN_SNAPSHOTS = 1000
+MAX_IMPORT_SCAN_OBSERVATIONS = 100000
 MAX_ATTACK_PATH_DESCRIPTION_SIZE = 200000
 MAX_ATTACK_PATH_STEPS = 1000
 MAX_ATTACK_PATH_STEPS_SIZE = 500000
@@ -35,6 +48,10 @@ VALID_RETEST_STATUSES = {
 }
 MAX_EVIDENCE_REFS = 100
 MAX_EVIDENCE_REFS_SIZE = 500_000
+SUPPORTED_IMPORT_VERSIONS = {"1.0", "1.1"}
+VALID_CHECKLIST_STATUSES = {"pending", "in_progress", "done", "na"}
+VALID_OBSERVATION_SEVERITIES = {"critical", "high", "medium", "low", "info"}
+MAX_OBSERVATION_EVIDENCE_SIZE = 500_000
 
 
 def _validate_evidence_refs(value: object, finding_index: int) -> list[dict] | None:
@@ -59,6 +76,17 @@ def _serialize(obj):
     return str(obj)
 
 
+def _parse_import_date(value: object, field_name: str) -> date | None:
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str):
+        raise HTTPException(status_code=422, detail=f"Invalid {field_name}")
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid {field_name}") from exc
+
+
 @router.get("/{engagement_id}/export")
 async def export_engagement(
     engagement_id: str,
@@ -72,12 +100,45 @@ async def export_engagement(
         raise HTTPException(status_code=404, detail="Engagement not found")
 
     # Get findings
-    result = await db.execute(select(Finding).where(Finding.engagement_id == engagement_id))
+    result = await db.execute(
+        select(Finding)
+        .where(Finding.engagement_id == engagement_id)
+        .order_by(Finding.created_at, Finding.id)
+    )
     findings = result.scalars().all()
 
     # Get attack paths
-    result = await db.execute(select(AttackPath).where(AttackPath.engagement_id == engagement_id))
+    result = await db.execute(
+        select(AttackPath)
+        .where(AttackPath.engagement_id == engagement_id)
+        .order_by(AttackPath.created_at, AttackPath.id)
+    )
     attack_paths = result.scalars().all()
+
+    result = await db.execute(
+        select(ChecklistItem)
+        .where(ChecklistItem.engagement_id == engagement_id)
+        .order_by(ChecklistItem.methodology, ChecklistItem.order_index, ChecklistItem.id)
+    )
+    checklist_items = result.scalars().all()
+
+    result = await db.execute(
+        select(ScanSnapshot)
+        .where(ScanSnapshot.engagement_id == engagement_id)
+        .order_by(ScanSnapshot.created_at, ScanSnapshot.id)
+    )
+    scan_snapshots = result.scalars().all()
+    observations_by_snapshot: dict[str, list[ScanObservation]] = {
+        item.id: [] for item in scan_snapshots
+    }
+    if observations_by_snapshot:
+        result = await db.execute(
+            select(ScanObservation)
+            .where(ScanObservation.snapshot_id.in_(list(observations_by_snapshot)))
+            .order_by(ScanObservation.snapshot_id, ScanObservation.fingerprint)
+        )
+        for observation in result.scalars().all():
+            observations_by_snapshot[observation.snapshot_id].append(observation)
 
     export_data = {
         "version": "1.1",
@@ -96,7 +157,7 @@ async def export_engagement(
                 "title": f.title,
                 "description": f.description,
                 "severity": f.severity.value if hasattr(f.severity, 'value') else f.severity,
-                "cvss_score": float(f.cvss_score) if f.cvss_score else None,
+                "cvss_score": float(f.cvss_score) if f.cvss_score is not None else None,
                 "affected_hosts": f.affected_hosts,
                 "evidence": f.evidence,
                 "remediation": f.remediation,
@@ -120,11 +181,54 @@ async def export_engagement(
             }
             for ap in attack_paths
         ],
+        "checklists": [
+            {
+                "methodology": item.methodology,
+                "category": item.category,
+                "item": item.item,
+                "description": item.description,
+                "tools": item.tools,
+                "techniques": item.techniques,
+                "reference_url": item.reference_url,
+                "status": item.status,
+                "notes": item.notes,
+                "order_index": item.order_index,
+            }
+            for item in checklist_items
+        ],
+        "scan_snapshots": [
+            {
+                "label": snapshot.label,
+                "parser_version": snapshot.parser_version,
+                "created_at": _serialize(snapshot.created_at),
+                "observations": [
+                    {
+                        "fingerprint": observation.fingerprint,
+                        "tool": observation.tool,
+                        "title": observation.title,
+                        "severity": observation.severity,
+                        "host": observation.host,
+                        "port": observation.port,
+                        "evidence_ref": observation.evidence_ref,
+                    }
+                    for observation in observations_by_snapshot[snapshot.id]
+                ],
+            }
+            for snapshot in scan_snapshots
+        ],
     }
 
     safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "_", eng.name).strip("._")
     filename = f"{safe_name or 'engagement'}_export.json"
     content = json.dumps(export_data, indent=2, default=_serialize)
+    if len(content.encode("utf-8")) > MAX_IMPORT_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "This engagement exceeds the 25 MB portable export limit. "
+                "Use a verified full backup from Settings instead."
+            ),
+        )
 
     return Response(
         content=content,
@@ -149,16 +253,30 @@ async def import_engagement(
 
     if not isinstance(data, dict) or "engagement" not in data or "findings" not in data:
         raise HTTPException(status_code=400, detail="Invalid export format: missing engagement or findings")
+    if data.get("version") not in SUPPORTED_IMPORT_VERSIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Unsupported export version. Supported versions: "
+                + ", ".join(sorted(SUPPORTED_IMPORT_VERSIONS))
+            ),
+        )
 
     eng_data = data["engagement"]
     finding_data = data["findings"]
     attack_path_data = data.get("attack_paths", [])
+    checklist_data = data.get("checklists", [])
+    snapshot_data = data.get("scan_snapshots", [])
     if not isinstance(eng_data, dict):
         raise HTTPException(status_code=400, detail="Invalid engagement data")
     if not isinstance(finding_data, list):
         raise HTTPException(status_code=400, detail="Findings must be a list")
     if not isinstance(attack_path_data, list):
         raise HTTPException(status_code=400, detail="Attack paths must be a list")
+    if not isinstance(checklist_data, list):
+        raise HTTPException(status_code=400, detail="Checklists must be a list")
+    if not isinstance(snapshot_data, list):
+        raise HTTPException(status_code=400, detail="Scan snapshots must be a list")
     if len(finding_data) > MAX_IMPORT_FINDINGS:
         raise HTTPException(
             status_code=413,
@@ -169,20 +287,23 @@ async def import_engagement(
             status_code=413,
             detail=f"Import exceeds {MAX_IMPORT_ATTACK_PATHS} attack paths",
         )
+    if len(checklist_data) > MAX_IMPORT_CHECKLIST_ITEMS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Import exceeds {MAX_IMPORT_CHECKLIST_ITEMS} checklist items",
+        )
+    if len(snapshot_data) > MAX_IMPORT_SCAN_SNAPSHOTS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Import exceeds {MAX_IMPORT_SCAN_SNAPSHOTS} scan snapshots",
+        )
 
-    # Parse dates
-    start_date = None
-    end_date = None
-    if eng_data.get("start_date"):
-        try:
-            start_date = date.fromisoformat(eng_data["start_date"])
-        except (ValueError, TypeError):
-            pass
-    if eng_data.get("end_date"):
-        try:
-            end_date = date.fromisoformat(eng_data["end_date"])
-        except (ValueError, TypeError):
-            pass
+    start_date = _parse_import_date(eng_data.get("start_date"), "engagement start date")
+    end_date = _parse_import_date(eng_data.get("end_date"), "engagement end date")
+    try:
+        engagement_status = EngagementStatus(eng_data.get("status", "active"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="Invalid engagement status") from exc
 
     try:
         validated_engagement = EngagementCreate(
@@ -204,6 +325,7 @@ async def import_engagement(
         name=validated_engagement.name,
         client_name=validated_engagement.client_name,
         scope=validated_engagement.scope,
+        status=engagement_status,
         start_date=validated_engagement.start_date,
         end_date=validated_engagement.end_date,
         template_key=validated_engagement.template_key,
@@ -280,6 +402,182 @@ async def import_engagement(
             source="imported",
         )
 
+    checklist_count = 0
+    for index, item_data in enumerate(checklist_data):
+        if not isinstance(item_data, dict):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Checklist item {index + 1} must be an object",
+            )
+
+        def bounded_text(field: str, limit: int, *, required: bool = False):
+            value = item_data.get(field)
+            if value is None and not required:
+                return None
+            if not isinstance(value, str) or (required and not value.strip()) or len(value) > limit:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Checklist item {index + 1} has invalid {field}",
+                )
+            return value.strip() if required else value
+
+        status = item_data.get("status", "pending")
+        if status not in VALID_CHECKLIST_STATUSES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Checklist item {index + 1} has invalid status",
+            )
+        order_index = item_data.get("order_index", 0)
+        if isinstance(order_index, bool) or not isinstance(order_index, int) or not 0 <= order_index <= 1_000_000:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Checklist item {index + 1} has invalid order index",
+            )
+        db.add(ChecklistItem(
+            engagement_id=engagement.id,
+            methodology=bounded_text("methodology", 100, required=True),
+            category=bounded_text("category", 200, required=True),
+            item=bounded_text("item", 500, required=True),
+            description=bounded_text("description", 200000),
+            tools=bounded_text("tools", 500),
+            techniques=bounded_text("techniques", 500),
+            reference_url=bounded_text("reference_url", 500),
+            status=status,
+            notes=bounded_text("notes", 200000),
+            order_index=order_index,
+            updated_by=current_user.id if status != "pending" or item_data.get("notes") else None,
+        ))
+        checklist_count += 1
+
+    snapshot_count = 0
+    observation_count = 0
+    last_snapshot_created_at: datetime | None = None
+    for snapshot_index, snapshot_item in enumerate(snapshot_data):
+        if not isinstance(snapshot_item, dict):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Scan snapshot {snapshot_index + 1} must be an object",
+            )
+        label = snapshot_item.get("label")
+        parser_version = snapshot_item.get("parser_version")
+        observations = snapshot_item.get("observations")
+        if not isinstance(label, str) or not label.strip() or len(label) > 255:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Scan snapshot {snapshot_index + 1} has an invalid label",
+            )
+        if not isinstance(parser_version, str) or not parser_version.strip() or len(parser_version) > 50:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Scan snapshot {snapshot_index + 1} has an invalid parser version",
+            )
+        if not isinstance(observations, list) or not observations:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Scan snapshot {snapshot_index + 1} has no observations",
+            )
+        observation_count += len(observations)
+        if observation_count > MAX_IMPORT_SCAN_OBSERVATIONS:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Import exceeds {MAX_IMPORT_SCAN_OBSERVATIONS} scan observations",
+            )
+        created_at_value = snapshot_item.get("created_at")
+        try:
+            created_at = datetime.fromisoformat(created_at_value)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Scan snapshot {snapshot_index + 1} has an invalid creation time",
+            ) from exc
+        if last_snapshot_created_at is not None:
+            try:
+                if created_at <= last_snapshot_created_at:
+                    created_at = last_snapshot_created_at + timedelta(microseconds=1)
+            except (OverflowError, TypeError) as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Scan snapshot creation times must use a consistent timezone format",
+                ) from exc
+        last_snapshot_created_at = created_at
+        imported_snapshot = ScanSnapshot(
+            engagement_id=engagement.id,
+            label=label.strip(),
+            source_scan_ids=[],
+            parser_version=parser_version.strip(),
+            observation_count=len(observations),
+            created_by=current_user.id,
+            created_at=created_at,
+        )
+        db.add(imported_snapshot)
+        await db.flush()
+        fingerprints: set[str] = set()
+        for observation_index, observation in enumerate(observations):
+            item_number = observation_index + 1
+            if not isinstance(observation, dict):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Scan snapshot {snapshot_index + 1} observation {item_number} must be an object",
+                )
+            fingerprint = observation.get("fingerprint")
+            if (
+                not isinstance(fingerprint, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", fingerprint)
+                or fingerprint in fingerprints
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Scan snapshot {snapshot_index + 1} observation {item_number} has an invalid fingerprint",
+                )
+            fingerprints.add(fingerprint)
+
+            def observation_text(field: str, limit: int):
+                value = observation.get(field)
+                if not isinstance(value, str) or not value.strip() or len(value) > limit:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Scan snapshot {snapshot_index + 1} observation {item_number} has invalid {field}",
+                    )
+                return value.strip()
+
+            port = observation.get("port")
+            if port is not None and (
+                isinstance(port, bool)
+                or not isinstance(port, int)
+                or not 0 <= port <= 65535
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Scan snapshot {snapshot_index + 1} observation {item_number} has an invalid port",
+                )
+            evidence_ref = observation.get("evidence_ref")
+            if (
+                not isinstance(evidence_ref, dict)
+                or len(json.dumps(evidence_ref).encode("utf-8"))
+                > MAX_OBSERVATION_EVIDENCE_SIZE
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Scan snapshot {snapshot_index + 1} observation {item_number} has invalid evidence",
+                )
+            severity = observation_text("severity", 20).lower()
+            if severity not in VALID_OBSERVATION_SEVERITIES:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Scan snapshot {snapshot_index + 1} observation {item_number} has invalid severity",
+                )
+            db.add(ScanObservation(
+                snapshot_id=imported_snapshot.id,
+                fingerprint=fingerprint,
+                tool=observation_text("tool", 50),
+                title=observation_text("title", 500),
+                severity=severity,
+                host=observation_text("host", 500),
+                port=port,
+                evidence_ref=evidence_ref,
+            ))
+        snapshot_count += 1
+
     # Create attack paths
     ap_count = 0
     for index, apd in enumerate(attack_path_data):
@@ -288,7 +586,13 @@ async def import_engagement(
                 status_code=422,
                 detail=f"Attack path {index + 1} must be an object",
             )
-        name = str(apd.get("name", "Unnamed")).strip()
+        name_value = apd.get("name", "Unnamed")
+        if not isinstance(name_value, str):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Attack path {index + 1} has an invalid name",
+            )
+        name = name_value.strip()
         if not name or len(name) > 500:
             raise HTTPException(
                 status_code=422,
@@ -334,13 +638,15 @@ async def import_engagement(
     await db.flush()
 
     logger.info(
-        "Imported engagement '%s' with %d findings and %d attack paths",
-        engagement.name, finding_count, ap_count,
+        "Imported engagement '%s' with %d findings, %d checklist items, %d scan snapshots, and %d attack paths",
+        engagement.name, finding_count, checklist_count, snapshot_count, ap_count,
     )
 
     return {
         "id": engagement.id,
         "name": engagement.name,
         "findings_imported": finding_count,
+        "checklist_items_imported": checklist_count,
+        "scan_snapshots_imported": snapshot_count,
         "attack_paths_imported": ap_count,
     }

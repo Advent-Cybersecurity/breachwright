@@ -486,9 +486,18 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(
             invalid_checklist_status.status_code,
-            400,
+            422,
             invalid_checklist_status.text,
         )
+        oversized_checklist_notes = self.client.put(
+            (
+                f"/api/engagements/{engagement_id}/checklists/"
+                f"{checklist_item_id}"
+            ),
+            headers=headers,
+            json={"status": "done", "notes": "x" * 200001},
+        )
+        self.assertEqual(oversized_checklist_notes.status_code, 422)
         updated_checklist = self.client.put(
             (
                 f"/api/engagements/{engagement_id}/checklists/"
@@ -818,7 +827,7 @@ class UserJourneyTests(unittest.TestCase):
             files={
                 "file": (
                     "engagement.json",
-                    json.dumps(exported).encode("utf-8"),
+                    json.dumps({**exported, "version": "1.0"}).encode("utf-8"),
                     "application/json",
                 )
             },
@@ -914,6 +923,13 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(job_count, 0)
         self.assertEqual(narrative_count, 0)
         self.assertFalse((self.data_dir / "jobs" / job_id).exists())
+        self.assertEqual(
+            self.client.delete(
+                f"/api/engagements/{imported.json()['id']}",
+                headers=headers,
+            ).status_code,
+            204,
+        )
 
     def test_reviewed_ai_draft_preserves_provenance(self):
         created_engagement = self.client.post(
@@ -1022,12 +1038,19 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(checklist.status_code, 200, checklist.text)
         self.assertGreater(len(checklist.json()), 0)
         self.assertTrue(all(item["methodology"] == "owasp_top10" for item in checklist.json()))
+        completed_checklist_item = checklist.json()[0]
+        checklist_update = self.client.put(
+            f"/api/engagements/{engagement_id}/checklists/{completed_checklist_item['id']}",
+            json={"status": "done", "notes": "Verified during the baseline assessment."},
+        )
+        self.assertEqual(checklist_update.status_code, 200, checklist_update.text)
 
         finding = self.client.post(
             f"/api/engagements/{engagement_id}/findings",
             json={
                 "title": "Administrative endpoint exposed",
                 "severity": "high",
+                "cvss_score": 0,
                 "affected_hosts": "https://app.example.test/admin",
                 "retest_status": "retest_needed",
                 "retest_due_date": "2020-01-02",
@@ -1039,6 +1062,29 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(queue.status_code, 200, queue.text)
         self.assertEqual(queue.json()[0]["id"], finding_id)
         self.assertTrue(queue.json()[0]["overdue"])
+        urgent_finding = self.client.post(
+            f"/api/engagements/{engagement_id}/findings",
+            json={
+                "title": "Urgent retest ordering check",
+                "severity": "critical",
+                "retest_status": "retest_needed",
+                "retest_due_date": "2020-01-02",
+            },
+        )
+        self.assertEqual(urgent_finding.status_code, 201, urgent_finding.text)
+        ordered_queue = self.client.get(
+            f"/api/engagements/{engagement_id}/retest-queue"
+        )
+        self.assertEqual(
+            [item["severity"] for item in ordered_queue.json()[:2]],
+            ["critical", "high"],
+        )
+        self.assertEqual(
+            self.client.delete(
+                f"/api/engagements/{engagement_id}/findings/{urgent_finding.json()['id']}"
+            ).status_code,
+            204,
+        )
 
         readiness = self.client.get(f"/api/engagements/{engagement_id}/report-readiness")
         self.assertEqual(readiness.status_code, 200, readiness.text)
@@ -1125,6 +1171,10 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(sarif.status_code, 200, sarif.text)
         self.assertEqual(sarif.json()["version"], "2.1.0")
         self.assertEqual(len(sarif.json()["runs"][0]["results"]), 1)
+        self.assertEqual(
+            sarif.json()["runs"][0]["results"][0]["ruleId"],
+            f"BW-{finding_id}",
+        )
         self.assertIn("attachment", sarif.headers["content-disposition"])
         sarif_upload = self.client.post(
             f"/api/engagements/{engagement_id}/upload-scan?scan_type=sarif",
@@ -1138,21 +1188,125 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(sarif_snapshot.status_code, 201, sarif_snapshot.text)
         self.assertEqual(sarif_snapshot.json()["snapshot"]["observation_count"], 1)
 
+        completed = self.client.put(
+            f"/api/engagements/{engagement_id}",
+            json={"status": "completed"},
+        )
+        self.assertEqual(completed.status_code, 200, completed.text)
         portable = self.client.get(f"/api/engagements/{engagement_id}/export")
         self.assertEqual(portable.status_code, 200, portable.text)
         self.assertEqual(portable.json()["version"], "1.1")
         self.assertEqual(portable.json()["engagement"]["template_key"], "web")
+        self.assertEqual(portable.json()["engagement"]["status"], "completed")
+        self.assertEqual(portable.json()["findings"][0]["cvss_score"], 0.0)
         self.assertEqual(portable.json()["findings"][0]["retest_due_date"], "2020-01-02")
+        self.assertEqual(len(portable.json()["checklists"]), len(checklist.json()))
+        self.assertEqual(len(portable.json()["scan_snapshots"]), 4)
+        exported_checklist_item = next(
+            item
+            for item in portable.json()["checklists"]
+            if item["item"] == completed_checklist_item["item"]
+        )
+        self.assertEqual(exported_checklist_item["status"], "done")
+        self.assertEqual(
+            exported_checklist_item["notes"],
+            "Verified during the baseline assessment.",
+        )
+        future_export = portable.json()
+        future_export["version"] = "2.0"
+        rejected_future = self.client.post(
+            "/api/engagements/import",
+            files={
+                "file": (
+                    "future-export.json",
+                    json.dumps(future_export).encode("utf-8"),
+                    "application/json",
+                )
+            },
+        )
+        self.assertEqual(rejected_future.status_code, 422, rejected_future.text)
+        invalid_checklist_export = portable.json()
+        invalid_checklist_export["checklists"][0]["status"] = "invalid"
+        rejected_checklist = self.client.post(
+            "/api/engagements/import",
+            files={
+                "file": (
+                    "invalid-checklist-export.json",
+                    json.dumps(invalid_checklist_export).encode("utf-8"),
+                    "application/json",
+                )
+            },
+        )
+        self.assertEqual(rejected_checklist.status_code, 422, rejected_checklist.text)
+        invalid_snapshot_export = portable.json()
+        invalid_snapshot_export["scan_snapshots"][0]["observations"][0]["fingerprint"] = "not-a-fingerprint"
+        rejected_snapshot = self.client.post(
+            "/api/engagements/import",
+            files={
+                "file": (
+                    "invalid-snapshot-export.json",
+                    json.dumps(invalid_snapshot_export).encode("utf-8"),
+                    "application/json",
+                )
+            },
+        )
+        self.assertEqual(rejected_snapshot.status_code, 422, rejected_snapshot.text)
+        self.assertEqual(len(self.client.get("/api/engagements").json()), 1)
+        portable_with_tied_times = portable.json()
+        tied_time = portable_with_tied_times["scan_snapshots"][0]["created_at"]
+        for item in portable_with_tied_times["scan_snapshots"]:
+            item["created_at"] = tied_time
         imported = self.client.post(
             "/api/engagements/import",
-            files={"file": ("repeatable-export.json", portable.content, "application/json")},
+            files={
+                "file": (
+                    "repeatable-export.json",
+                    json.dumps(portable_with_tied_times).encode("utf-8"),
+                    "application/json",
+                )
+            },
         )
         self.assertEqual(imported.status_code, 200, imported.text)
+        self.assertEqual(
+            imported.json()["checklist_items_imported"],
+            len(checklist.json()),
+        )
+        self.assertEqual(imported.json()["scan_snapshots_imported"], 4)
         imported_id = imported.json()["id"]
         imported_engagement = self.client.get(f"/api/engagements/{imported_id}")
         self.assertEqual(imported_engagement.json()["template_key"], "web")
+        self.assertEqual(imported_engagement.json()["status"], "completed")
         imported_findings = self.client.get(f"/api/engagements/{imported_id}/findings")
         self.assertEqual(imported_findings.json()[0]["retest_due_date"], "2020-01-02")
+        imported_checklist = self.client.get(
+            f"/api/engagements/{imported_id}/checklists"
+        )
+        imported_completed_item = next(
+            item
+            for item in imported_checklist.json()
+            if item["item"] == completed_checklist_item["item"]
+        )
+        self.assertEqual(imported_completed_item["status"], "done")
+        self.assertEqual(
+            imported_completed_item["notes"],
+            "Verified during the baseline assessment.",
+        )
+        imported_snapshots = self.client.get(
+            f"/api/engagements/{imported_id}/scan-snapshots"
+        )
+        self.assertEqual(imported_snapshots.status_code, 200, imported_snapshots.text)
+        self.assertEqual(
+            {item["label"] for item in imported_snapshots.json()},
+            {"Baseline", "Retest 1", "Retest 2", "SARIF round trip"},
+        )
+        imported_retest_two = next(
+            item for item in imported_snapshots.json() if item["label"] == "Retest 2"
+        )
+        imported_comparison = self.client.get(
+            f"/api/engagements/{imported_id}/scan-snapshots/{imported_retest_two['id']}/comparison"
+        )
+        self.assertEqual(imported_comparison.status_code, 200, imported_comparison.text)
+        self.assertEqual(imported_comparison.json()["counts"], snapshot3.json()["counts"])
         imported_history = self.client.get(
             f"/api/engagements/{imported_id}/findings/{imported_findings.json()[0]['id']}/history"
         )

@@ -28,6 +28,8 @@ Third-party AI services may charge for API usage. Local model support does not r
 - Finding change history, retest scheduling, and report readiness checks
 - Built-in engagement templates with automatic methodology checklists
 - Nuclei JSONL and SARIF 2.1 interoperability
+- Versioned engagement export and import that preserves checklist progress and
+  normalized scan comparison history
 - Exploitation chains and MITRE ATT&CK-aware attack narratives
 - SharpHound and BloodHound ZIP import with Active Directory attack-path analysis
 - Markdown and DOCX report generation
@@ -121,6 +123,11 @@ The application stores configuration in its platform-specific data directory:
 You can configure Anthropic, OpenAI, or a local model in the Settings page. Azure OpenAI and AWS Bedrock can be configured through the environment file. Start with [.env.example](.env.example).
 
 AI configuration is optional for manual findings, evidence management, checklists, reporting from existing content, export/import, and other non-AI workflows.
+
+Engagement JSON exports are intended for sharing editable project records and
+normalized comparison history. They do not include raw scan files, binary
+evidence attachments, generated reports, or Tool Runner output. Use a verified
+full backup when moving or preserving an entire local workspace.
 
 AI output is treated as untrusted. Scan and Active Directory analysis create
 review proposals rather than accepted findings. Each supported proposal cites

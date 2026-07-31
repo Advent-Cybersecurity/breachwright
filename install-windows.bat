@@ -60,13 +60,10 @@ echo.
 echo   Installed to: %INSTALL_DIR%
 echo   Data stored in: %DATA_DIR%
 echo.
-echo   1. First time setup:
-echo      Open Breachwright from Start Menu or Desktop
-echo      Or run: "%INSTALL_DIR%\Breachwright.exe" --setup
-echo.
-echo   2. Launch:
+echo   Launch:
 echo      Double-click the Breachwright shortcut
 echo      Or run: "%INSTALL_DIR%\Breachwright.exe"
+echo      Breachwright opens directly into your local workspace.
 echo.
 echo  ========================================
 echo.

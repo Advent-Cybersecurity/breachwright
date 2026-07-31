@@ -109,7 +109,12 @@ export default function Dashboard() {
                   if (!file) return;
                   try {
                     const result = await exportImport.import(file);
-                    setToast({ message: `Imported "${result.name}" with ${result.findings_imported} findings`, type: 'success' });
+                    const details = [
+                      `${result.findings_imported} findings`,
+                      `${result.checklist_items_imported || 0} checklist items`,
+                      `${result.scan_snapshots_imported || 0} scan snapshots`,
+                    ].join(', ');
+                    setToast({ message: `Imported "${result.name}" with ${details}`, type: 'success' });
                     await loadEngagements();
                     navigate(`/engagements/${result.id}`);
                   } catch (err) {

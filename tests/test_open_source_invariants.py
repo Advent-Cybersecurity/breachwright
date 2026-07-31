@@ -71,6 +71,10 @@ class OpenSourceReleaseTests(unittest.TestCase):
         frontend_settings = (
             ROOT / "frontend" / "src" / "pages" / "Settings.jsx"
         ).read_text(encoding="utf-8")
+        installers = (
+            (ROOT / "install-windows.bat").read_text(encoding="utf-8"),
+            (ROOT / "install.sh").read_text(encoding="utf-8"),
+        )
 
         main = (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8")
         requirements = (ROOT / "backend" / "requirements.txt").read_text(
@@ -93,6 +97,9 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertNotIn("Logout", frontend_layout)
         self.assertNotIn("User Management", frontend_settings)
         self.assertNotIn("Change Password", frontend_settings)
+        for installer in installers:
+            self.assertNotIn("--setup", installer)
+            self.assertNotIn("Create your admin account", installer)
         self.assertNotIn("PyJWT", requirements)
         self.assertNotIn("passlib", requirements)
         self.assertNotIn("token: str = None", reports_router)

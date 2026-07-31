@@ -244,11 +244,9 @@ else
     echo "  Installed from: source"
 fi
 echo ""
-echo -e "  ${BOLD}1.${NC} Create your admin account (first time only):"
-echo -e "     ${CYAN}breachwright --setup${NC}"
-echo ""
-echo -e "  ${BOLD}2.${NC} Launch:"
+echo -e "  ${BOLD}Launch:${NC}"
 echo -e "     ${CYAN}breachwright${NC}"
+echo "     Breachwright opens directly into your local workspace."
 echo ""
 echo "  Or find it in your application menu under 'Security'."
 echo ""

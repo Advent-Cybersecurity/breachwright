@@ -1,8 +1,8 @@
 import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Literal, Optional
 from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,8 +19,8 @@ router = APIRouter(tags=["checklists"])
 
 
 class ChecklistStatusUpdate(BaseModel):
-    status: str  # pending, in_progress, done, na
-    notes: Optional[str] = None
+    status: Literal["pending", "in_progress", "done", "na"]
+    notes: Optional[str] = Field(default=None, max_length=200000)
 
 
 @router.get("/api/methodologies")
@@ -127,9 +127,6 @@ async def update_checklist_item(
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Checklist item not found")
-
-    if body.status not in ("pending", "in_progress", "done", "na"):
-        raise HTTPException(status_code=400, detail="Invalid status")
 
     item.status = body.status
     if body.notes is not None:

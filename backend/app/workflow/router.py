@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import case, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user, require_editor
@@ -185,7 +185,19 @@ async def retest_queue(
             Finding.engagement_id == engagement_id,
             Finding.retest_status.in_(["open", "retest_needed"]),
         )
-        .order_by(Finding.retest_due_date.is_(None), Finding.retest_due_date, Finding.severity)
+        .order_by(
+            Finding.retest_due_date.is_(None),
+            Finding.retest_due_date,
+            case(
+                (Finding.severity == "critical", 0),
+                (Finding.severity == "high", 1),
+                (Finding.severity == "medium", 2),
+                (Finding.severity == "low", 3),
+                else_=4,
+            ),
+            Finding.created_at,
+            Finding.id,
+        )
     )
     today = date.today()
     return [
@@ -208,7 +220,11 @@ async def report_readiness(
     current_user: User = Depends(get_current_user),
 ):
     engagement = await _require_engagement(db, engagement_id)
-    findings = list((await db.execute(select(Finding).where(Finding.engagement_id == engagement_id))).scalars().all())
+    findings = list((await db.execute(
+        select(Finding)
+        .where(Finding.engagement_id == engagement_id)
+        .order_by(Finding.created_at, Finding.id)
+    )).scalars().all())
     finding_ids = [finding.id for finding in findings]
     attachment_finding_ids = (
         set((await db.execute(
@@ -425,12 +441,16 @@ async def export_sarif(
     current_user: User = Depends(get_current_user),
 ):
     engagement = await _require_engagement(db, engagement_id)
-    findings = list((await db.execute(select(Finding).where(Finding.engagement_id == engagement_id))).scalars().all())
+    findings = list((await db.execute(
+        select(Finding)
+        .where(Finding.engagement_id == engagement_id)
+        .order_by(Finding.created_at, Finding.id)
+    )).scalars().all())
     rules = []
     results = []
     level_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
-    for index, finding in enumerate(findings, 1):
-        rule_id = f"BW-{index:04d}"
+    for finding in findings:
+        rule_id = f"BW-{finding.id}"
         severity = _severity_value(finding.severity)
         rules.append({
             "id": rule_id,

@@ -11,8 +11,9 @@
   templates.
 - Added report readiness checks with actionable blockers and warnings.
 - Added Nuclei JSONL and SARIF 2.1 import support, plus SARIF finding export.
-- Engagement exports now use format 1.1 and preserve template and retest
-  scheduling metadata.
+- Engagement exports now use format 1.1 and preserve status, template,
+  checklist progress, normalized scan snapshot history, CVSS zero scores, and
+  retest scheduling metadata.
 
 ## v2.1.0 (unreleased foundation)
 
