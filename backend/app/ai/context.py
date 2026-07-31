@@ -18,9 +18,9 @@ class AIContextTooLarge(ValueError):
 def redact_sensitive_text(content: str) -> str:
     """Conservatively remove common credentials while preserving security context."""
     redacted = re.sub(
-        r"(?im)^(\s*(?:authorization|proxy-authorization|cookie|set-cookie|"
-        r"x-api-key|api-key|x-auth-token)\s*:\s*)[^\r\n]+",
-        r"\1[REDACTED]",
+        r"(?im)(^|[ \t\"'])(\s*(?:authorization|proxy-authorization|cookie|"
+        r"set-cookie|x-api-key|api-key|x-auth-token)\s*:\s*)[^\r\n]+",
+        r"\1\2[REDACTED]",
         content,
     )
     redacted = re.sub(

@@ -17,6 +17,7 @@ from app.engagements.schemas import FindingResponse
 from app.ai.provider import get_provider
 from app.ai.output_validation import validate_ai_findings
 from app.ai.completion import complete_validated_json
+from app.ai.context import redact_sensitive_text
 from app.ai.prompts.loader import get_prompt
 from app.ai.prompts.templates import ANALYSIS_GROUNDING_RULES, ANALYSIS_PROMPT_VERSION
 from app.analysis.parsers import parse_scan_file
@@ -302,6 +303,8 @@ async def analyze_scans(
     else:
         scan_text = "\n".join(text_fallbacks)
 
+    if settings.ai_redact_sensitive_data:
+        scan_text = redact_sensitive_text(scan_text)
     chunks, truncated = chunk_scan_text(scan_text)
     provider = get_provider()
     custom_prompt = await get_prompt(db, "prompt_analysis")
@@ -321,6 +324,7 @@ async def analyze_scans(
                     chunk=chunk,
                     chunk_index=chunk_index,
                     chunk_count=len(chunks),
+                    redact_sensitive=settings.ai_redact_sensitive_data,
                 ),
                 validator=validate_ai_findings,
             )

@@ -11,6 +11,8 @@ from app.auth.dependencies import require_editor
 from app.auth.models import User
 from app.engagements.models import Engagement, Finding, AttackPath, ScanUpload
 from app.ai.provider import get_provider
+from app.ai.context import redact_sensitive_text
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,28 @@ class ChatResponse(BaseModel):
     response: str
     context_used: list[str] = []
     citations: list[dict] = []
+
+
+def build_assistant_user_message(
+    context: str,
+    question: str,
+    *,
+    redact_sensitive: bool,
+) -> str:
+    safe_question = (
+        redact_sensitive_text(question) if redact_sensitive else question
+    )
+    if not context:
+        return safe_question
+    safe_context = (
+        redact_sensitive_text(context) if redact_sensitive else context
+    )
+    return (
+        "<untrusted_engagement_data>\n"
+        f"{safe_context}\n"
+        "</untrusted_engagement_data>\n\n"
+        f"User question: {safe_question}"
+    )
 
 
 async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional[str], question: str) -> tuple[str, list[str], list[dict]]:
@@ -257,14 +281,11 @@ async def chat(
     context, labels, citations = await _build_context(db, current_user.id, body.engagement_id, body.message)
 
     # Build the prompt
-    user_message = body.message
-    if context:
-        user_message = (
-            "<untrusted_engagement_data>\n"
-            f"{context}\n"
-            "</untrusted_engagement_data>\n\n"
-            f"User question: {body.message}"
-        )
+    user_message = build_assistant_user_message(
+        context,
+        body.message,
+        redact_sensitive=settings.ai_redact_sensitive_data,
+    )
 
     provider = get_provider()
     try:
