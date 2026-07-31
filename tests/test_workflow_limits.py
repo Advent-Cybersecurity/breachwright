@@ -25,6 +25,7 @@ from app.workflow.router import (
     _search_pattern,
 )
 from app.analysis.router import delete_scan
+from app.correlation.router import _read_scan_text
 
 
 class SnapshotInputLimitTests(unittest.TestCase):
@@ -77,6 +78,21 @@ class SnapshotInputLimitTests(unittest.TestCase):
 
     def test_search_pattern_treats_sql_wildcards_as_literal_text(self):
         self.assertEqual(_search_pattern(r"rate_100%\done"), r"%rate\_100\%\\done%")
+
+    def test_no_ai_correlation_reads_are_bounded(self):
+        scan = ROOT / f".breachwright-correlation-limit-{uuid.uuid4()}.txt"
+        try:
+            scan.write_bytes(b"1234")
+            with patch("app.correlation.router.MAX_CORRELATION_FILE_BYTES", 3):
+                with self.assertRaises(HTTPException) as raised:
+                    _read_scan_text(str(scan), scan.name)
+        finally:
+            scan.unlink(missing_ok=True)
+        self.assertEqual(raised.exception.status_code, 413)
+
+        with self.assertRaises(HTTPException) as missing:
+            _read_scan_text(str(scan), scan.name)
+        self.assertEqual(missing.exception.status_code, 409)
 
 
 class StoredScanDeletionTests(unittest.IsolatedAsyncioTestCase):

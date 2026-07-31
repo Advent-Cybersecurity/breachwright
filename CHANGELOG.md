@@ -125,6 +125,10 @@
   removed, so the database record remains available instead of leaving an
   orphan. Stored-file deletion errors no longer expose raw operating-system
   paths in the interface.
+- Provider-free scan correlation now enforces 50 files, 50 MB per file, and
+  250 MB combined before parsing, rejects missing or linked stored files, and
+  performs bounded reads on a worker thread instead of blocking the request
+  loop.
 - Report, finding-evidence, and Notebook-attachment deletion now confirms the
   stored-file impact and preserves the database record with a retryable conflict
   when the underlying file cannot be removed.
