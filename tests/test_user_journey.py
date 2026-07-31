@@ -672,6 +672,23 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(ad_import.status_code, 200, ad_import.text)
         self.assertEqual(ad_import.json()["object_count"], 1)
 
+        disguised_evidence = self.client.post(
+            f"/api/engagements/{engagement_id}/findings/{finding_id}/evidence",
+            headers=headers,
+            files={
+                "file": (
+                    "disguised.png",
+                    b"<html><script>alert('not an image')</script></html>",
+                    "image/png",
+                )
+            },
+        )
+        self.assertEqual(
+            disguised_evidence.status_code,
+            415,
+            disguised_evidence.text,
+        )
+
         evidence_bytes = b"\x89PNG\r\n\x1a\nbreachwright-e2e"
         upload = self.client.post(
             f"/api/engagements/{engagement_id}/findings/{finding_id}/evidence",

@@ -23,6 +23,21 @@ ALLOWED_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "applicat
 MAX_SIZE = 10 * 1024 * 1024  # 10MB
 
 
+def _matches_declared_type(content_type: str, content: bytes) -> bool:
+    signatures = {
+        "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
+        "image/gif": lambda data: data.startswith((b"GIF87a", b"GIF89a")),
+        "image/webp": lambda data: (
+            len(data) >= 12
+            and data.startswith(b"RIFF")
+            and data[8:12] == b"WEBP"
+        ),
+        "application/pdf": lambda data: data.startswith(b"%PDF-"),
+    }
+    return signatures[content_type](content)
+
+
 def _safe_display_name(filename: str | None, fallback: str) -> str:
     name = (filename or fallback).replace("\\", "/").rsplit("/", 1)[-1]
     return name if name not in {"", ".", ".."} else fallback
@@ -94,6 +109,11 @@ async def upload_evidence(
     content = await file.read()
     if len(content) > MAX_SIZE:
         raise HTTPException(status_code=413, detail="File too large (max 10MB)")
+    if not _matches_declared_type(file.content_type, content):
+        raise HTTPException(
+            status_code=415,
+            detail="Evidence content does not match its declared file type",
+        )
 
     # Save file
     evidence_dir = os.path.join(settings.data_dir, "evidence", finding_id)

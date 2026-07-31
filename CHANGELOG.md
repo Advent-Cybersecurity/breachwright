@@ -10,6 +10,8 @@
 - Added confirmed backup deletion so long-running installations can manage disk usage
 - Fixed startup so migration failures and timeouts stop the application instead of reporting false success
 - Added cleanup for evidence records and files when findings or engagements are deleted
+- Bounded live Tool Runner output to 500 KB per job while retaining the newest
+  output and marking truncation
 - Added bounded log rotation to prevent unattended installations from growing
   the application log indefinitely
 
@@ -39,6 +41,7 @@
 - Prevented scan filename and frontend fallback path traversal
 - Added scan and import size limits
 - Removed SVG report-template uploads and added PNG and JPEG signature checks
+- Added PNG, JPEG, GIF, WebP, and PDF signature checks for evidence uploads
 - Added SharpHound ZIP entry, expansion, member-size, and compression-ratio limits
 - Prevented environment-file line injection and made provider updates atomic
 - Added browser security headers and disabled API response caching

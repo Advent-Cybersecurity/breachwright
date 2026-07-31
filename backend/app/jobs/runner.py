@@ -10,6 +10,7 @@ import subprocess
 import threading
 import logging
 import shutil
+from collections import deque
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -17,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 _running_jobs: dict = {}
 _lock = threading.Lock()
+MAX_JOB_OUTPUT = 500_000
+TRUNCATION_NOTICE = "[Earlier output truncated]\n"
 
 TOOL_PRESETS = {
     "nmap": {
@@ -59,6 +62,31 @@ def get_presets():
     return result
 
 
+def _append_job_output(state: dict, text: str) -> None:
+    chunks = state["output_chunks"]
+    chunks.append(text)
+    state["output_length"] += len(text)
+
+    retained_limit = MAX_JOB_OUTPUT - len(TRUNCATION_NOTICE)
+    while state["output_length"] > retained_limit and chunks:
+        overflow = state["output_length"] - retained_limit
+        first = chunks[0]
+        if len(first) <= overflow:
+            chunks.popleft()
+            state["output_length"] -= len(first)
+        else:
+            chunks[0] = first[overflow:]
+            state["output_length"] -= overflow
+        state["output_truncated"] = True
+
+
+def _render_job_output(state: dict) -> str:
+    output = "".join(state["output_chunks"])
+    if state["output_truncated"]:
+        return TRUNCATION_NOTICE + output
+    return output
+
+
 def start_job(job_id: str, command: str, tool: str, output_dir: str) -> Optional[int]:
     os.makedirs(output_dir, exist_ok=True)
     logger.info("Starting job %s: %s", job_id, command)
@@ -79,7 +107,11 @@ def start_job(job_id: str, command: str, tool: str, output_dir: str) -> Optional
 
     with _lock:
         _running_jobs[job_id] = {
-            "process": process, "output": "", "tool": tool,
+            "process": process,
+            "output_chunks": deque(),
+            "output_length": 0,
+            "output_truncated": False,
+            "tool": tool,
             "command": command, "started_at": datetime.now(timezone.utc),
         }
 
@@ -97,7 +129,7 @@ def _capture_output(job_id: str, process: subprocess.Popen):
                 break
             with _lock:
                 if job_id in _running_jobs:
-                    _running_jobs[job_id]["output"] += line
+                    _append_job_output(_running_jobs[job_id], line)
         process.wait()
     except Exception as e:
         logger.error("Error capturing output for job %s: %s", job_id, e)
@@ -116,7 +148,7 @@ def get_job_output(job_id: str) -> Optional[dict]:
             return None
         process = job["process"]
         return {
-            "output": job["output"],
+            "output": _render_job_output(job),
             "status": job.get("status", "running" if process.poll() is None else "complete"),
             "pid": process.pid,
             "exit_code": job.get("exit_code"),
@@ -173,7 +205,10 @@ def stop_job(job_id: str) -> bool:
 
 def cleanup_job(job_id: str) -> Optional[dict]:
     with _lock:
-        return _running_jobs.pop(job_id, None)
+        job = _running_jobs.pop(job_id, None)
+        if job is not None:
+            job["output"] = _render_job_output(job)
+        return job
 
 
 def list_running() -> list[str]:
@@ -194,7 +229,11 @@ def flush_all_to_db_sync():
     from app.jobs.models import Job
 
     with _lock:
-        jobs_to_flush = dict(_running_jobs)
+        jobs_to_flush = {}
+        for job_id, state in _running_jobs.items():
+            snapshot = dict(state)
+            snapshot["output"] = _render_job_output(state)
+            jobs_to_flush[job_id] = snapshot
 
     if not jobs_to_flush:
         return
@@ -214,7 +253,7 @@ def flush_all_to_db_sync():
                     continue
 
                 process = state["process"]
-                output = state.get("output", "")
+                output = state["output"]
                 exit_code = state.get("exit_code")
 
                 # Determine final status
