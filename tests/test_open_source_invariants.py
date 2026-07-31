@@ -166,6 +166,27 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertNotIn('"boto3"', excludes)
         self.assertNotIn('"botocore"', excludes)
 
+    def test_release_automation_has_zero_cost_compute_guardrails(self):
+        workflows = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in (ROOT / ".github" / "workflows").glob("*.yml")
+        }
+        self.assertEqual(
+            {"candidate-build.yml", "ci.yml", "codeql.yml"},
+            set(workflows),
+        )
+        for name, source in workflows.items():
+            self.assertIn("cancel-in-progress: true", source, name)
+            self.assertNotIn("self-hosted", source, name)
+            self.assertNotIn("actions/upload-artifact", source, name)
+
+        candidate = workflows["candidate-build.yml"]
+        self.assertIn("timeout-minutes: 30", candidate)
+        self.assertIn("timeout-minutes: 10", candidate)
+        self.assertIn("Acquire::Retries=3", candidate)
+        self.assertIn("ubuntu-latest", candidate)
+        self.assertIn("windows-latest", candidate)
+
 
 if __name__ == "__main__":
     unittest.main()

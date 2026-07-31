@@ -8,10 +8,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: candidate-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-smoke:
     name: Build and smoke test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -37,9 +42,12 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install Linux desktop libraries
         if: runner.os == 'Linux'
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o DPkg::Lock::Timeout=60 install -y \
             python3-gi \
             python3-gi-cairo \
             gir1.2-gtk-3.0 \
