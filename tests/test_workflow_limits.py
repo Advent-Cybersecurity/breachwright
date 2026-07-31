@@ -16,6 +16,7 @@ from app.workflow.router import (
     MAX_COMPARISON_DETAILS_PER_STATUS,
     MAX_SNAPSHOT_SCANS,
     SnapshotCreate,
+    _csv_safe,
     _limited_keys,
     _normalize_host,
     _read_snapshot_payload,
@@ -24,6 +25,10 @@ from app.workflow.router import (
 
 
 class SnapshotInputLimitTests(unittest.TestCase):
+    def test_csv_formula_detection_ignores_leading_whitespace(self):
+        self.assertEqual(_csv_safe("  =HYPERLINK(\"x\")", False), "'  =HYPERLINK(\"x\")")
+        self.assertEqual(_csv_safe("\n@SUM(1,1)", False), "'\n@SUM(1,1)")
+
     def test_snapshot_requires_uuid_sized_scan_ids(self):
         with self.assertRaises(ValidationError):
             SnapshotCreate(label="Baseline", scan_ids=["not-a-scan-id"])

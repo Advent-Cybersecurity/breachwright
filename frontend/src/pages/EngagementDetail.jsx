@@ -1448,7 +1448,7 @@ function AssetsTab({ engId, toast, onOpenScans, onOpenFindings, onFindingsChange
         <div className="card p-3 mb-4 text-sm themed-text-secondary flex items-start gap-2">
           <AlertTriangle size={16} className="text-yellow-500 mt-0.5 shrink-0" />
           <span>
-            {inventory.summary.limited && 'The inventory is displaying the first 2,000 normalized hosts. '}
+            {inventory.summary.limited && `The inventory is displaying the first ${inventory.summary.asset_limit.toLocaleString()} normalized hosts. Summary counts remain complete. `}
             {inventory.summary.unlinked_findings > 0 && `${inventory.summary.unlinked_findings} finding(s) do not exactly match a scanned host and remain available in Findings.`}
           </span>
         </div>
@@ -1501,7 +1501,7 @@ function AssetsTab({ engId, toast, onOpenScans, onOpenFindings, onFindingsChange
                 <div className="hidden sm:flex items-center gap-2 shrink-0">
                   <SeverityBadge severity={asset.highest_severity} />
                   <AssetStatusBadge status={asset.status} />
-                  {asset.findings.length > 0 && <span className="badge border themed-text-secondary"><Link2 size={10} className="mr-1" />{asset.findings.length}</span>}
+                  {asset.finding_count > 0 && <span className="badge border themed-text-secondary"><Link2 size={10} className="mr-1" />{asset.finding_count}</span>}
                 </div>
               </button>
               {isExpanded && (
@@ -1559,7 +1559,7 @@ function AssetsTab({ engId, toast, onOpenScans, onOpenFindings, onFindingsChange
                       </div>
                     </div>
                   </div>
-                  {asset.findings.length > 0 && (
+                  {asset.finding_count > 0 && (
                     <div className="mt-5">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="text-xs font-mono uppercase tracking-wider themed-text-muted">Linked findings</h4>
@@ -1578,7 +1578,11 @@ function AssetsTab({ engId, toast, onOpenScans, onOpenFindings, onFindingsChange
                       </div>
                     </div>
                   )}
-                  {asset.details_limited && <p className="text-xs text-yellow-500 mt-4">This host has more than 500 entries of one type. Refine the source scans before reviewing every detail.</p>}
+                  {asset.details_limited && (
+                    <p className="text-xs text-yellow-500 mt-4">
+                      Detail rendering is limited to {inventory.summary.observation_limit_per_type} services and vulnerability observations of each type and {inventory.summary.finding_limit_per_asset} linked findings per asset. Summary counts remain complete.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -1599,6 +1603,8 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
   const [scans, setScans] = useState([]);
   const [scanType, setScanType] = useState('nmap');
   const [loadingScans, setLoadingScans] = useState(true);
+  const [analysisPreview, setAnalysisPreview] = useState(null);
+  const [analysisScanIds, setAnalysisScanIds] = useState(new Set());
   const [drafts, setDrafts] = useState([]);
   const [snapshots, setSnapshots] = useState([]);
   const [selectedScanIds, setSelectedScanIds] = useState(new Set());
@@ -1611,11 +1617,20 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
       .then(([loadedScans, loadedSnapshots]) => {
         setScans(loadedScans);
         setSnapshots(loadedSnapshots);
+        setAnalysisScanIds(new Set(loadedScans.slice(0, 50).map(scan => scan.id)));
         setSelectedScanIds(new Set());
       })
       .catch((err) => toast({ message: `Could not load scans: ${err.message}`, type: 'error' }))
       .finally(() => setLoadingScans(false));
   }, [engId, toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+    analysisApi.preview(engId, [...analysisScanIds])
+      .then(preview => { if (!cancelled) setAnalysisPreview(preview); })
+      .catch(err => { if (!cancelled) toast({ message: `AI input preflight failed: ${err.message}`, type: 'error' }); });
+    return () => { cancelled = true; };
+  }, [engId, analysisScanIds, toast]);
 
   useEffect(() => {
     analysisApi.listDrafts(engId)
@@ -1630,6 +1645,7 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
     try {
       const scan = await analysisApi.uploadScan(engId, file, scanType);
       setScans(prev => [...prev, scan]);
+      setAnalysisScanIds(prev => prev.size < 50 ? new Set([...prev, scan.id]) : prev);
       if (scan.scan_type !== 'custom') {
         setSelectedScanIds(prev => new Set([...prev, scan.id]));
       }
@@ -1645,7 +1661,7 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
   const handleAnalyze = async () => {
     setAnalyzing(true);
     try {
-      const result = await analysisApi.run(engId);
+      const result = await analysisApi.run(engId, [...analysisScanIds]);
       const pending = await analysisApi.listDrafts(engId);
       setDrafts(pending);
       const discarded = result.summary?.unsupported_discarded || 0;
@@ -1711,9 +1727,19 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
         </div>
         {scans.length > 0 && (
           <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
+            <p className="text-[10px] themed-text-muted mb-2">First checkbox: include in AI analysis. Second checkbox: include in the next structured snapshot.</p>
             <div className="space-y-2">
               {scans.map(s => (
                 <div key={s.id} className="flex items-center gap-3 text-sm">
+                  <input type="checkbox" checked={analysisScanIds.has(s.id)}
+                    disabled={!analysisScanIds.has(s.id) && analysisScanIds.size >= 50}
+                    title={!analysisScanIds.has(s.id) && analysisScanIds.size >= 50 ? 'Deselect another upload before adding this one' : 'Include this upload in the next AI analysis'}
+                    aria-label={`Include ${s.filename} in AI analysis`}
+                    onChange={() => setAnalysisScanIds(prev => {
+                      const next = new Set(prev);
+                      if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
+                      return next;
+                    })} />
                   <input type="checkbox" checked={selectedScanIds.has(s.id)} disabled={s.scan_type === 'custom'}
                     title={s.scan_type === 'custom' ? 'Raw uploads cannot be included in structured scan snapshots' : ''}
                     aria-label={`Include ${s.filename} in snapshot`}
@@ -1733,6 +1759,7 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
                       try {
                         await analysisApi.deleteScan(engId, s.id);
                         setScans(prev => prev.filter(x => x.id !== s.id));
+                        setAnalysisScanIds(prev => { const next = new Set(prev); next.delete(s.id); return next; });
                         setSelectedScanIds(prev => { const next = new Set(prev); next.delete(s.id); return next; });
                         toast({ message: `Deleted ${s.filename}`, type: 'success' });
                       } catch (err) {
@@ -1809,6 +1836,23 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
       </div>
 
       <div className="card p-6">
+        {analysisPreview && (
+          <div className={`mb-4 rounded-md border px-3 py-2 ${analysisPreview.ready ? 'border-green-500/30 bg-green-500/5' : 'border-yellow-500/40 bg-yellow-500/5'}`} role="status">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <span className="themed-text-primary font-medium">AI input preflight</span>
+              <span className="themed-text-secondary">{analysisPreview.scan_count} / {analysisPreview.max_scan_count} files</span>
+              <span className="themed-text-secondary">
+                {analysisPreview.total_bytes_complete ? '' : 'at least '}{(analysisPreview.total_bytes / (1024 * 1024)).toFixed(1)} / {(analysisPreview.max_total_bytes / (1024 * 1024)).toFixed(0)} MB
+              </span>
+              <span className="themed-text-secondary">Provider: {analysisPreview.provider}</span>
+              <span className={analysisPreview.redaction_enabled ? 'text-green-400' : 'text-yellow-400'}>
+                Local secret redaction {analysisPreview.redaction_enabled ? 'on' : 'off'}
+              </span>
+            </div>
+            {analysisPreview.issues.map(issue => <p key={issue} className="text-xs text-yellow-300 mt-1">{issue}</p>)}
+            {analysisPreview.ready && <p className="text-[10px] themed-text-muted mt-1">Ready for review proposals. Provider connectivity is checked only when analysis starts.</p>}
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row items-center gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
@@ -1816,13 +1860,13 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
               <h3 className="text-sm font-semibold themed-text-primary">AI Analysis</h3>
             </div>
             <p className="text-xs themed-text-muted">
-              Analyze uploaded scans and generate review proposals. Common credentials are redacted locally by default, and nothing enters Findings until you accept it.
+              Analyze up to 50 uploaded scans and 250 MB of combined input to generate review proposals. Common credentials are redacted locally by default, and nothing enters Findings until you accept it.
             </p>
           </div>
-          <button onClick={handleAnalyze} disabled={analyzing || scans.length === 0}
+          <button onClick={handleAnalyze} disabled={analyzing || !analysisPreview?.ready}
             className="btn-primary flex items-center gap-2 whitespace-nowrap">
             {analyzing ? <Spinner className="w-4 h-4" /> : <Zap size={16} />}
-            {analyzing ? 'Analyzing...' : 'Run Analysis'}
+            {analyzing ? 'Analyzing...' : `Run Analysis (${analysisScanIds.size})`}
           </button>
         </div>
       </div>

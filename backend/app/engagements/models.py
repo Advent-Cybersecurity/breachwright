@@ -2,7 +2,7 @@ import uuid
 import enum
 from datetime import date, datetime
 from typing import Optional
-from sqlalchemy import Boolean, String, Text, Date, DateTime, ForeignKey, Numeric, Integer, Enum as SAEnum, JSON, func
+from sqlalchemy import Boolean, String, Text, Date, DateTime, ForeignKey, Numeric, Integer, Enum as SAEnum, JSON, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 
@@ -241,6 +241,14 @@ class EvidenceNote(Base, TimestampMixin):
     """Pre-finding analyst note in an engagement evidence notebook."""
 
     __tablename__ = "evidence_notes"
+    __table_args__ = (
+        UniqueConstraint(
+            "engagement_id",
+            "source_type",
+            "source_id",
+            name="ix_evidence_notes_source",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     engagement_id: Mapped[str] = mapped_column(

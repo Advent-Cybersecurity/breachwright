@@ -5,7 +5,8 @@
 ### Active assessment workspace
 
 - Added an engagement Overview with current finding, asset, retest,
-  methodology, scan-snapshot, notebook, and readiness summaries.
+  methodology, scan-snapshot, notebook, readiness, and recent local activity
+  summaries.
 - Added a latest-snapshot asset and service inventory with aliases, operating
   system details, linked findings, evidence, retests, and deterministic change
   states.
@@ -42,6 +43,18 @@
 
 - Fixed finding-list ordering so client-side filters do not disturb the
   backend's deterministic risk-first order.
+- Asset inventory summary counts remain complete while host, observation, and
+  linked-finding details are explicitly bounded for interface responsiveness.
+- Settings now shows whether no verified backup exists, whether the newest
+  backup is aging, or whether a verified backup was created today.
+- AI scanner analysis now rejects more than 50 files or 250 MB of combined
+  input before provider initialization and uses bounded reads for every file.
+- AI scanner analysis now includes a provider-free input preflight showing
+  file count, combined size, active provider, local redaction state, and
+  actionable readiness issues.
+- Users can explicitly choose the uploaded scans included in each AI analysis,
+  keeping unrelated evidence intact while controlling disclosure and provider
+  usage.
 - Added migration, API, backup and restore, bounded-output, redaction,
   provenance, duplicate-prevention, and complete local user-journey coverage
   for the new workflows.

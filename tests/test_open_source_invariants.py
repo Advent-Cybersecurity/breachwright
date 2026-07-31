@@ -211,6 +211,15 @@ class OpenSourceReleaseTests(unittest.TestCase):
             self.assertNotIn("await file.read()", source, path)
             self.assertNotIn("await logo.read()", source, path)
 
+    def test_ai_analysis_scan_set_and_reads_are_bounded(self):
+        source = (
+            ROOT / "backend" / "app" / "analysis" / "router.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("MAX_ANALYSIS_SCANS = 50", source)
+        self.assertIn("MAX_ANALYSIS_TOTAL_BYTES = 250 * 1024 * 1024", source)
+        self.assertIn(".limit(MAX_ANALYSIS_SCANS + 1)", source)
+        self.assertIn("source.read(MAX_SCAN_SIZE + 1)", source)
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")

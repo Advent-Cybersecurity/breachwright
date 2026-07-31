@@ -1105,6 +1105,21 @@ class UserJourneyTests(unittest.TestCase):
             404,
         )
 
+        activity = self.client.get(
+            f"/api/engagements/{engagement_id}/activity?limit=3",
+            headers=headers,
+        )
+        self.assertEqual(activity.status_code, 200, activity.text)
+        self.assertLessEqual(activity.json()["count"], 3)
+        self.assertEqual(activity.json()["limit"], 3)
+        self.assertTrue(
+            {"finding", "scan", "report"}
+            & {event["kind"] for event in activity.json()["events"]}
+        )
+        self.assertTrue(
+            all(event["tab"] for event in activity.json()["events"])
+        )
+
         evidence_directory = self.data_dir / "evidence" / finding_id
         reports_directory = self.data_dir / "reports" / engagement_id
         self.assertTrue(evidence_directory.is_dir())
@@ -1482,6 +1497,8 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(asset["status"], "regressed")
         self.assertEqual(asset["highest_severity"], "high")
         self.assertEqual(asset["snapshot_count"], 3)
+        self.assertEqual(asset["finding_count"], 1)
+        self.assertFalse(asset["details_limited"])
         self.assertEqual(asset["findings"][0]["id"], finding_id)
         self.assertEqual(asset["findings"][0]["evidence_attachment_count"], 1)
         finding_search = self.client.get(
@@ -1738,12 +1755,17 @@ class UserJourneyTests(unittest.TestCase):
             },
         )
         self.assertEqual(finding.status_code, 201, finding.text)
-        nmap_xml = """<?xml version="1.0"?>
+        additional_ports = "".join(
+            f'<port protocol="tcp" portid="{port}"><state state="open"/>'
+            f'<service name="http" product="test-service-{port}"/></port>'
+            for port in range(10000, 10100)
+        )
+        nmap_xml = f"""<?xml version="1.0"?>
 <nmaprun><host><status state="up"/><address addr="192.0.2.10" addrtype="ipv4"/>
 <hostnames><hostname name="web01.example.test" type="PTR"/></hostnames>
 <ports><port protocol="tcp" portid="443"><state state="open"/>
 <service name="https" product="nginx" version="1.26"/>
-<script id="smb2-security-mode" output="Message signing enabled but not required"/></port></ports>
+<script id="smb2-security-mode" output="Message signing enabled but not required"/></port>{additional_ports}</ports>
 <os><osmatch name="Linux 6.x" accuracy="96"/></os></host></nmaprun>"""
         scan = self.client.post(
             f"/api/engagements/{engagement_id}/upload-scan?scan_type=nmap",
@@ -1758,13 +1780,17 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(snapshot.json()["snapshot"]["parser_version"], "structured-v2")
         inventory = self.client.get(f"/api/engagements/{engagement_id}/assets")
         self.assertEqual(inventory.status_code, 200, inventory.text)
-        self.assertEqual(inventory.json()["summary"]["services"], 1)
+        self.assertEqual(inventory.json()["summary"]["services"], 101)
+        self.assertEqual(inventory.json()["summary"]["observation_limit_per_type"], 100)
         asset = inventory.json()["assets"][0]
         self.assertEqual(asset["host"], "192.0.2.10")
         self.assertEqual(asset["aliases"], ["web01.example.test"])
         self.assertEqual(asset["operating_systems"], ["Linux 6.x"])
         self.assertEqual(asset["findings"][0]["id"], finding.json()["id"])
         self.assertEqual(asset["services"][0]["evidence_ref"]["product"], "nginx")
+        self.assertEqual(asset["service_count"], 101)
+        self.assertEqual(len(asset["services"]), 100)
+        self.assertTrue(asset["details_limited"])
         self.assertEqual(asset["vulnerability_count"], 1)
         observation = asset["vulnerabilities"][0]
         promoted = self.client.post(
@@ -1905,6 +1931,55 @@ class UserJourneyTests(unittest.TestCase):
         raw_rows = list(csv.DictReader(StringIO(raw.text)))
         self.assertIn("csv-secret-token", raw_rows[0]["description"])
         self.assertNotIn("-redacted.csv", raw.headers["content-disposition"])
+        self.assertEqual(
+            self.client.delete(f"/api/engagements/{engagement_id}").status_code,
+            204,
+        )
+
+    def test_ai_analysis_rejects_too_many_scans_before_provider_use(self):
+        engagement = self.client.post(
+            "/api/engagements",
+            json={"name": "Bounded AI Input", "client_name": "Local Test"},
+        )
+        self.assertEqual(engagement.status_code, 201, engagement.text)
+        engagement_id = engagement.json()["id"]
+        for index in range(51):
+            upload = self.client.post(
+                f"/api/engagements/{engagement_id}/upload-scan?scan_type=custom",
+                files={
+                    "file": (
+                        f"input-{index:02d}.txt",
+                        b"bounded test evidence",
+                        "text/plain",
+                    )
+                },
+            )
+            self.assertEqual(upload.status_code, 200, upload.text)
+        analysis = self.client.post(
+            f"/api/engagements/{engagement_id}/analyze"
+        )
+        self.assertEqual(analysis.status_code, 413, analysis.text)
+        self.assertIn("at most 50 scan files", analysis.json()["detail"])
+        preview = self.client.get(f"/api/engagements/{engagement_id}/analysis-preview")
+        self.assertEqual(preview.status_code, 200, preview.text)
+        self.assertEqual(preview.json()["scan_count"], 51)
+        self.assertEqual(preview.json()["inspected_scan_count"], 50)
+        self.assertFalse(preview.json()["total_bytes_complete"])
+        self.assertFalse(preview.json()["ready"])
+        self.assertIn("Remove 1 scan file", preview.json()["issues"][0])
+        self.assertNotIn("api_key", preview.json())
+        selected_preview = self.client.post(
+            f"/api/engagements/{engagement_id}/analysis-preview",
+            json={"scan_ids": [upload.json()["id"]]},
+        )
+        self.assertEqual(selected_preview.status_code, 200, selected_preview.text)
+        self.assertEqual(selected_preview.json()["scan_count"], 1)
+        self.assertTrue(selected_preview.json()["ready"])
+        wrong_engagement_preview = self.client.post(
+            f"/api/engagements/{engagement_id}/analysis-preview",
+            json={"scan_ids": ["00000000-0000-0000-0000-000000000000"]},
+        )
+        self.assertEqual(wrong_engagement_preview.status_code, 422)
         self.assertEqual(
             self.client.delete(f"/api/engagements/{engagement_id}").status_code,
             204,
