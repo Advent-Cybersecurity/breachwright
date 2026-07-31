@@ -194,7 +194,7 @@ def main() -> int:
         try:
             health = candidate_client.get("/api/health")
             health.raise_for_status()
-            if health.json().get("version") != "2.1.0-rc.1":
+            if health.json().get("version") != "2.2.0-rc.1":
                 raise RuntimeError("Candidate version was not loaded")
             if candidate_client.get("/api/auth/login").status_code != 404:
                 raise RuntimeError("Candidate authentication routes are still exposed")
@@ -224,7 +224,7 @@ def main() -> int:
         finally:
             stop_application(candidate_process, candidate_client)
 
-        print("v2.0.0 to v2.1.0-rc.1 upgrade smoke test passed")
+        print("v2.0.0 to v2.2.0-rc.1 upgrade smoke test passed")
         return 0
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)

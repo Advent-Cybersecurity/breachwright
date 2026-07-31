@@ -50,7 +50,7 @@ export default function Dashboard() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [toast, setToast] = useState(null);
-  const [form, setForm] = useState({ name: '', client_name: '', scope: '', start_date: '', end_date: '' });
+  const [form, setForm] = useState({ name: '', client_name: '', scope: '', start_date: '', end_date: '', template_key: '' });
   const [creating, setCreating] = useState(false);
   const [analytics, setAnalytics] = useState(null);
 
@@ -69,9 +69,9 @@ export default function Dashboard() {
     e.preventDefault();
     setCreating(true);
     try {
-      const eng = await engApi.create({ ...form, start_date: form.start_date || null, end_date: form.end_date || null });
+      const eng = await engApi.create({ ...form, start_date: form.start_date || null, end_date: form.end_date || null, template_key: form.template_key || null });
       setShowCreate(false);
-      setForm({ name: '', client_name: '', scope: '', start_date: '', end_date: '' });
+      setForm({ name: '', client_name: '', scope: '', start_date: '', end_date: '', template_key: '' });
       setToast({ message: `Engagement "${eng.name}" created`, type: 'success' });
       await loadEngagements();
       navigate(`/engagements/${eng.id}`);
@@ -245,6 +245,20 @@ export default function Dashboard() {
             <textarea id="engagement-scope" className="input-field text-sm resize-none" rows={3} value={form.scope}
               onChange={(e) => setForm({ ...form, scope: e.target.value })}
               placeholder="10.10.10.0/24, *.example.com" />
+          </div>
+          <div>
+            <label htmlFor="engagement-template" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Assessment Template</label>
+            <select id="engagement-template" className="input-field text-sm" value={form.template_key}
+              onChange={(e) => setForm({ ...form, template_key: e.target.value })}>
+              <option value="">Blank engagement</option>
+              <option value="web">Web Application</option>
+              <option value="api">API Security</option>
+              <option value="external">External Network</option>
+              <option value="internal">Internal Network</option>
+              <option value="active_directory">Active Directory</option>
+              <option value="cloud">Cloud Environment</option>
+            </select>
+            <p className="text-xs themed-text-muted mt-1">Templates automatically add the most relevant built-in methodology checklist.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

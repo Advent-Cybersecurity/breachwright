@@ -1,5 +1,6 @@
 """Launch a packaged Breachwright executable and verify its web application."""
 
+import json
 import os
 from pathlib import Path
 import socket
@@ -79,18 +80,31 @@ def main() -> int:
                     "name": "Packaged Smoke Assessment",
                     "client_name": "Example Client",
                     "scope": "example.test",
+                    "template_key": "web",
                 },
             )
             engagement.raise_for_status()
             engagement_id = engagement.json()["id"]
+            if engagement.json().get("template_key") != "web":
+                raise RuntimeError("Packaged engagement template was not retained")
+            checklist = client.get(f"/api/engagements/{engagement_id}/checklists")
+            checklist.raise_for_status()
+            if not checklist.json() or any(
+                item.get("methodology") != "owasp_top10"
+                for item in checklist.json()
+            ):
+                raise RuntimeError("Packaged web template did not create its checklist")
             finding = client.post(
                 f"/api/engagements/{engagement_id}/findings",
                 headers=headers,
                 json={
                     "title": "Packaged finding",
-                    "severity": "medium",
+                    "severity": "high",
                     "description": "Created by the packaged smoke test.",
+                    "affected_hosts": "https://example.test/admin",
                     "remediation": "Verify the candidate workflow.",
+                    "retest_status": "retest_needed",
+                    "retest_due_date": "2099-01-02",
                 },
             )
             finding.raise_for_status()
@@ -101,6 +115,102 @@ def main() -> int:
                 files={"file": ("proof.png", b"\x89PNG\r\n\x1a\nsmoke", "image/png")},
             )
             evidence.raise_for_status()
+            updated = client.put(
+                f"/api/engagements/{engagement_id}/findings/{finding_id}",
+                headers=headers,
+                json={"evidence": "The administrative endpoint was reachable."},
+            )
+            updated.raise_for_status()
+            history = client.get(
+                f"/api/engagements/{engagement_id}/findings/{finding_id}/history",
+                headers=headers,
+            )
+            history.raise_for_status()
+            if [entry.get("action") for entry in history.json()] != [
+                "updated",
+                "created",
+            ]:
+                raise RuntimeError("Packaged finding history was incomplete")
+            queue = client.get(
+                f"/api/engagements/{engagement_id}/retest-queue",
+                headers=headers,
+            )
+            queue.raise_for_status()
+            if not queue.json() or queue.json()[0].get("id") != finding_id:
+                raise RuntimeError("Packaged retest queue did not include the finding")
+            readiness = client.get(
+                f"/api/engagements/{engagement_id}/report-readiness",
+                headers=headers,
+            )
+            readiness.raise_for_status()
+            if not readiness.json().get("ready"):
+                raise RuntimeError(
+                    f"Packaged report readiness had blockers: {readiness.json().get('blockers')}"
+                )
+
+            nuclei_record = json.dumps(
+                {
+                    "template-id": "exposed-admin-panel",
+                    "host": "example.test",
+                    "matched-at": "https://example.test/admin",
+                    "info": {
+                        "name": "Exposed Admin Panel",
+                        "severity": "high",
+                    },
+                }
+            )
+            upload = client.post(
+                f"/api/engagements/{engagement_id}/upload-scan?scan_type=nuclei",
+                headers=headers,
+                files={
+                    "file": (
+                        "packaged-nuclei.jsonl",
+                        nuclei_record.encode("utf-8"),
+                        "application/x-ndjson",
+                    )
+                },
+            )
+            upload.raise_for_status()
+            snapshot = client.post(
+                f"/api/engagements/{engagement_id}/scan-snapshots",
+                headers=headers,
+                json={"label": "Packaged baseline", "scan_ids": [upload.json()["id"]]},
+            )
+            snapshot.raise_for_status()
+            if snapshot.json().get("counts") != {
+                "new": 1,
+                "persistent": 0,
+                "resolved": 0,
+                "regressed": 0,
+            }:
+                raise RuntimeError(
+                    f"Packaged snapshot comparison was unexpected: {snapshot.json().get('counts')}"
+                )
+            if snapshot.json().get("snapshot", {}).get("parser_version") != "structured-v1":
+                raise RuntimeError("Packaged snapshot parser version was not recorded")
+
+            sarif = client.get(
+                f"/api/engagements/{engagement_id}/findings.sarif",
+                headers=headers,
+            )
+            sarif.raise_for_status()
+            if (
+                sarif.json().get("version") != "2.1.0"
+                or len(sarif.json().get("runs", [{}])[0].get("results", [])) != 1
+            ):
+                raise RuntimeError("Packaged SARIF export was invalid")
+            sarif_upload = client.post(
+                f"/api/engagements/{engagement_id}/upload-scan?scan_type=sarif",
+                headers=headers,
+                files={
+                    "file": (
+                        "packaged-findings.sarif",
+                        sarif.content,
+                        "application/sarif+json",
+                    )
+                },
+            )
+            sarif_upload.raise_for_status()
             report = client.post(
                 f"/api/engagements/{engagement_id}/reports",
                 headers=headers,

@@ -27,13 +27,14 @@ from app.analysis.context import (
 )
 from app.correlation.structured_parsers import parse_structured
 from app.correlation.engine import correlate, to_ai_prompt
+from app.findings.history import diff, record_history, snapshot
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["analysis"])
 
-ALLOWED_SCAN_TYPES = {"nmap", "nessus", "burp", "custom"}
+ALLOWED_SCAN_TYPES = {"nmap", "nessus", "burp", "nuclei", "sarif", "custom"}
 MAX_SCAN_SIZE = 50 * 1024 * 1024
 RAW_EVIDENCE_SEGMENT_CHARS = 4000
 
@@ -539,6 +540,7 @@ async def _accept_draft(
             )
         )
         finding = finding_result.scalar_one_or_none()
+    before = snapshot(finding) if finding is not None else None
     if finding is None:
         finding = Finding(
             engagement_id=engagement_id,
@@ -556,6 +558,20 @@ async def _accept_draft(
     finding.ai_confidence = draft.confidence
     finding.ai_inference = True
     await db.flush()
+    after = snapshot(finding)
+    changes = (
+        {field: {"from": None, "to": value} for field, value in after.items() if value is not None}
+        if before is None
+        else diff(before, after)
+    )
+    await record_history(
+        db,
+        finding,
+        action="ai_draft_accepted",
+        created_by=current_user.id,
+        changes=changes,
+        source="ai_reviewed",
+    )
 
     draft.status = "accepted"
     draft.target_finding_id = finding.id

@@ -24,6 +24,10 @@ Third-party AI services may charge for API usage. Local model support does not r
 - AI-assisted finding drafts with severity, CVSS, evidence, and remediation
 - Evidence-grounded AI review with source excerpts, confidence, create/update
   diffs, and accept, edit, reject, or bulk review controls
+- Versioned scan snapshots with deterministic retest comparison
+- Finding change history, retest scheduling, and report readiness checks
+- Built-in engagement templates with automatic methodology checklists
+- Nuclei JSONL and SARIF 2.1 interoperability
 - Exploitation chains and MITRE ATT&CK-aware attack narratives
 - SharpHound and BloodHound ZIP import with Active Directory attack-path analysis
 - Markdown and DOCX report generation

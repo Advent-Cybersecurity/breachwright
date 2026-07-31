@@ -69,6 +69,8 @@ export const findings = {
       method: 'POST',
       body: { finding_ids: findingIds, action, value },
     }),
+  history: (engId, findingId) =>
+    request(`/engagements/${engId}/findings/${findingId}/history`),
 };
 
 // Analysis
@@ -199,6 +201,38 @@ export const system = {
     setTimeout(() => {
       document.body.removeChild(anchor);
       URL.revokeObjectURL(blobUrl);
+    }, 1000);
+  },
+};
+
+// Repeatable assessment workflow
+export const workflow = {
+  templates: (engId) => request(`/engagements/${engId}/workflow/templates`),
+  retestQueue: (engId) => request(`/engagements/${engId}/retest-queue`),
+  readiness: (engId) => request(`/engagements/${engId}/report-readiness`),
+  listSnapshots: (engId) => request(`/engagements/${engId}/scan-snapshots`),
+  createSnapshot: (engId, label, scanIds) =>
+    request(`/engagements/${engId}/scan-snapshots`, {
+      method: 'POST',
+      body: { label, scan_ids: scanIds },
+    }),
+  compareSnapshot: (engId, snapshotId) =>
+    request(`/engagements/${engId}/scan-snapshots/${snapshotId}/comparison`),
+  downloadSarif: async (engId) => {
+    const res = await fetch(`${BASE}/engagements/${engId}/findings.sarif`);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'SARIF export failed');
+    const blob = await res.blob();
+    const disposition = res.headers.get('content-disposition') || '';
+    const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'breachwright-findings.sarif';
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
     }, 1000);
   },
 };

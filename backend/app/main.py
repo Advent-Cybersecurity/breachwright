@@ -128,6 +128,7 @@ from app.gap_detection.router import router as gap_analysis_router
 from app.correlation.router import router as correlation_router
 from app.narrative.router import router as narrative_router
 from app.system.router import router as system_router
+from app.workflow.router import router as workflow_router
 
 app.include_router(engagements_router)
 app.include_router(findings_router)
@@ -147,6 +148,7 @@ app.include_router(gap_analysis_router)
 app.include_router(correlation_router)
 app.include_router(narrative_router)
 app.include_router(system_router)
+app.include_router(workflow_router)
 
 
 @app.get("/api/health")

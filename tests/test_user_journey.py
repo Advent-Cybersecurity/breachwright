@@ -955,6 +955,161 @@ class UserJourneyTests(unittest.TestCase):
         deleted = self.client.delete(f"/api/engagements/{engagement_id}")
         self.assertEqual(deleted.status_code, 204, deleted.text)
 
+    def test_repeatable_assessment_history_readiness_and_interchange(self):
+        created = self.client.post(
+            "/api/engagements",
+            json={
+                "name": "Repeatable Assessment",
+                "client_name": "Local Test",
+                "scope": "https://app.example.test",
+                "template_key": "web",
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        engagement_id = created.json()["id"]
+        self.assertEqual(created.json()["template_key"], "web")
+        checklist = self.client.get(f"/api/engagements/{engagement_id}/checklists")
+        self.assertEqual(checklist.status_code, 200, checklist.text)
+        self.assertGreater(len(checklist.json()), 0)
+        self.assertTrue(all(item["methodology"] == "owasp_top10" for item in checklist.json()))
+
+        finding = self.client.post(
+            f"/api/engagements/{engagement_id}/findings",
+            json={
+                "title": "Administrative endpoint exposed",
+                "severity": "high",
+                "affected_hosts": "https://app.example.test/admin",
+                "retest_status": "retest_needed",
+                "retest_due_date": "2020-01-02",
+            },
+        )
+        self.assertEqual(finding.status_code, 201, finding.text)
+        finding_id = finding.json()["id"]
+        queue = self.client.get(f"/api/engagements/{engagement_id}/retest-queue")
+        self.assertEqual(queue.status_code, 200, queue.text)
+        self.assertEqual(queue.json()[0]["id"], finding_id)
+        self.assertTrue(queue.json()[0]["overdue"])
+
+        readiness = self.client.get(f"/api/engagements/{engagement_id}/report-readiness")
+        self.assertEqual(readiness.status_code, 200, readiness.text)
+        self.assertFalse(readiness.json()["ready"])
+        self.assertEqual(len(readiness.json()["blockers"]), 2)
+        updated = self.client.put(
+            f"/api/engagements/{engagement_id}/findings/{finding_id}",
+            json={
+                "evidence": "The endpoint returned an administrative console.",
+                "remediation": "Require authorization for the administrative route.",
+            },
+        )
+        self.assertEqual(updated.status_code, 200, updated.text)
+        history = self.client.get(
+            f"/api/engagements/{engagement_id}/findings/{finding_id}/history"
+        )
+        self.assertEqual(history.status_code, 200, history.text)
+        self.assertEqual([entry["action"] for entry in history.json()], ["updated", "created"])
+        self.assertIn("evidence", history.json()[0]["changes"])
+        readiness = self.client.get(f"/api/engagements/{engagement_id}/report-readiness")
+        self.assertTrue(readiness.json()["ready"])
+        self.assertGreater(readiness.json()["score"], 0)
+
+        nuclei_a = json.dumps({
+            "template-id": "exposed-admin-panel",
+            "host": "app.example.test",
+            "matched-at": "https://app.example.test/admin",
+            "info": {"name": "Exposed Admin Panel", "severity": "high"},
+        })
+        nuclei_b = json.dumps({
+            "template-id": "missing-csp",
+            "host": "app.example.test",
+            "matched-at": "https://app.example.test/",
+            "info": {"name": "Missing CSP", "severity": "medium"},
+        })
+
+        def upload(name, content):
+            response = self.client.post(
+                f"/api/engagements/{engagement_id}/upload-scan?scan_type=nuclei",
+                files={"file": (name, content.encode("utf-8"), "application/x-ndjson")},
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            return response.json()["id"]
+
+        scan_a1 = upload("baseline.jsonl", nuclei_a)
+        snapshot1 = self.client.post(
+            f"/api/engagements/{engagement_id}/scan-snapshots",
+            json={"label": "Baseline", "scan_ids": [scan_a1]},
+        )
+        self.assertEqual(snapshot1.status_code, 201, snapshot1.text)
+        self.assertEqual(snapshot1.json()["counts"]["new"], 1)
+
+        scan_b = upload("retest-one.jsonl", nuclei_b)
+        snapshot2 = self.client.post(
+            f"/api/engagements/{engagement_id}/scan-snapshots",
+            json={"label": "Retest 1", "scan_ids": [scan_b]},
+        )
+        self.assertEqual(snapshot2.status_code, 201, snapshot2.text)
+        self.assertEqual(snapshot2.json()["counts"], {"new": 1, "persistent": 0, "resolved": 1, "regressed": 0})
+
+        scan_a2 = upload("retest-two.jsonl", nuclei_a + "\n" + nuclei_b)
+        snapshot3 = self.client.post(
+            f"/api/engagements/{engagement_id}/scan-snapshots",
+            json={"label": "Retest 2", "scan_ids": [scan_a2]},
+        )
+        self.assertEqual(snapshot3.status_code, 201, snapshot3.text)
+        self.assertEqual(snapshot3.json()["counts"], {"new": 0, "persistent": 1, "resolved": 0, "regressed": 1})
+        replay = self.client.get(
+            f"/api/engagements/{engagement_id}/scan-snapshots/{snapshot3.json()['snapshot']['id']}/comparison"
+        )
+        self.assertEqual(replay.status_code, 200, replay.text)
+        self.assertEqual(replay.json()["counts"], snapshot3.json()["counts"])
+
+        sarif = self.client.get(f"/api/engagements/{engagement_id}/findings.sarif")
+        self.assertEqual(sarif.status_code, 200, sarif.text)
+        self.assertEqual(sarif.json()["version"], "2.1.0")
+        self.assertEqual(len(sarif.json()["runs"][0]["results"]), 1)
+        self.assertIn("attachment", sarif.headers["content-disposition"])
+        sarif_upload = self.client.post(
+            f"/api/engagements/{engagement_id}/upload-scan?scan_type=sarif",
+            files={"file": ("breachwright.sarif", sarif.content, "application/sarif+json")},
+        )
+        self.assertEqual(sarif_upload.status_code, 200, sarif_upload.text)
+        sarif_snapshot = self.client.post(
+            f"/api/engagements/{engagement_id}/scan-snapshots",
+            json={"label": "SARIF round trip", "scan_ids": [sarif_upload.json()["id"]]},
+        )
+        self.assertEqual(sarif_snapshot.status_code, 201, sarif_snapshot.text)
+        self.assertEqual(sarif_snapshot.json()["snapshot"]["observation_count"], 1)
+
+        portable = self.client.get(f"/api/engagements/{engagement_id}/export")
+        self.assertEqual(portable.status_code, 200, portable.text)
+        self.assertEqual(portable.json()["version"], "1.1")
+        self.assertEqual(portable.json()["engagement"]["template_key"], "web")
+        self.assertEqual(portable.json()["findings"][0]["retest_due_date"], "2020-01-02")
+        imported = self.client.post(
+            "/api/engagements/import",
+            files={"file": ("repeatable-export.json", portable.content, "application/json")},
+        )
+        self.assertEqual(imported.status_code, 200, imported.text)
+        imported_id = imported.json()["id"]
+        imported_engagement = self.client.get(f"/api/engagements/{imported_id}")
+        self.assertEqual(imported_engagement.json()["template_key"], "web")
+        imported_findings = self.client.get(f"/api/engagements/{imported_id}/findings")
+        self.assertEqual(imported_findings.json()[0]["retest_due_date"], "2020-01-02")
+        imported_history = self.client.get(
+            f"/api/engagements/{imported_id}/findings/{imported_findings.json()[0]['id']}/history"
+        )
+        self.assertEqual(imported_history.json()[0]["action"], "imported")
+        self.assertEqual(self.client.delete(f"/api/engagements/{imported_id}").status_code, 204)
+
+        deleted = self.client.delete(f"/api/engagements/{engagement_id}")
+        self.assertEqual(deleted.status_code, 204, deleted.text)
+        self.assertEqual(
+            self.client.get(f"/api/engagements/{engagement_id}/scan-snapshots").status_code,
+            404,
+        )
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM scan_snapshots WHERE engagement_id = ?", (engagement_id,)).fetchone()[0], 0)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM finding_history WHERE engagement_id = ?", (engagement_id,)).fetchone()[0], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

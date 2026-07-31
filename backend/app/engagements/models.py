@@ -33,6 +33,7 @@ class Engagement(Base, TimestampMixin):
     )
     start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    template_key: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
 
     findings: Mapped[list["Finding"]] = relationship(
@@ -58,9 +59,29 @@ class Finding(Base, TimestampMixin):
     ai_confidence: Mapped[Optional[float]] = mapped_column(Numeric(4, 3), nullable=True)
     ai_inference: Mapped[bool] = mapped_column(Boolean, default=False)
     retest_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # open, remediated, retest_needed, accepted_risk
+    retest_due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
 
     engagement: Mapped["Engagement"] = relationship(back_populates="findings")
+
+
+class FindingHistory(Base):
+    """Immutable local audit trail for meaningful finding changes."""
+
+    __tablename__ = "finding_history"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    finding_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("findings.id", ondelete="CASCADE"), nullable=False
+    )
+    engagement_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    changes: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    source: Mapped[str] = mapped_column(String(50), default="manual", nullable=False)
+    created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class AIFindingDraft(Base, TimestampMixin):
@@ -126,6 +147,41 @@ class ScanUpload(Base, TimestampMixin):
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
     scan_type: Mapped[str] = mapped_column(String(50), default="nmap")
     uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
+
+
+class ScanSnapshot(Base):
+    """A versioned, immutable interpretation of an explicit scan set."""
+
+    __tablename__ = "scan_snapshots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    engagement_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False
+    )
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_scan_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    parser_version: Mapped[str] = mapped_column(String(50), default="structured-v1", nullable=False)
+    observation_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ScanObservation(Base):
+    """Normalized scanner fact used for deterministic snapshot comparison."""
+
+    __tablename__ = "scan_observations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    snapshot_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("scan_snapshots.id", ondelete="CASCADE"), nullable=False
+    )
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    tool: Mapped[str] = mapped_column(String(50), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    host: Mapped[str] = mapped_column(String(500), nullable=False)
+    port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    evidence_ref: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
 
 class EvidenceAttachment(Base):

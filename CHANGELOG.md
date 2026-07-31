@@ -1,6 +1,20 @@
 # Changelog
 
-## v2.1.0 (unreleased)
+## v2.2.0 (unreleased)
+
+### Repeatable assessment workflows
+
+- Added versioned scan snapshots with deterministic new, persistent, resolved,
+  and regressed classifications.
+- Added finding change history, retest due dates, and an engagement retest queue.
+- Added built-in web, API, network, Active Directory, and cloud engagement
+  templates.
+- Added report readiness checks with actionable blockers and warnings.
+- Added Nuclei JSONL and SARIF 2.1 import support, plus SARIF finding export.
+- Engagement exports now use format 1.1 and preserve template and retest
+  scheduling metadata.
+
+## v2.1.0 (unreleased foundation)
 
 ### Reliability and data safety
 

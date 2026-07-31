@@ -13,6 +13,7 @@ from app.auth.models import User
 from app.engagements.models import Engagement, Finding, AttackPath, Report, ScanUpload
 from app.engagements.schemas import EngagementCreate, FindingCreate
 from pydantic import ValidationError
+from app.findings.history import record_history, snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ async def export_engagement(
     attack_paths = result.scalars().all()
 
     export_data = {
-        "version": "1.0",
+        "version": "1.1",
         "exported_by": current_user.display_name,
         "engagement": {
             "name": eng.name,
@@ -88,6 +89,7 @@ async def export_engagement(
             "status": eng.status.value if hasattr(eng.status, 'value') else eng.status,
             "start_date": _serialize(eng.start_date) if eng.start_date else None,
             "end_date": _serialize(eng.end_date) if eng.end_date else None,
+            "template_key": eng.template_key,
         },
         "findings": [
             {
@@ -105,6 +107,7 @@ async def export_engagement(
                 else None,
                 "ai_inference": f.ai_inference,
                 "retest_status": f.retest_status,
+                "retest_due_date": _serialize(f.retest_due_date) if f.retest_due_date else None,
             }
             for f in findings
         ],
@@ -188,6 +191,7 @@ async def import_engagement(
             scope=eng_data.get("scope"),
             start_date=start_date,
             end_date=end_date,
+            template_key=eng_data.get("template_key"),
         )
     except ValidationError as exc:
         raise HTTPException(
@@ -202,6 +206,7 @@ async def import_engagement(
         scope=validated_engagement.scope,
         start_date=validated_engagement.start_date,
         end_date=validated_engagement.end_date,
+        template_key=validated_engagement.template_key,
         created_by=current_user.id,
     )
     db.add(engagement)
@@ -209,6 +214,7 @@ async def import_engagement(
 
     # Create findings
     finding_count = 0
+    imported_findings = []
     for index, fd in enumerate(finding_data):
         if not isinstance(fd, dict):
             raise HTTPException(
@@ -229,6 +235,8 @@ async def import_engagement(
                 affected_hosts=fd.get("affected_hosts"),
                 evidence=fd.get("evidence"),
                 remediation=fd.get("remediation"),
+                retest_status=fd.get("retest_status") or None,
+                retest_due_date=fd.get("retest_due_date"),
             )
         except ValidationError as exc:
             raise HTTPException(
@@ -254,10 +262,23 @@ async def import_engagement(
             ),
             ai_inference=fd.get("ai_inference") is True,
             retest_status=fd.get("retest_status"),
+            retest_due_date=validated_finding.retest_due_date,
             created_by=current_user.id,
         )
         db.add(finding)
+        imported_findings.append(finding)
         finding_count += 1
+
+    await db.flush()
+    for finding in imported_findings:
+        await record_history(
+            db,
+            finding,
+            action="imported",
+            created_by=current_user.id,
+            changes={field: {"from": None, "to": value} for field, value in snapshot(finding).items() if value is not None},
+            source="imported",
+        )
 
     # Create attack paths
     ap_count = 0

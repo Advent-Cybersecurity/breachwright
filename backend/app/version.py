@@ -3,7 +3,7 @@
 import re
 
 
-APP_VERSION = "2.1.0-rc.1"
+APP_VERSION = "2.2.0-rc.1"
 
 _SEMVER = re.compile(
     r"^v?(?P<major>0|[1-9]\d*)\."

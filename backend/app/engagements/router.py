@@ -7,6 +7,7 @@ from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.engagements.models import Engagement, Finding
 from app.engagements.schemas import EngagementCreate, EngagementUpdate, EngagementResponse
+from app.workflow.templates import ENGAGEMENT_TEMPLATES
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -42,10 +43,29 @@ async def create_engagement(
         scope=request.scope,
         start_date=request.start_date,
         end_date=request.end_date,
+        template_key=request.template_key,
         created_by=current_user.id,
     )
     db.add(engagement)
     await db.flush()
+    if request.template_key:
+        from app.checklists.methodologies import get_methodology_items
+        from app.checklists.models import ChecklistItem
+
+        for methodology in ENGAGEMENT_TEMPLATES[request.template_key]["methodologies"]:
+            for item_data in get_methodology_items(methodology):
+                db.add(ChecklistItem(
+                    engagement_id=engagement.id,
+                    methodology=methodology,
+                    category=item_data["category"],
+                    item=item_data["item"],
+                    description=item_data.get("description"),
+                    tools=item_data.get("tools"),
+                    techniques=item_data.get("techniques"),
+                    reference_url=item_data.get("reference_url"),
+                    order_index=item_data.get("order_index", 0),
+                ))
+        await db.flush()
     return EngagementResponse.model_validate(engagement)
 
 
@@ -164,6 +184,9 @@ async def delete_engagement(
         Report,
         ScanUpload,
         AppSetting,
+        FindingHistory,
+        ScanSnapshot,
+        ScanObservation,
     )
     from app.ad.models import ADImport
     from app.checklists.models import ChecklistItem
@@ -181,6 +204,18 @@ async def delete_engagement(
                 EvidenceAttachment.finding_id.in_(finding_ids)
             )
         )
+        await db.execute(
+            delete(FindingHistory).where(FindingHistory.finding_id.in_(finding_ids))
+        )
+    snapshot_result = await db.execute(
+        select(ScanSnapshot.id).where(ScanSnapshot.engagement_id == engagement_id)
+    )
+    snapshot_ids = list(snapshot_result.scalars().all())
+    if snapshot_ids:
+        await db.execute(
+            delete(ScanObservation).where(ScanObservation.snapshot_id.in_(snapshot_ids))
+        )
+    await db.execute(delete(ScanSnapshot).where(ScanSnapshot.engagement_id == engagement_id))
     await db.execute(delete(Finding).where(Finding.engagement_id == engagement_id))
     await db.execute(delete(AttackPath).where(AttackPath.engagement_id == engagement_id))
     await db.execute(delete(Report).where(Report.engagement_id == engagement_id))

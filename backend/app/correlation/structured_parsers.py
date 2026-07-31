@@ -39,6 +39,8 @@ A HostRecord looks like:
 import re
 import xml.etree.ElementTree as ET
 import logging
+import json
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -301,12 +303,21 @@ def parse_nuclei_structured(content: str) -> list[dict]:
         if line.startswith("{"):
             try:
                 j = _json.loads(line)
-                host_str = j.get("host", j.get("ip", "unknown"))
-                port = j.get("port", 0)
+                matched = str(j.get("matched-at", ""))
+                raw_host = str(j.get("host", j.get("ip", "unknown")))
+                parsed_target = urlparse(matched if "://" in matched else raw_host)
+                host_str = parsed_target.hostname or raw_host
+                try:
+                    port = int(j.get("port")) if j.get("port") is not None else parsed_target.port
+                except (TypeError, ValueError):
+                    port = None
+                if not port and parsed_target.scheme == "https":
+                    port = 443
+                elif not port and parsed_target.scheme == "http":
+                    port = 80
                 template_id = j.get("template-id", j.get("templateID", ""))
                 severity = j.get("info", {}).get("severity", "info") if isinstance(j.get("info"), dict) else "info"
                 name = j.get("info", {}).get("name", template_id) if isinstance(j.get("info"), dict) else template_id
-                matched = j.get("matched-at", "")
                 desc = j.get("info", {}).get("description", "") if isinstance(j.get("info"), dict) else ""
 
                 if host_str not in hosts_map:
@@ -338,7 +349,14 @@ def parse_nuclei_structured(content: str) -> list[dict]:
             host_match = re.match(r'https?://([^:/]+)', url)
             host_str = host_match.group(1) if host_match else url
             port_match = re.search(r':(\d+)', url)
-            port = int(port_match.group(1)) if port_match else 0
+            if port_match:
+                port = int(port_match.group(1))
+            elif url.startswith("https://"):
+                port = 443
+            elif url.startswith("http://"):
+                port = 80
+            else:
+                port = None
 
             if host_str not in hosts_map:
                 hosts_map[host_str] = {
@@ -403,6 +421,93 @@ def parse_burp_structured(content: str) -> list[dict]:
     return list(hosts_map.values())
 
 
+def parse_sarif_structured(content: str) -> list[dict]:
+    """Parse SARIF 2.1.0 results into the common HostRecord shape."""
+    def as_dict(value) -> dict:
+        return value if isinstance(value, dict) else {}
+
+    def as_list(value) -> list:
+        return value if isinstance(value, list) else []
+
+    try:
+        document = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(document, dict) or not isinstance(document.get("runs"), list):
+        return []
+
+    hosts_map: dict[str, dict] = {}
+    level_map = {"error": "high", "warning": "medium", "note": "low", "none": "info"}
+    allowed = {"critical", "high", "medium", "low", "info"}
+    for run in document["runs"]:
+        if not isinstance(run, dict):
+            continue
+        rules = {}
+        driver = as_dict(as_dict(run.get("tool")).get("driver"))
+        for rule in as_list(driver.get("rules")):
+            if isinstance(rule, dict) and rule.get("id"):
+                rules[str(rule["id"])] = rule
+        tool_name = str(driver.get("name") or "sarif")
+        for result in as_list(run.get("results")):
+            if not isinstance(result, dict):
+                continue
+            rule_id = str(result.get("ruleId") or "unclassified")
+            rule = as_dict(rules.get(rule_id))
+            properties = {}
+            properties.update(as_dict(rule.get("properties")))
+            properties.update(as_dict(result.get("properties")))
+            severity = str(properties.get("security-severity") or properties.get("severity") or "").lower()
+            if severity not in allowed:
+                try:
+                    score = float(severity)
+                    severity = "critical" if score >= 9 else "high" if score >= 7 else "medium" if score >= 4 else "low"
+                except (TypeError, ValueError):
+                    severity = level_map.get(str(result.get("level") or "warning").lower(), "medium")
+
+            message = result.get("message") or {}
+            description = message.get("text") if isinstance(message, dict) else str(message)
+            title = (
+                result.get("title")
+                or as_dict(rule.get("shortDescription")).get("text")
+                or rule.get("name")
+                or rule_id
+            )
+            locations = as_list(result.get("locations")) or [{}]
+            for location in locations:
+                physical = as_dict(as_dict(location).get("physicalLocation"))
+                artifact = as_dict(physical.get("artifactLocation"))
+                uri = str(artifact.get("uri") or "unknown")
+                parsed_uri = urlparse(uri)
+                host = parsed_uri.hostname or uri
+                try:
+                    port = parsed_uri.port if parsed_uri.hostname else None
+                except ValueError:
+                    port = None
+                if host not in hosts_map:
+                    hosts_map[host] = {
+                        "host": host,
+                        "hostnames": [],
+                        "os": None,
+                        "ports": [],
+                        "vulns": [],
+                        "source": tool_name,
+                    }
+                hosts_map[host]["vulns"].append(
+                    {
+                        "title": str(title)[:500],
+                        "severity": severity,
+                        "cvss": None,
+                        "cve": _extract_cve(rule_id + " " + str(title)),
+                        "port": port,
+                        "description": str(description or "")[:500],
+                        "solution": str(as_dict(rule.get("help")).get("text") or "")[:500],
+                        "plugin_id": rule_id,
+                        "source": tool_name,
+                    }
+                )
+    return list(hosts_map.values())
+
+
 def _extract_cve(text: str) -> str | None:
     """Extract CVE ID from text."""
     m = re.search(r'(CVE-\d{4}-\d+)', text, re.IGNORECASE)
@@ -427,6 +532,8 @@ def parse_structured(content: str, scan_type: str) -> list[dict]:
         return parse_nuclei_structured(content)
     elif scan_type in ("burp", "burp_xml"):
         return parse_burp_structured(content)
+    elif scan_type == "sarif":
+        return parse_sarif_structured(content)
     else:
         # Unknown format — return empty, let the text parser handle it
         return []

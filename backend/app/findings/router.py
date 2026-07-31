@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
-from app.engagements.models import Finding, Engagement
+from app.engagements.models import Finding, FindingHistory, Engagement
 from app.engagements.schemas import FindingCreate, FindingUpdate, FindingResponse
+from app.findings.history import diff, record_history, snapshot
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}/findings", tags=["findings"])
 
@@ -53,11 +54,20 @@ async def create_finding(
         affected_hosts=request.affected_hosts,
         evidence=request.evidence,
         remediation=request.remediation,
+        retest_status=request.retest_status,
+        retest_due_date=request.retest_due_date,
         source="manual",
         created_by=current_user.id,
     )
     db.add(finding)
     await db.flush()
+    await record_history(
+        db,
+        finding,
+        action="created",
+        created_by=current_user.id,
+        changes={field: {"from": None, "to": value} for field, value in snapshot(finding).items() if value is not None},
+    )
     return FindingResponse.model_validate(finding)
 
 
@@ -76,12 +86,49 @@ async def update_finding(
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
 
+    before = snapshot(finding)
     update_data = request.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(finding, field, value)
 
     await db.flush()
+    await record_history(
+        db,
+        finding,
+        action="updated",
+        created_by=current_user.id,
+        changes=diff(before, snapshot(finding)),
+    )
     return FindingResponse.model_validate(finding)
+
+
+@router.get("/{finding_id}/history")
+async def get_finding_history(
+    engagement_id: str,
+    finding_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    finding = await db.execute(
+        select(Finding.id).where(Finding.id == finding_id, Finding.engagement_id == engagement_id)
+    )
+    if not finding.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Finding not found")
+    result = await db.execute(
+        select(FindingHistory)
+        .where(FindingHistory.finding_id == finding_id)
+        .order_by(FindingHistory.created_at.desc(), FindingHistory.id.desc())
+    )
+    return [
+        {
+            "id": entry.id,
+            "action": entry.action,
+            "changes": entry.changes,
+            "source": entry.source,
+            "created_at": entry.created_at,
+        }
+        for entry in result.scalars().all()
+    ]
 
 
 @router.get("/{finding_id}", response_model=FindingResponse)
@@ -120,6 +167,9 @@ async def delete_finding(
         delete(EvidenceAttachment).where(
             EvidenceAttachment.finding_id == finding_id
         )
+    )
+    await db.execute(
+        delete(FindingHistory).where(FindingHistory.finding_id == finding_id)
     )
     await db.delete(finding)
 
@@ -161,8 +211,18 @@ async def bulk_action(
         import os
         import shutil
         from app.config import settings
+        from app.engagements.models import EvidenceAttachment
+        from sqlalchemy import delete
 
         for f in findings:
+            await db.execute(
+                delete(EvidenceAttachment).where(
+                    EvidenceAttachment.finding_id == f.id
+                )
+            )
+            await db.execute(
+                delete(FindingHistory).where(FindingHistory.finding_id == f.id)
+            )
             await db.delete(f)
             evidence_dir = os.path.join(settings.data_dir, "evidence", f.id)
             if os.path.isdir(evidence_dir):
@@ -173,7 +233,10 @@ async def bulk_action(
         if body.value not in ("critical", "high", "medium", "low", "info"):
             raise HTTPException(status_code=400, detail="Invalid severity")
         for f in findings:
+            before = snapshot(f)
             f.severity = body.value
+            await db.flush()
+            await record_history(db, f, action="bulk_updated", created_by=current_user.id, changes=diff(before, snapshot(f)))
         await db.flush()
         return {"action": "update_severity", "value": body.value, "count": len(findings)}
 
@@ -181,7 +244,10 @@ async def bulk_action(
         if body.value not in ("open", "remediated", "retest_needed", "accepted_risk", None, ""):
             raise HTTPException(status_code=400, detail="Invalid retest status")
         for f in findings:
+            before = snapshot(f)
             f.retest_status = body.value or None
+            await db.flush()
+            await record_history(db, f, action="bulk_updated", created_by=current_user.id, changes=diff(before, snapshot(f)))
         await db.flush()
         return {"action": "update_retest", "value": body.value, "count": len(findings)}
 

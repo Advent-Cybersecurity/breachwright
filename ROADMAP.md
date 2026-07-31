@@ -36,50 +36,59 @@ long-running Windows and Linux installations:
 - system diagnostics and explicit version reporting
 - upgrade validation using data created by the public 2.0 release
 
-## Next priorities
+## 2.2: repeatable assessments
 
-### 1. Release trust and recovery
+The 2.2 foundation turns one-time testing records into a repeatable local
+assessment workflow:
 
-- add optional release signing when the project has a documented signing
-  identity and recovery process
-- add a guided restore workflow that still requires the application to be
-  offline before replacement
-- show backup age and data-integrity status in diagnostics
-- document a tested PostgreSQL backup and recovery procedure for Docker users
+- immutable scan snapshots created from explicitly selected uploads
+- deterministic new, persistent, resolved, and regressed classifications
+- finding revision history, retest status, and retest due dates
+- built-in assessment templates with automatic methodology checklists
+- advisory report-readiness blockers and warnings
+- Nuclei JSONL and SARIF 2.1 interchange
 
-### 2. Repeatable assessment workflows
+## 2.3: evidence workspace and asset coverage
 
-- introduce reusable engagement templates for scope, methodology, report
-  template, and required evidence
-- add safe finding-template import and export with explicit schema versions
-- add clearer retest queues, due dates, and remediation status history
-- make report validation identify incomplete evidence and unresolved retests
-  before generation
+The next product release should make the assessment workspace faster to use
+during active testing:
 
-### 3. Better local analysis
+- build an asset and service inventory from normalized scan observations
+- link assets, services, findings, retests, and evidence without duplicating data
+- add an evidence notebook for raw HTTP, HAR files, screenshots, and analyst notes
+- provide local redaction controls before evidence is exported or sent to an AI
+  provider
+- add fast local search across scope, assets, findings, evidence, and checklists
+- turn the retest queue into a due, overdue, and recently resolved work view
+- allow safe, versioned export and import of user-created engagement and finding
+  templates
 
-- expand sanitized parser fixtures for more nmap, Nessus, Burp Suite, nuclei,
-  and Active Directory variants
-- grow the quality corpus with community-contributed expected findings and
-  deliberate non-findings
-- add optional local-model comparison reports without enabling paid CI calls
-- improve evidence retrieval for very large assessments while preserving
-  explicit context limits
+## 2.4: community extensions and automation
 
-### 4. Community extension points
+The following release should make integrations dependable without creating a
+hosted plugin service:
 
-- define a documented parser interface with fixture-based compatibility tests
-- define versioned import and export schemas
+- publish a versioned parser contract and a fixture-based compatibility kit
+- support declarative parser packs for common JSON, JSONL, XML, and CSV tools
 - add contributor examples for a parser, report section, and methodology
-- publish a compatibility policy before accepting third-party extensions
+- add a headless CLI for import, snapshot, readiness, report, export, and backup
+  workflows
+- add versioned machine-readable exports, including a documented OSCAL mapping
+- evaluate an optional local HTTP workbench only after request storage,
+  redaction, and certificate handling have passed the Windows and Linux gates
 
-### 5. Local accountability
+## Long-term quality and release trust
 
-- add an append-only audit log for finding, evidence, report, backup,
-  restore, and Tool Runner actions
-- add review history for manual and AI-assisted finding changes
-- keep the default product focused on one local operator and avoid hidden
-  network-service assumptions
+- expand sanitized fixtures for nmap, Nessus, Burp Suite, Nuclei, SARIF, and
+  Active Directory variants
+- grow the AI quality corpus with expected findings and deliberate non-findings
+  without enabling paid CI calls
+- add an append-only local audit log for evidence, reports, backups, restores,
+  and Tool Runner actions
+- show backup age and data-integrity status in diagnostics
+- add optional release signing only after the project documents its signing
+  identity and recovery process
+- document a tested PostgreSQL backup and recovery procedure for Docker users
 
 ## Platform policy
 

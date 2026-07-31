@@ -10,6 +10,7 @@ class EngagementCreate(BaseModel):
     scope: Optional[str] = Field(default=None, max_length=50000)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    template_key: Optional[Literal["web", "api", "external", "internal", "active_directory", "cloud"]] = None
 
     model_config = {"str_strip_whitespace": True}
 
@@ -39,6 +40,7 @@ class EngagementResponse(BaseModel):
     status: EngagementStatus
     start_date: Optional[date]
     end_date: Optional[date]
+    template_key: Optional[str] = None
     created_by: str
     finding_count: int = 0
 
@@ -53,6 +55,8 @@ class FindingCreate(BaseModel):
     affected_hosts: Optional[str] = Field(default=None, max_length=50000)
     evidence: Optional[str] = Field(default=None, max_length=200000)
     remediation: Optional[str] = Field(default=None, max_length=200000)
+    retest_status: Optional[Literal["open", "remediated", "retest_needed", "accepted_risk"]] = None
+    retest_due_date: Optional[date] = None
 
     model_config = {"str_strip_whitespace": True}
 
@@ -68,6 +72,7 @@ class FindingUpdate(BaseModel):
     retest_status: Optional[
         Literal["open", "remediated", "retest_needed", "accepted_risk"]
     ] = None
+    retest_due_date: Optional[date] = None
 
     model_config = {"str_strip_whitespace": True}
 
@@ -87,6 +92,7 @@ class FindingResponse(BaseModel):
     ai_confidence: Optional[float] = None
     ai_inference: bool = False
     retest_status: Optional[str] = None
+    retest_due_date: Optional[date] = None
 
     model_config = {"from_attributes": True}
 

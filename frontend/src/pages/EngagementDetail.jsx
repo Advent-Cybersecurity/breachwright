@@ -4,7 +4,7 @@ import {
   engagements as engApi, findings as findingsApi, analysis as analysisApi,
   attackPaths as apApi, reports as reportsApi, evidence as evidenceApi,
   narratives as narrativeApi,
-  exportImport, ad as adApi, reportTemplates as templatesApi
+  exportImport, ad as adApi, reportTemplates as templatesApi, workflow as workflowApi
 } from '../api';
 import { Modal, SeverityBadge, StatusBadge, EmptyState, SectionHeader, Toast, Spinner } from '../components/UI';
 import ADPathGraph from '../components/ADPathGraph';
@@ -171,6 +171,11 @@ function FindingForm({ form, setForm, onSubmit, saving, submitLabel, showRetest 
           </select>
         </div>
       </div>
+      {showRetest && <div>
+        <label htmlFor="finding-retest-due" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Retest Due Date</label>
+        <input id="finding-retest-due" type="date" className="input-field text-sm" value={form.retest_due_date || ''}
+          onChange={(e) => setForm({ ...form, retest_due_date: e.target.value || null })} />
+      </div>}
       <div>
         <label htmlFor="finding-hosts" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Affected Hosts</label>
         <input id="finding-hosts" className="input-field text-sm" value={form.affected_hosts}
@@ -210,13 +215,13 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
   const [bulkAction, setBulkAction] = useState('');
   const [form, setForm] = useState({
     title: '', description: '', severity: 'medium', cvss_score: '',
-    affected_hosts: '', evidence: '', remediation: '', retest_status: null
+    affected_hosts: '', evidence: '', remediation: '', retest_status: null, retest_due_date: null
   });
   const [saving, setSaving] = useState(false);
 
   const resetForm = () => setForm({
     title: '', description: '', severity: 'medium', cvss_score: '',
-    affected_hosts: '', evidence: '', remediation: '', retest_status: null
+    affected_hosts: '', evidence: '', remediation: '', retest_status: null, retest_due_date: null
   });
 
   const openEdit = (finding) => {
@@ -229,6 +234,7 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
       evidence: finding.evidence || '',
       remediation: finding.remediation || '',
       retest_status: finding.retest_status || null,
+      retest_due_date: finding.retest_due_date || null,
     });
     setEditFinding(finding);
   };
@@ -409,6 +415,8 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
   const [expanded, setExpanded] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [loadingEvidence, setLoadingEvidence] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const evidenceUrls = useRef(new Set());
 
   useEffect(() => () => {
@@ -435,7 +443,16 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
   const handleExpand = () => {
     const next = !expanded;
     setExpanded(next);
-    if (next) loadEvidence();
+    if (next) {
+      loadEvidence();
+      if (history.length === 0) {
+        setLoadingHistory(true);
+        findingsApi.history(engId, finding.id)
+          .then(setHistory)
+          .catch(() => {})
+          .finally(() => setLoadingHistory(false));
+      }
+    }
   };
 
   const handleUploadEvidence = async (e) => {
@@ -492,6 +509,7 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
         </td>
         <td className="py-3 px-4">
           <RetestBadge status={finding.retest_status} />
+          {finding.retest_due_date && <div className="text-[10px] font-mono themed-text-muted mt-1">Due {finding.retest_due_date}</div>}
         </td>
         <td className="py-3 px-4">
           <span className={`text-xs font-mono ${finding.ai_inference ? 'text-cyan-400' : 'themed-text-muted'}`}>
@@ -555,6 +573,20 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
                   <p className="themed-text-secondary whitespace-pre-wrap">{finding.remediation}</p>
                 </div>
               )}
+              <div>
+                <span className="text-xs font-mono themed-text-muted uppercase tracking-wider block mb-2">Change History</span>
+                {loadingHistory && <Spinner className="w-4 h-4 themed-text-muted" />}
+                {!loadingHistory && history.length === 0 && <p className="text-xs themed-text-muted italic">No recorded changes.</p>}
+                {history.length > 0 && <div className="space-y-2">
+                  {history.map(entry => (
+                    <div key={entry.id} className="text-xs rounded p-2" style={{ backgroundColor: 'var(--bg-800)' }}>
+                      <span className="themed-text-primary font-medium">{entry.action.replaceAll('_', ' ')}</span>
+                      <span className="themed-text-muted ml-2">{entry.created_at ? new Date(entry.created_at).toLocaleString() : ''}</span>
+                      <div className="themed-text-muted mt-1">{Object.keys(entry.changes || {}).join(', ')}</div>
+                    </div>
+                  ))}
+                </div>}
+              </div>
               {/* Evidence Attachments */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -818,10 +850,19 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
   const [scanType, setScanType] = useState('nmap');
   const [loadingScans, setLoadingScans] = useState(true);
   const [drafts, setDrafts] = useState([]);
+  const [snapshots, setSnapshots] = useState([]);
+  const [selectedScanIds, setSelectedScanIds] = useState(new Set());
+  const [snapshotLabel, setSnapshotLabel] = useState('');
+  const [snapshotting, setSnapshotting] = useState(false);
+  const [comparison, setComparison] = useState(null);
 
   useEffect(() => {
-    analysisApi.listScans(engId)
-      .then(setScans)
+    Promise.all([analysisApi.listScans(engId), workflowApi.listSnapshots(engId)])
+      .then(([loadedScans, loadedSnapshots]) => {
+        setScans(loadedScans);
+        setSnapshots(loadedSnapshots);
+        setSelectedScanIds(new Set());
+      })
       .catch(() => {})
       .finally(() => setLoadingScans(false));
   }, [engId]);
@@ -839,6 +880,7 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
     try {
       const scan = await analysisApi.uploadScan(engId, file, scanType);
       setScans(prev => [...prev, scan]);
+      setSelectedScanIds(prev => new Set([...prev, scan.id]));
       toast({ message: `Uploaded ${scan.filename}`, type: 'success' });
     } catch (err) {
       toast({ message: err.message, type: 'error' });
@@ -866,6 +908,23 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
     }
   };
 
+  const createSnapshot = async () => {
+    if (!snapshotLabel.trim() || selectedScanIds.size === 0) return;
+    setSnapshotting(true);
+    try {
+      const result = await workflowApi.createSnapshot(engId, snapshotLabel.trim(), [...selectedScanIds]);
+      setComparison(result);
+      setSnapshots(prev => [result.snapshot, ...prev]);
+      setSnapshotLabel('');
+      setSelectedScanIds(new Set());
+      toast({ message: `Created scan snapshot with ${result.snapshot.observation_count} observations`, type: 'success' });
+    } catch (err) {
+      toast({ message: err.message, type: 'error' });
+    } finally {
+      setSnapshotting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <AIDraftWorkbench
@@ -879,7 +938,7 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
         <div className="flex flex-col sm:flex-row items-center gap-4">
           <div className="flex-1">
             <h3 className="text-sm font-semibold themed-text-primary mb-1">Upload Scan Data</h3>
-            <p className="text-xs themed-text-muted">Nmap XML, Nessus .nessus, Burp XML, or raw text output.</p>
+            <p className="text-xs themed-text-muted">Nmap XML/text, Nessus, Burp XML, Nuclei JSONL, SARIF 2.1, or raw text.</p>
           </div>
           <div className="flex items-center gap-3">
             <select className="input-field text-sm w-28" value={scanType}
@@ -887,6 +946,8 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
               <option value="nmap">Nmap</option>
               <option value="nessus">Nessus</option>
               <option value="burp">Burp</option>
+              <option value="nuclei">Nuclei</option>
+              <option value="sarif">SARIF</option>
               <option value="custom">Other</option>
             </select>
             <label className="btn-secondary flex items-center gap-2 cursor-pointer text-sm">
@@ -901,6 +962,12 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
             <div className="space-y-2">
               {scans.map(s => (
                 <div key={s.id} className="flex items-center gap-3 text-sm">
+                  <input type="checkbox" checked={selectedScanIds.has(s.id)} aria-label={`Include ${s.filename} in snapshot`}
+                    onChange={() => setSelectedScanIds(prev => {
+                      const next = new Set(prev);
+                      if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
+                      return next;
+                    })} />
                   <FileText size={14} className="themed-text-muted" />
                   <span className="font-mono themed-text-secondary flex-1">{s.filename}</span>
                   <span className="badge" style={{ backgroundColor: 'var(--bg-600)', color: 'var(--text-muted)' }}>
@@ -912,6 +979,7 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
                       try {
                         await analysisApi.deleteScan(engId, s.id);
                         setScans(prev => prev.filter(x => x.id !== s.id));
+                        setSelectedScanIds(prev => { const next = new Set(prev); next.delete(s.id); return next; });
                         toast({ message: `Deleted ${s.filename}`, type: 'success' });
                       } catch (err) {
                         toast({ message: err.message, type: 'error' });
@@ -925,6 +993,46 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="card p-6">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+          <div className="flex-1">
+            <label htmlFor="snapshot-label" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Scan Snapshot</label>
+            <input id="snapshot-label" className="input-field text-sm" value={snapshotLabel}
+              onChange={e => setSnapshotLabel(e.target.value)} placeholder="Baseline or Retest 1" />
+          </div>
+          <button className="btn-secondary text-sm" onClick={createSnapshot}
+            disabled={snapshotting || !snapshotLabel.trim() || selectedScanIds.size === 0}>
+            {snapshotting ? 'Comparing...' : `Snapshot ${selectedScanIds.size} selected scan${selectedScanIds.size === 1 ? '' : 's'}`}
+          </button>
+        </div>
+        {snapshots.length > 0 && <div className="mt-4 flex flex-wrap gap-2">
+          {snapshots.map(snapshot => <button key={snapshot.id} className="btn-ghost text-xs"
+            onClick={async () => {
+              try { setComparison(await workflowApi.compareSnapshot(engId, snapshot.id)); }
+              catch (err) { toast({ message: err.message, type: 'error' }); }
+            }}>
+            {snapshot.label} ({snapshot.observation_count})
+          </button>)}
+        </div>}
+        {comparison && <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {Object.entries(comparison.counts).map(([status, count]) => (
+            <div key={status} className="rounded p-3" style={{ backgroundColor: 'var(--bg-700)', border: '1px solid var(--border)' }}>
+              <div className="text-xl font-mono themed-text-primary">{count}</div>
+              <div className="text-xs uppercase tracking-wider themed-text-muted">{status}</div>
+            </div>
+          ))}
+          <div className="col-span-2 sm:col-span-4 space-y-1">
+            {[...comparison.regressed, ...comparison.new, ...comparison.resolved].map(item => (
+              <div key={`${item.status}-${item.fingerprint}`} className="text-xs flex gap-2 rounded p-2" style={{ backgroundColor: 'var(--bg-800)' }}>
+                <span className={item.status === 'regressed' ? 'text-red-400' : item.status === 'new' ? 'text-yellow-400' : 'text-green-400'}>{item.status.toUpperCase()}</span>
+                <span className="themed-text-primary">{item.title}</span>
+                <span className="themed-text-muted">{item.host}{item.port != null ? `:${item.port}` : ''}</span>
+              </div>
+            ))}
+          </div>
+        </div>}
       </div>
 
       <div className="card p-6">
@@ -1272,16 +1380,19 @@ function ReportsTab({ engId, toast }) {
   });
   const [logoFile, setLogoFile] = useState(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [readiness, setReadiness] = useState(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const [reports, tmpls] = await Promise.all([
+        const [reports, tmpls, readinessResult] = await Promise.all([
           reportsApi.list(engId),
           templatesApi.list(),
+          workflowApi.readiness(engId),
         ]);
         setReportList(reports);
         setTemplates(tmpls);
+        setReadiness(readinessResult);
         const def = tmpls.find(t => t.is_default);
         if (def) setSelectedTemplate(def.id);
       } catch (e) {}
@@ -1356,6 +1467,26 @@ function ReportsTab({ engId, toast }) {
 
   return (
     <div>
+      {readiness && <div className="card p-5 mb-5">
+        <div className="flex items-center gap-4">
+          <div className="text-2xl font-mono themed-text-primary">{readiness.score}</div>
+          <div className="flex-1">
+            <div className="text-sm font-semibold themed-text-primary">Report readiness</div>
+            <div className={`text-xs ${readiness.ready ? 'text-green-400' : 'text-red-400'}`}>
+              {readiness.ready ? 'Ready to generate. Review warnings before delivery.' : `${readiness.blockers.length} blocker${readiness.blockers.length === 1 ? '' : 's'} should be resolved.`}
+            </div>
+          </div>
+          <button className="btn-secondary text-xs flex items-center gap-1" onClick={async () => {
+            try { await workflowApi.downloadSarif(engId); toast({ message: 'SARIF export downloaded', type: 'success' }); }
+            catch (err) { toast({ message: err.message, type: 'error' }); }
+          }}><Download size={12} /> Export SARIF</button>
+        </div>
+        {(readiness.blockers.length > 0 || readiness.warnings.length > 0) && <div className="mt-3 space-y-1">
+          {[...readiness.blockers, ...readiness.warnings].map(item => (
+            <div key={item.code} className="text-xs themed-text-muted">{readiness.blockers.includes(item) ? 'Blocker' : 'Warning'}: {item.message}</div>
+          ))}
+        </div>}
+      </div>}
       {/* Template management */}
       <div className="card p-5 mb-5">
         <div className="flex items-center justify-between mb-3">
