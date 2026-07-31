@@ -9,6 +9,7 @@ fi
 bundle_dir="$(cd "$1" && pwd)"
 test_home="${RUNNER_TEMP:-/tmp}/breachwright-install-smoke-${GITHUB_RUN_ID:-local}-$$"
 export HOME="$test_home"
+export XDG_DATA_HOME="$test_home/xdg"
 
 cleanup() {
     case "$test_home" in
@@ -23,15 +24,22 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$HOME"
+legacy_install_dir="$HOME/.local/share/breachwright"
+mkdir -p "$legacy_install_dir"
+printf 'legacy-data-marker' > "$legacy_install_dir/breachwright.db"
 bash "$bundle_dir/install.sh"
 
 launcher="$HOME/.local/bin/breachwright"
-install_dir="$HOME/.local/share/breachwright"
+install_dir="$XDG_DATA_HOME/breachwright"
 data_dir="$install_dir/data"
 
 test -x "$launcher"
 test -x "$install_dir/bin/Breachwright"
+test -f "$install_dir/bin/INSTALL.md"
+test -f "$install_dir/bin/docs/DATA_SAFETY.md"
 test -d "$data_dir/backups"
+test "$(cat "$data_dir/breachwright.db")" = "legacy-data-marker"
+test ! -e "$legacy_install_dir"
 test "$("$launcher" --version)" = "Breachwright $(cat "$bundle_dir/VERSION")"
 
 touch "$data_dir/preserved-marker"

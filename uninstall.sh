@@ -7,10 +7,11 @@ GREEN='\033[0;32m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-INSTALL_DIR="$HOME/.local/share/breachwright"
+XDG_DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}"
+INSTALL_DIR="$XDG_DATA_ROOT/breachwright"
 DATA_DIR="$INSTALL_DIR/data"
 BIN_DIR="$HOME/.local/bin"
-DESKTOP_DIR="$HOME/.local/share/applications"
+DESKTOP_DIR="$XDG_DATA_ROOT/applications"
 
 echo ""
 echo -e "${RED}${BOLD}  Breachwright Uninstaller${NC}"

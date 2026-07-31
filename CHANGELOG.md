@@ -59,6 +59,9 @@
 - Added packaged API, frontend, report, backup, restore, and desktop-window smoke tests
 - Added a real v2.0.0 database upgrade smoke test
 - Added separate native Windows and Linux archives built from the same source
+- Added a release-bundled installation guide covering checksums, first run,
+  data locations, backup, and uninstall behavior
+- Made Linux installation honor `XDG_DATA_HOME`
 - Added release-archive verification for required notices, launchers, checksums, and private-data exclusions
 - Fixed Linux bundle installation, legacy data migration, uninstall cleanup, and data preservation
 - Added a packaged CLI version command and Linux install/uninstall smoke test

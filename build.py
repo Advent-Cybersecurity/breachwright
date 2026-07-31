@@ -103,7 +103,10 @@ def include_distribution_files(bundle_dir: Path) -> None:
         "NOTICE",
         "THIRD_PARTY_NOTICES.md",
         "TRADEMARKS.md",
+        "SECURITY.md",
+        "SUPPORT.md",
         "CHANGELOG.md",
+        "INSTALL.md",
         "icon.ico",
         "icon.png",
     ]
@@ -116,6 +119,11 @@ def include_distribution_files(bundle_dir: Path) -> None:
         source = PROJECT_ROOT / name
         if source.is_file():
             shutil.copy2(source, bundle_dir / name)
+    data_safety = PROJECT_ROOT / "docs" / "DATA_SAFETY.md"
+    if data_safety.is_file():
+        bundled_docs = bundle_dir / "docs"
+        bundled_docs.mkdir(exist_ok=True)
+        shutil.copy2(data_safety, bundled_docs / "DATA_SAFETY.md")
     (bundle_dir / "VERSION").write_text(f"{APP_VERSION}\n", encoding="utf-8")
 
 

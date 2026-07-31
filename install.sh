@@ -18,10 +18,12 @@ YELLOW='\033[0;33m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-INSTALL_DIR="$HOME/.local/share/breachwright"
+XDG_DATA_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}"
+INSTALL_DIR="$XDG_DATA_ROOT/breachwright"
 DATA_DIR="$INSTALL_DIR/data"
+LEGACY_INSTALL_DIR="$HOME/.local/share/breachwright"
 BIN_DIR="$HOME/.local/bin"
-DESKTOP_DIR="$HOME/.local/share/applications"
+DESKTOP_DIR="$XDG_DATA_ROOT/applications"
 
 banner() {
     echo ""
@@ -57,6 +59,16 @@ elif [ -d "$SCRIPT_DIR/backend" ] && [ -d "$SCRIPT_DIR/frontend" ]; then
     info "Detected: source install"
 else
     fail "Cannot determine install mode. Run from project root or extracted binary."
+fi
+
+# Older installers did not honor XDG_DATA_HOME. Move that installation only
+# when the new target does not already exist, so no data is overwritten.
+if [ "$INSTALL_DIR" != "$LEGACY_INSTALL_DIR" ] \
+    && [ -d "$LEGACY_INSTALL_DIR" ] \
+    && [ ! -e "$INSTALL_DIR" ]; then
+    mkdir -p "$(dirname "$INSTALL_DIR")"
+    mv "$LEGACY_INSTALL_DIR" "$INSTALL_DIR"
+    warn "Migrated the previous installation to $INSTALL_DIR"
 fi
 
 # ── Create directories ──

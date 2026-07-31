@@ -33,6 +33,11 @@ $expectedVersion = (Get-Content -LiteralPath (Join-Path $bundle "VERSION") -Raw)
 if (-not (Test-Path -LiteralPath $cli -PathType Leaf)) {
     throw "Installed CLI was not found"
 }
+foreach ($document in @("INSTALL.md", "docs\DATA_SAFETY.md")) {
+    if (-not (Test-Path -LiteralPath (Join-Path $installDirectory $document) -PathType Leaf)) {
+        throw "Installed documentation was not found: $document"
+    }
+}
 $reportedVersion = (& $cli --version).Trim()
 if ($reportedVersion -ne "Breachwright $expectedVersion") {
     throw "Installed CLI reported an unexpected version: $reportedVersion"

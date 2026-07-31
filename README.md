@@ -99,7 +99,8 @@ are produced as two archives:
 
 Both archives are built and tested by the same candidate workflow. A release
 download is not updated until both native candidates pass their platform
-checks.
+checks. See [INSTALL.md](INSTALL.md) for extraction, installation, first-run,
+data-location, backup, and uninstall instructions.
 
 ## Configure an AI provider
 
@@ -107,7 +108,8 @@ The application stores configuration in its platform-specific data directory:
 
 - Windows: `%APPDATA%\Breachwright\.env`
 - macOS: `~/Library/Application Support/Breachwright/.env`
-- Linux: `${XDG_DATA_HOME:-~/.local/share}/breachwright/.env`
+- Linux source or direct bundle: `${XDG_DATA_HOME:-~/.local/share}/breachwright/.env`
+- Linux installed package: `${XDG_DATA_HOME:-~/.local/share}/breachwright/data/.env`
 
 You can configure Anthropic, OpenAI, or a local model in the Settings page. Azure OpenAI and AWS Bedrock can be configured through the environment file. Start with [.env.example](.env.example).
 
