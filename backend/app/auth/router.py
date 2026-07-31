@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
@@ -19,6 +19,7 @@ from app.auth.service import (
 )
 from app.auth.dependencies import get_current_user, require_admin
 from app.auth.models import User, UserRole
+from app.auth.rate_limit import login_rate_limiter
 from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -55,10 +56,26 @@ async def first_run_setup(request: UserCreate, db: AsyncSession = Depends(get_db
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(request: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
-    user = await authenticate_user(db, request.email, request.password)
+async def login(
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    client_host = request.client.host if request.client else "unknown"
+    limiter_key = f"{client_host}|{str(body.email).strip().lower()}"
+    retry_after = login_rate_limiter.register_attempt(limiter_key)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    user = await authenticate_user(db, body.email, body.password)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    login_rate_limiter.clear(limiter_key)
 
     access_token = create_access_token(user.id, user.role.value, user.token_version)
     refresh_token = create_refresh_token(user.id, user.token_version)

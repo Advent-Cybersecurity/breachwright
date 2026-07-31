@@ -223,6 +223,25 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(repeated_setup.status_code, 403)
 
+        for _ in range(10):
+            failed_login = self.client.post(
+                "/api/auth/login",
+                json={
+                    "email": "unknown@example.com",
+                    "password": "not-the-password",
+                },
+            )
+            self.assertEqual(failed_login.status_code, 401)
+        throttled_login = self.client.post(
+            "/api/auth/login",
+            json={
+                "email": "unknown@example.com",
+                "password": "not-the-password",
+            },
+        )
+        self.assertEqual(throttled_login.status_code, 429)
+        self.assertGreater(int(throttled_login.headers["retry-after"]), 0)
+
         login = self.client.post(
             "/api/auth/login",
             json={

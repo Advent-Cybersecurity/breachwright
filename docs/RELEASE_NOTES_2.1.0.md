@@ -12,6 +12,7 @@ usage limits.
 - Complete Markdown and DOCX report generation without an AI provider
 - Administrator account management and read-only viewer roles
 - Self-service password changes and reliable session revocation
+- Login-failure throttling and uniform invalid-credential responses
 - Verified SQLite backups with offline restore, rollback, and secret exclusion
 - Backup coverage for evidence, scans, reports, template assets, and Tool
   Runner output

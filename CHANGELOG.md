@@ -55,6 +55,8 @@
 ### Security
 
 - Added password length, email, duplicate-user, CVSS, date, and import validation
+- Added bounded login-failure throttling and equalized password verification
+  for unknown accounts
 - Added bounded attack-path validation and rollback coverage for engagement imports
 - Prevented scan filename and frontend fallback path traversal
 - Added scan and import size limits

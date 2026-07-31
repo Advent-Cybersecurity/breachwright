@@ -10,6 +10,7 @@ from app.auth.models import User, UserRole
 from app.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+DUMMY_PASSWORD_HASH = pwd_context.hash("breachwright-dummy-password-check")
 
 ALGORITHM = "HS256"
 
@@ -66,7 +67,11 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> Opti
         )
     )
     user = result.scalar_one_or_none()
-    if user and verify_password(password, user.password_hash):
+    password_matches = verify_password(
+        password,
+        user.password_hash if user else DUMMY_PASSWORD_HASH,
+    )
+    if user and password_matches:
         user.last_login = datetime.now(timezone.utc)
         return user
     return None
