@@ -128,6 +128,19 @@ class BackupTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsafe backup path"):
             validate_backup(traversal_backup)
 
+        alias_backup = self.root / "path-alias.zip"
+        with ZipFile(alias_backup, "w") as archive:
+            archive.writestr("database/breachwright.db", b"one")
+            archive.writestr("DATABASE/BREACHWRIGHT.DB", b"two")
+        with self.assertRaisesRegex(ValueError, "Duplicate backup path"):
+            validate_backup(alias_backup)
+
+        alternate_stream_backup = self.root / "alternate-stream.zip"
+        with ZipFile(alternate_stream_backup, "w") as archive:
+            archive.writestr("data/evidence/proof.txt:payload", b"unsafe")
+        with self.assertRaisesRegex(ValueError, "Unsafe backup path"):
+            validate_backup(alternate_stream_backup)
+
         tampered_backup = self.root / "tampered.zip"
         database_content = b"not-a-real-database"
         with ZipFile(tampered_backup, "w") as archive:

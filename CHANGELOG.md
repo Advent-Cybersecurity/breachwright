@@ -8,6 +8,7 @@
 - Portable backups include custom template assets and Tool Runner output
 - Added offline restore with archive checksums, SQLite integrity checks, rollback, and preservation of displaced data
 - Backup validation now rejects unsigned databases and unmanifested archive files
+- Restore validation rejects cross-platform path aliases and Windows alternate streams
 - Added authenticated system diagnostics and backup management in Settings
 - Added confirmed backup deletion so long-running installations can manage disk usage
 - Fixed startup so migration failures and timeouts stop the application instead of reporting false success

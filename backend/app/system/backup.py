@@ -174,12 +174,14 @@ def _safe_members(archive: ZipFile) -> list[str]:
             path.is_absolute()
             or ".." in path.parts
             or not path.parts
-            or ":" in path.parts[0]
+            or any(":" in part for part in path.parts)
+            or path.as_posix() != normalized
         ):
             raise ValueError(f"Unsafe backup path: {entry.filename}")
-        if normalized in seen:
+        portable_name = normalized.casefold()
+        if portable_name in seen:
             raise ValueError(f"Duplicate backup path: {entry.filename}")
-        seen.add(normalized)
+        seen.add(portable_name)
         if entry.file_size > MAX_BACKUP_MEMBER_SIZE:
             raise ValueError(f"Backup file is too large: {entry.filename}")
         total_size += entry.file_size
