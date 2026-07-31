@@ -20,6 +20,13 @@ router = APIRouter(
 )
 
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"}
+CANONICAL_EXTENSIONS = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "application/pdf": ".pdf",
+}
 MAX_SIZE = 10 * 1024 * 1024  # 10MB
 
 
@@ -120,8 +127,9 @@ async def upload_evidence(
     os.makedirs(evidence_dir, exist_ok=True)
 
     display_name = _safe_display_name(file.filename, "evidence")
-    ext = os.path.splitext(display_name)[1]
-    stored_name = f"{uuid.uuid4().hex}{ext}"
+    stored_name = (
+        f"{uuid.uuid4().hex}{CANONICAL_EXTENSIONS[file.content_type]}"
+    )
     file_path = os.path.join(evidence_dir, stored_name)
 
     with open(file_path, "wb") as f:

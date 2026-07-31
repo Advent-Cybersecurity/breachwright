@@ -750,18 +750,23 @@ class UserJourneyTests(unittest.TestCase):
             params={"scan_type": "custom"},
             files={
                 "file": (
-                    "../../outside.txt",
+                    "../../outside.txt:alternate",
                     b"safe scan content",
                     "text/plain",
                 )
             },
         )
         self.assertEqual(scan_upload.status_code, 200, scan_upload.text)
-        self.assertEqual(scan_upload.json()["filename"], "outside.txt")
+        self.assertEqual(
+            scan_upload.json()["filename"],
+            "outside.txt:alternate",
+        )
         upload_directory = self.data_dir / "uploads" / engagement_id
         uploaded_files = list(upload_directory.iterdir())
         self.assertEqual(len(uploaded_files), 1)
         self.assertEqual(uploaded_files[0].parent, upload_directory)
+        self.assertEqual(uploaded_files[0].suffix, ".dat")
+        self.assertNotIn(":", uploaded_files[0].name)
         self.assertFalse((self.data_dir / "outside.txt").exists())
         scans = self.client.get(
             f"/api/engagements/{engagement_id}/scans",
@@ -946,11 +951,26 @@ class UserJourneyTests(unittest.TestCase):
         upload = self.client.post(
             f"/api/engagements/{engagement_id}/findings/{finding_id}/evidence",
             headers=headers,
-            files={"file": ("../evidence.png", evidence_bytes, "image/png")},
+            files={
+                "file": (
+                    "../evidence.png:alternate",
+                    evidence_bytes,
+                    "image/png",
+                )
+            },
         )
         self.assertEqual(upload.status_code, 200, upload.text)
-        self.assertEqual(upload.json()["filename"], "evidence.png")
+        self.assertEqual(
+            upload.json()["filename"],
+            "evidence.png:alternate",
+        )
         evidence_url = upload.json()["url"]
+        stored_evidence = list(
+            (self.data_dir / "evidence" / finding_id).iterdir()
+        )
+        self.assertEqual(len(stored_evidence), 1)
+        self.assertEqual(stored_evidence[0].suffix, ".png")
+        self.assertNotIn(":", stored_evidence[0].name)
 
         self.assertEqual(self.client.get(evidence_url).status_code, 401)
         downloaded_evidence = self.client.get(evidence_url, headers=headers)

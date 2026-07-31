@@ -32,6 +32,20 @@ def _safe_upload_name(filename: str | None, fallback: str) -> str:
     return name if name not in {"", ".", ".."} else fallback
 
 
+def _safe_upload_extension(filename: str) -> str:
+    """Return a portable suffix that cannot become an NTFS data stream."""
+    extension = os.path.splitext(filename)[1].lower()
+    suffix = extension[1:]
+    if (
+        extension.startswith(".")
+        and len(extension) <= 20
+        and suffix
+        and all(character.isalnum() or character in {"-", "_"} for character in suffix)
+    ):
+        return extension
+    return ".dat"
+
+
 @router.get("/scans")
 async def list_scans(
     engagement_id: str,
@@ -88,7 +102,7 @@ async def upload_scan(
     upload_dir = os.path.join(settings.data_dir, "uploads", engagement_id)
     os.makedirs(upload_dir, exist_ok=True)
     display_name = _safe_upload_name(file.filename, "scan.txt")
-    extension = os.path.splitext(display_name)[1][:20]
+    extension = _safe_upload_extension(display_name)
     file_path = os.path.join(upload_dir, f"{uuid.uuid4().hex}{extension}")
     content = await file.read(MAX_SCAN_SIZE + 1)
     if len(content) > MAX_SCAN_SIZE:
