@@ -6,7 +6,7 @@ models or report generation.
 """
 
 import json
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
@@ -63,6 +63,42 @@ class ADAttackPathCandidate(BaseModel):
         return value
 
 
+class GapCandidate(BaseModel):
+    category: str = Field(min_length=1, max_length=500)
+    item: str = Field(min_length=1, max_length=1000)
+    severity: Literal["high", "medium", "low"]
+    type: Literal["not_tested", "undertested"]
+    reason: str = Field(min_length=1, max_length=20_000)
+    recommendation: str = Field(min_length=1, max_length=20_000)
+    methodology_ref: str = Field(default="", max_length=2000)
+
+    model_config = {"str_strip_whitespace": True}
+
+
+class OutOfScopeCandidate(BaseModel):
+    category: str = Field(min_length=1, max_length=500)
+    item: str = Field(min_length=1, max_length=1000)
+    reason: str = Field(min_length=1, max_length=20_000)
+
+    model_config = {"str_strip_whitespace": True}
+
+
+class GapAnalysisCandidate(BaseModel):
+    engagement_type: list[
+        Annotated[str, Field(min_length=1, max_length=50)]
+    ] = Field(default_factory=list, max_length=20)
+    scope_summary: str = Field(default="", max_length=20_000)
+    gaps: list[GapCandidate] = Field(default_factory=list, max_length=1000)
+    out_of_scope_items: list[OutOfScopeCandidate] = Field(
+        default_factory=list,
+        max_length=1000,
+    )
+    coverage_score: float = Field(ge=0, le=100)
+    summary: str = Field(default="", max_length=20_000)
+
+    model_config = {"str_strip_whitespace": True}
+
+
 def _validate_list(raw: object, model: type[BaseModel], label: str) -> list[BaseModel]:
     if not isinstance(raw, list):
         raise ValueError(f"AI returned {label} in an invalid format")
@@ -93,3 +129,13 @@ def validate_ai_attack_paths(raw: object) -> list[AttackPathCandidate]:
 
 def validate_ai_ad_paths(raw: object) -> list[ADAttackPathCandidate]:
     return _validate_list(raw, ADAttackPathCandidate, "Active Directory path")
+
+
+def validate_gap_analysis(raw: object) -> GapAnalysisCandidate:
+    if not isinstance(raw, dict):
+        raise ValueError("AI returned gap analysis in an invalid format")
+    try:
+        return GapAnalysisCandidate.model_validate(raw)
+    except ValidationError as exc:
+        message = exc.errors()[0]["msg"]
+        raise ValueError(f"AI returned invalid gap analysis: {message}") from exc

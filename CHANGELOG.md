@@ -48,8 +48,9 @@
 - Fixed Docker Compose persistence for evidence, configuration, and signing data
 - Bounded upload reads before validating scan, evidence, logo, and Active Directory file sizes
 - Bounded assistant messages and bulk finding selections before processing
-- Added bounded schema validation for AI-generated findings, attack paths, and
-  Active Directory paths before they reach engagement data
+- Added bounded schema validation for AI-generated findings, attack paths,
+  Active Directory paths, and gap-analysis results before they reach
+  engagement data or the interface
 
 ### Security
 

@@ -358,9 +358,14 @@ def _parse_narrative_response(text: str) -> dict:
     """Parse AI response, handling various output formats."""
     cleaned = text.strip()
 
+    def object_or_error(value: object) -> dict:
+        if isinstance(value, dict):
+            return value
+        return {"error": "AI response was not a JSON object"}
+
     # Try direct JSON
     try:
-        return json.loads(cleaned)
+        return object_or_error(json.loads(cleaned))
     except json.JSONDecodeError:
         pass
 
@@ -368,7 +373,7 @@ def _parse_narrative_response(text: str) -> dict:
     json_match = re.search(r'```(?:json)?\s*\n?({.*?})\s*```', cleaned, re.DOTALL)
     if json_match:
         try:
-            return json.loads(json_match.group(1))
+            return object_or_error(json.loads(json_match.group(1)))
         except json.JSONDecodeError:
             pass
 
@@ -377,7 +382,9 @@ def _parse_narrative_response(text: str) -> dict:
     brace_end = cleaned.rfind('}')
     if brace_start != -1 and brace_end > brace_start:
         try:
-            return json.loads(cleaned[brace_start:brace_end + 1])
+            return object_or_error(
+                json.loads(cleaned[brace_start:brace_end + 1])
+            )
         except json.JSONDecodeError:
             pass
 

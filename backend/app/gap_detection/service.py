@@ -20,6 +20,7 @@ from app.engagements.models import Engagement, Finding, ScanUpload, AttackPath
 from app.checklists.models import ChecklistItem
 from app.checklists.methodologies import METHODOLOGIES
 from app.ai.provider import get_provider
+from app.ai.output_validation import validate_gap_analysis
 from app.ai.prompts.loader import get_prompt
 
 logger = logging.getLogger(__name__)
@@ -294,6 +295,12 @@ async def analyze_gaps(
             "error": "AI returned invalid JSON",
             "raw_response": response_text[:2000],
         }
+
+    try:
+        result = validate_gap_analysis(result).model_dump(mode="json")
+    except ValueError as exc:
+        logger.warning("Rejected invalid AI gap-analysis output: %s", exc)
+        return {"error": str(exc)}
 
     # Enrich with metadata
     methodology = METHODOLOGIES[methodology_key]
