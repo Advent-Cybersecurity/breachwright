@@ -154,6 +154,7 @@ export default function EvidenceNotebookTab({ engId, toast, onFindingsChanged, o
   };
 
   const deleteAttachment = async (note, attachment) => {
+    if (!window.confirm(`Delete notebook attachment "${attachment.filename}"? This removes the stored file.`)) return;
     try {
       await notebookApi.deleteAttachment(engId, note.id, attachment.id);
       setNotebook(previous => ({

@@ -103,6 +103,9 @@
 - Assistant scan excerpts now use bounded worker-thread reads, and large finding
   fields plus evidence-reference lists are capped before context assembly to
   avoid request-loop stalls and excessive transient memory use.
+- Report, finding-evidence, and Notebook-attachment deletion now confirms the
+  stored-file impact and preserves the database record with a retryable conflict
+  when the underlying file cannot be removed.
 
 ## v2.2.0 (2026-07-31)
 

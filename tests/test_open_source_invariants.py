@@ -307,6 +307,29 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("bounded_context_value(f.evidence", router)
         self.assertNotIn('f.read()[:3000]', router)
 
+    def test_stored_report_and_attachment_deletions_are_explicit_and_retryable(self):
+        report_router = (ROOT / "backend" / "app" / "reports" / "router.py").read_text(
+            encoding="utf-8"
+        )
+        evidence_router = (ROOT / "backend" / "app" / "findings" / "evidence.py").read_text(
+            encoding="utf-8"
+        )
+        notebook_router = (ROOT / "backend" / "app" / "findings" / "notebook_router.py").read_text(
+            encoding="utf-8"
+        )
+        engagement_page = (ROOT / "frontend" / "src" / "pages" / "EngagementDetail.jsx").read_text(
+            encoding="utf-8"
+        )
+        notebook_page = (ROOT / "frontend" / "src" / "components" / "EvidenceNotebookTab.jsx").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Report file could not be removed", report_router)
+        self.assertIn("Evidence file could not be removed", evidence_router)
+        self.assertIn("Notebook attachment could not be removed", notebook_router)
+        self.assertIn('Delete generated report', engagement_page)
+        self.assertIn('Delete evidence attachment', engagement_page)
+        self.assertIn('Delete notebook attachment', notebook_page)
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")

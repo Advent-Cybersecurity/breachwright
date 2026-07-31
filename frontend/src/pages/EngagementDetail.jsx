@@ -829,6 +829,8 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onSaveTe
   };
 
   const handleDeleteEvidence = async (attId) => {
+    const attachment = attachments.find(item => item.id === attId);
+    if (!window.confirm(`Delete evidence attachment "${attachment?.filename || 'Untitled'}"? This removes the stored file.`)) return;
     try {
       await evidenceApi.delete(engId, finding.id, attId);
       const removed = attachments.find(a => a.id === attId);
@@ -2571,6 +2573,7 @@ function ReportsTab({ engId, toast }) {
               </div>
               <button
                 onClick={async () => {
+                  if (!window.confirm(`Delete generated report "${report.title}"? The stored ${report.format.toUpperCase()} file will be removed.`)) return;
                   try {
                     await reportsApi.download(report.id, report.format, report.title);
                     toast({ message: `Downloaded: ${report.title}.${report.format}`, type: 'success' });

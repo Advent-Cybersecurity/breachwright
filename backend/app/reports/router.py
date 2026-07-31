@@ -249,6 +249,9 @@ async def delete_report(
     if report.file_path and os.path.exists(report.file_path):
         try:
             os.remove(report.file_path)
-        except Exception:
-            pass
+        except OSError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Report file could not be removed: {exc}",
+            ) from exc
     await db.delete(report)

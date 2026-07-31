@@ -383,6 +383,9 @@ async def delete_attachment(
     if attachment.file_path and os.path.isfile(attachment.file_path):
         try:
             os.remove(attachment.file_path)
-        except OSError:
-            pass
+        except OSError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Notebook attachment could not be removed: {exc}",
+            ) from exc
     await db.delete(attachment)
