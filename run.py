@@ -153,9 +153,21 @@ def main():
         action="store_true",
         help="Confirm an offline restore and preserve current data in a safety folder",
     )
+    parser.add_argument(
+        "--provider-status",
+        action="store_true",
+        help="Validate the configured AI provider without sending a model request",
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=13370)
     args = parser.parse_args()
+
+    if args.provider_status:
+        from app.ai.provider import get_provider
+
+        provider = get_provider()
+        print(f"AI provider ready: {provider.name()}")
+        return
 
     if args.create_backup:
         from app.config import settings

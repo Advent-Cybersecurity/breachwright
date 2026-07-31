@@ -112,3 +112,6 @@ Manual findings, evidence management, checklists, local reports, export/import,
 and backups work without an AI provider. Optional third-party AI services may
 charge for their own API usage. Local compatible model servers can be
 configured in **Settings** without a commercial AI API.
+
+Run the installed command-line executable with `--provider-status` to validate
+the configured provider without sending a model request.

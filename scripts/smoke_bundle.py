@@ -158,6 +158,27 @@ def main() -> int:
         ).stdout.strip()
         if version != f"Breachwright {health.get('version')}":
             raise RuntimeError(f"Packaged CLI reported an unexpected version: {version}")
+        bedrock_env = env.copy()
+        bedrock_env.update(
+            {
+                "AI_PROVIDER": "bedrock",
+                "AWS_ACCESS_KEY_ID": "packaging-test",
+                "AWS_SECRET_ACCESS_KEY": "packaging-test",
+                "AWS_EC2_METADATA_DISABLED": "true",
+            }
+        )
+        provider_status = subprocess.run(
+            [str(cli), "--provider-status"],
+            env=bedrock_env,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.strip()
+        if not provider_status.startswith("AI provider ready: Bedrock ("):
+            raise RuntimeError(
+                f"Packaged Bedrock provider was unavailable: {provider_status}"
+            )
         subprocess.run(
             [str(cli), "--create-backup"],
             env=env,

@@ -28,6 +28,7 @@
   immediate revocation of existing account sessions
 - Made AI report enhancement an explicit opt-in
 - Included the AWS SDK so the advertised Bedrock provider works in source and packaged installs
+- Added a no-request CLI provider diagnostic and packaged Bedrock smoke test
 - Added semantic version precedence so older releases are not presented as updates
 - Added accessible labels to first-run, login, engagement, and finding forms
 - Added accessible names to assistant message and send controls
