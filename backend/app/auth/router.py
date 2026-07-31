@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Cookie
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +24,7 @@ from app.auth.rate_limit import login_rate_limiter
 from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+first_run_setup_lock = asyncio.Lock()
 
 
 
@@ -37,21 +39,27 @@ async def needs_setup(db: AsyncSession = Depends(get_db)):
 @router.post("/setup")
 async def first_run_setup(request: UserCreate, db: AsyncSession = Depends(get_db)):
     """Create the first admin user. Only works when no users exist."""
-    count = await get_active_user_count(db)
-    if count > 0:
-        raise HTTPException(status_code=403, detail="Setup already completed. Use the app to manage users.")
+    async with first_run_setup_lock:
+        count = await get_active_user_count(db)
+        if count > 0:
+            raise HTTPException(
+                status_code=403,
+                detail="Setup already completed. Use the app to manage users.",
+            )
 
-    from app.auth.models import UserRole
-    try:
-        user = await create_user(
-            db,
-            email=request.email,
-            password=request.password,
-            display_name=request.display_name or str(request.email).split("@")[0],
-            role=UserRole.admin,
-        )
-    except DuplicateEmailError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        try:
+            user = await create_user(
+                db,
+                email=request.email,
+                password=request.password,
+                display_name=(
+                    request.display_name
+                    or str(request.email).split("@")[0]
+                ),
+                role=UserRole.admin,
+            )
+        except DuplicateEmailError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"message": f"Admin account created: {user.email}", "email": user.email}
 
 

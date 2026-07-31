@@ -11,6 +11,7 @@ import shutil
 import time
 import unittest
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -204,15 +205,32 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(oversized_bcrypt_password.status_code, 422)
 
-        setup = self.client.post(
-            "/api/auth/setup",
-            json={
+        setup_payload = {
                 "email": "admin@example.com",
                 "password": "correct-horse-battery-staple",
                 "display_name": "E2E Admin",
-            },
+        }
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            setup_attempts = list(
+                executor.map(
+                    lambda _: httpx.post(
+                        f"{self.base_url}/api/auth/setup",
+                        json=setup_payload,
+                        timeout=20,
+                    ),
+                    range(2),
+                )
+            )
+        self.assertEqual(
+            sorted(response.status_code for response in setup_attempts),
+            [200, 403],
+            [response.text for response in setup_attempts],
         )
-        self.assertEqual(setup.status_code, 200, setup.text)
+        setup = next(
+            response
+            for response in setup_attempts
+            if response.status_code == 200
+        )
 
         repeated_setup = self.client.post(
             "/api/auth/setup",
