@@ -179,7 +179,7 @@ for _mod in ("docx", "lxml", "lxml.etree", "lxml._elementpath"):
 hidden_imports += collect_submodules("docx")
 
 # -- AI / LLM libraries
-for _mod in ("openai", "anthropic", "tiktoken", "httpx", "jwt"):
+for _mod in ("openai", "anthropic", "boto3", "botocore", "httpx", "jwt"):
     try:
         importlib.import_module(_mod)
         hidden_imports += collect_submodules(_mod)
@@ -236,7 +236,14 @@ hidden_imports = sorted(
 # ========================== EXTRA DATA FILES ===============================
 
 _extra_datas = []
-for _pkg in ("certifi", "email_validator", "docx", "jinja2", "alembic"):
+for _pkg in (
+    "certifi",
+    "email_validator",
+    "docx",
+    "jinja2",
+    "alembic",
+    "botocore",
+):
     try:
         _extra_datas += collect_data_files(_pkg)
     except Exception:
@@ -273,7 +280,6 @@ _excludes = [
     "matplotlib", "scipy", "numpy", "pandas",
     "IPython", "jupyter", "notebook",
     "pytest", "unittest",
-    "boto3", "botocore", "s3transfer", "awscrt",
     "setuptools", "pip", "wheel", "pkg_resources",
     "test", "lib2to3", "ensurepip",
     "django",

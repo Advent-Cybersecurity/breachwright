@@ -104,6 +104,17 @@ class OpenSourceReleaseTests(unittest.TestCase):
             self.assertNotIn("await file.read()", source, path)
             self.assertNotIn("await logo.read()", source, path)
 
+    def test_advertised_bedrock_provider_is_installed_and_packaged(self):
+        requirements = (ROOT / "backend" / "requirements.txt").read_text(
+            encoding="utf-8"
+        )
+        specification = (ROOT / "breachwright.spec").read_text(encoding="utf-8")
+        self.assertIn("boto3==", requirements)
+        self.assertIn('"boto3", "botocore"', specification)
+        excludes = specification.split("_excludes = [", 1)[1].split("]", 1)[0]
+        self.assertNotIn('"boto3"', excludes)
+        self.assertNotIn('"botocore"', excludes)
+
 
 if __name__ == "__main__":
     unittest.main()

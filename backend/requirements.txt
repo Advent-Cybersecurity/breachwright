@@ -18,7 +18,7 @@ email-validator==2.2.0
 # AI Providers
 anthropic==0.42.0
 openai==1.58.1
-# # boto3==1.35.86  # Optional: only needed for AWS Bedrock provider  # Optional: only needed for AWS Bedrock provider
+boto3==1.43.61
 
 # Reports
 python-docx==1.1.2
