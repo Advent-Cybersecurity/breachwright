@@ -155,6 +155,15 @@ class OpenSourceReleaseTests(unittest.TestCase):
             engagement_page,
         )
 
+    def test_coverage_methods_load_in_an_effect(self):
+        coverage_review = (
+            ROOT / "frontend" / "src" / "components" / "GapAnalysisTab.jsx"
+        ).read_text(encoding="utf-8")
+        self.assertIn("useEffect(() => {", coverage_review)
+        self.assertIn("[engId, toast]", coverage_review)
+        self.assertNotIn("useState(() => {\n    gapAnalysis.methodologies", coverage_review)
+        self.assertNotIn("methodologies(engId).then(setMethodologies).catch(() => {})", coverage_review)
+
     def test_docker_application_data_is_persistent(self):
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         self.assertIn("- DATA_DIR=/app/data", compose)

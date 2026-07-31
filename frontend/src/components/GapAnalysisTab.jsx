@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { gapAnalysis } from '../api';
 import { SeverityBadge, Spinner } from './UI';
 import {
@@ -133,10 +133,17 @@ export default function GapAnalysisTab({ engId, toast }) {
     }
   };
 
-  // Load methodologies on first render
-  useState(() => {
-    gapAnalysis.methodologies(engId).then(setMethodologies).catch(() => {});
-  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    gapAnalysis.methodologies(engId)
+      .then(data => {
+        if (!cancelled) setMethodologies(data);
+      })
+      .catch(error => {
+        if (!cancelled) toast({ message: `Could not load coverage methods: ${error.message}`, type: 'error' });
+      });
+    return () => { cancelled = true; };
+  }, [engId, toast]);
 
   const gaps = result?.gaps || [];
   const highGaps = gaps.filter(g => g.severity === 'high');
