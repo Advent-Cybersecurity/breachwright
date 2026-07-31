@@ -100,6 +100,9 @@
   engagement scopes before provider initialization, removes citations truncated
   out of the final prompt, preserves citation display order, and shows provider
   plus redaction state before each request.
+- Assistant scan excerpts now use bounded worker-thread reads, and large finding
+  fields plus evidence-reference lists are capped before context assembly to
+  avoid request-loop stalls and excessive transient memory use.
 
 ## v2.2.0 (2026-07-31)
 

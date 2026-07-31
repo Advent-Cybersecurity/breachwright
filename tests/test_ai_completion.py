@@ -1,6 +1,8 @@
 import unittest
+from io import BytesIO
 from pathlib import Path
 import sys
+from unittest.mock import patch
 
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 if str(BACKEND) not in sys.path:
@@ -15,9 +17,12 @@ from app.ai.context import (
     redact_sensitive_text,
 )
 from app.assistant.router import (
+    MAX_ASSISTANT_SCAN_EXCERPT_BYTES,
+    bounded_context_value,
     build_assistant_user_message,
     citation_ids_in_order,
     citations_present_in_context,
+    read_scan_excerpt,
 )
 
 
@@ -56,6 +61,26 @@ class AICompletionTests(unittest.IsolatedAsyncioTestCase):
                 citations,
             ),
             citations[:2],
+        )
+
+    def test_assistant_fields_and_scan_reads_are_bounded_before_context_build(self):
+        bounded = bounded_context_value("x" * 10_000, 100)
+        self.assertEqual(len(bounded), 100)
+        self.assertTrue(bounded.endswith("[Field truncated at the local context limit.]"))
+
+        scan_stream = BytesIO(b"A" * (MAX_ASSISTANT_SCAN_EXCERPT_BYTES + 100))
+        with (
+            patch("app.assistant.router.os.path.islink", return_value=False),
+            patch("app.assistant.router.os.path.isfile", return_value=True),
+            patch("builtins.open", return_value=scan_stream) as open_file,
+        ):
+            excerpt = read_scan_excerpt("bounded-scan.txt")
+        open_file.assert_called_once_with("bounded-scan.txt", "rb")
+        self.assertTrue(excerpt.startswith("A" * 100))
+        self.assertIn("[Scan excerpt truncated.]", excerpt)
+        self.assertLess(
+            len(excerpt),
+            MAX_ASSISTANT_SCAN_EXCERPT_BYTES + 100,
         )
 
     def test_parser_rejects_json_hidden_inside_prose(self):

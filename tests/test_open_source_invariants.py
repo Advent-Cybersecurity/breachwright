@@ -302,6 +302,10 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("citation_ids_in_order(response)", router)
         self.assertIn("Sensitive-data redaction:", frontend)
         self.assertIn("bounded context from the selected engagement", frontend)
+        self.assertIn("await asyncio.to_thread(", router)
+        self.assertIn("read_scan_excerpt", router)
+        self.assertIn("bounded_context_value(f.evidence", router)
+        self.assertNotIn('f.read()[:3000]', router)
 
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
