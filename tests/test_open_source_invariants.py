@@ -459,6 +459,44 @@ class OpenSourceReleaseTests(unittest.TestCase):
             4,
         )
 
+    def test_coverage_and_narrative_records_are_bounded_before_provider_use(self):
+        coverage = (
+            ROOT / "backend" / "app" / "gap_detection" / "service.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("MAX_GAP_ANALYSIS_FINDINGS = 500", coverage)
+        self.assertIn("MAX_GAP_ANALYSIS_CHECKLIST_ITEMS = 1_000", coverage)
+        self.assertIn("select(func.count(model.id))", coverage)
+        self.assertLess(coverage.index("count_limits = ("), coverage.index("get_provider()"))
+
+        narrative = (
+            ROOT / "backend" / "app" / "narrative" / "service.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("MAX_NARRATIVE_FINDINGS = 500", narrative)
+        self.assertIn("MAX_NARRATIVE_ATTACK_PATHS = 100", narrative)
+        self.assertGreaterEqual(
+            narrative.count(".limit(MAX_NARRATIVE_FINDINGS + 1)"),
+            2,
+        )
+        self.assertGreaterEqual(
+            narrative.count(".limit(MAX_NARRATIVE_ATTACK_PATHS + 1)"),
+            2,
+        )
+
+        page = (ROOT / "frontend" / "src" / "pages" / "EngagementDetail.jsx").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Delete the saved attack narrative?", page)
+        self.assertIn("Could not copy the narrative to the clipboard", page)
+
+        gap_router = (
+            ROOT / "backend" / "app" / "gap_detection" / "router.py"
+        ).read_text(encoding="utf-8")
+        narrative_router = (
+            ROOT / "backend" / "app" / "narrative" / "router.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("status_code=413", gap_router)
+        self.assertGreaterEqual(narrative_router.count("status_code=413"), 2)
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")

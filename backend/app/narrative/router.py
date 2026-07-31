@@ -54,6 +54,8 @@ async def generate_path_narratives(
             raise HTTPException(status_code=404, detail=results[0]["error"])
         if results[0]["error"] == AI_PROVIDER_FAILURE_MESSAGE:
             raise HTTPException(status_code=502, detail=results[0]["error"])
+        if "supports up to" in results[0]["error"] or "exceeds the" in results[0]["error"]:
+            raise HTTPException(status_code=413, detail=results[0]["error"])
         raise HTTPException(status_code=400, detail=results[0]["error"])
 
     return {
@@ -82,6 +84,8 @@ async def generate_full_narrative(
             raise HTTPException(status_code=404, detail=result["error"])
         if result["error"] == AI_PROVIDER_FAILURE_MESSAGE:
             raise HTTPException(status_code=502, detail=result["error"])
+        if "supports up to" in result["error"] or "exceeds the" in result["error"]:
+            raise HTTPException(status_code=413, detail=result["error"])
         raise HTTPException(status_code=400, detail=result["error"])
 
     return result

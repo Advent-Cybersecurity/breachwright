@@ -28,6 +28,9 @@ from app.ai.context import AIContextTooLarge, build_bounded_untrusted_context
 
 logger = logging.getLogger(__name__)
 
+MAX_NARRATIVE_FINDINGS = 500
+MAX_NARRATIVE_ATTACK_PATHS = 100
+
 
 NARRATIVE_SYSTEM_PROMPT = """You are a senior penetration tester writing the attack narrative section of a professional client report. Your task is to transform structured attack path data into a compelling, technical narrative.
 
@@ -230,15 +233,34 @@ async def generate_all_narratives(
 
     # Load findings
     findings_result = await db.execute(
-        select(Finding).where(Finding.engagement_id == engagement_id)
+        select(Finding)
+        .where(Finding.engagement_id == engagement_id)
+        .limit(MAX_NARRATIVE_FINDINGS + 1)
     )
     findings = findings_result.scalars().all()
+    if len(findings) > MAX_NARRATIVE_FINDINGS:
+        return [{
+            "error": (
+                "Path narrative generation supports up to "
+                f"{MAX_NARRATIVE_FINDINGS:,} findings"
+            )
+        }]
 
     # Load attack paths
     paths_result = await db.execute(
-        select(AttackPath).where(AttackPath.engagement_id == engagement_id)
+        select(AttackPath)
+        .where(AttackPath.engagement_id == engagement_id)
+        .limit(MAX_NARRATIVE_ATTACK_PATHS + 1)
     )
     paths = paths_result.scalars().all()
+
+    if len(paths) > MAX_NARRATIVE_ATTACK_PATHS:
+        return [{
+            "error": (
+                "Path narrative generation supports up to "
+                f"{MAX_NARRATIVE_ATTACK_PATHS:,} attack paths"
+            )
+        }]
 
     if not paths:
         return [{"error": "No attack paths found. Generate exploitation chains first."}]
@@ -293,14 +315,32 @@ async def generate_engagement_narrative(
         return {"error": "Engagement not found"}
 
     findings_result = await db.execute(
-        select(Finding).where(Finding.engagement_id == engagement_id)
+        select(Finding)
+        .where(Finding.engagement_id == engagement_id)
+        .limit(MAX_NARRATIVE_FINDINGS + 1)
     )
     findings = findings_result.scalars().all()
+    if len(findings) > MAX_NARRATIVE_FINDINGS:
+        return {
+            "error": (
+                "Engagement narrative generation supports up to "
+                f"{MAX_NARRATIVE_FINDINGS:,} findings"
+            )
+        }
 
     paths_result = await db.execute(
-        select(AttackPath).where(AttackPath.engagement_id == engagement_id)
+        select(AttackPath)
+        .where(AttackPath.engagement_id == engagement_id)
+        .limit(MAX_NARRATIVE_ATTACK_PATHS + 1)
     )
     paths = paths_result.scalars().all()
+    if len(paths) > MAX_NARRATIVE_ATTACK_PATHS:
+        return {
+            "error": (
+                "Engagement narrative generation supports up to "
+                f"{MAX_NARRATIVE_ATTACK_PATHS:,} attack paths"
+            )
+        }
 
     if not findings:
         return {"error": "No findings to narrate"}

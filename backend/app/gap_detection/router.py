@@ -50,6 +50,8 @@ async def run_gap_analysis(
             raise HTTPException(status_code=502, detail=result["error"])
         if "Unknown methodology" in result["error"]:
             raise HTTPException(status_code=400, detail=result["error"])
+        if "supports up to" in result["error"] or "exceeds the" in result["error"]:
+            raise HTTPException(status_code=413, detail=result["error"])
         raise HTTPException(status_code=500, detail=result["error"])
 
     return result
