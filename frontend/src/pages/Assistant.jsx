@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { engagements as engApi, assistant as assistantApi } from '../api';
+import { engagements as engApi, assistant as assistantApi, appSettings } from '../api';
 import { Toast, Spinner } from '../components/UI';
 import { Send, Bot, User, Info, ChevronDown } from 'lucide-react';
 
@@ -110,6 +110,7 @@ export default function Assistant() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState(null);
+  const [providerConfig, setProviderConfig] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -119,6 +120,12 @@ export default function Assistant() {
       if (engs.length > 0) setSelectedEng(engs[0].id);
     }).catch((err) => {
       setToast({ message: `Could not load engagements: ${err.message}`, type: 'error' });
+    });
+  }, []);
+
+  useEffect(() => {
+    appSettings.getProvider().then(setProviderConfig).catch((err) => {
+      setToast({ message: `Could not load AI privacy settings: ${err.message}`, type: 'error' });
     });
   }, []);
 
@@ -191,6 +198,18 @@ export default function Assistant() {
           </span>
         )}
       </div>
+
+      {providerConfig && (
+        <div className="flex items-start gap-2 rounded px-3 py-2 mb-4 text-xs themed-text-secondary shrink-0"
+          style={{ border: '1px solid var(--border)', backgroundColor: 'var(--bg-800)' }} role="status">
+          <Info size={14} className="mt-0.5 shrink-0" style={{ color: '#06b6d4' }} />
+          <span>
+            Provider: <strong className="themed-text-primary">{providerConfig.ai_provider}</strong>
+            {' · '}Sensitive-data redaction: <strong className={providerConfig.ai_redact_sensitive_data ? 'text-green-400' : 'text-yellow-400'}>{providerConfig.ai_redact_sensitive_data ? 'on' : 'off'}</strong>
+            {' · '}Each message can send bounded context from the selected engagement to this provider.
+          </span>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto rounded-lg p-4 mb-4 space-y-4"

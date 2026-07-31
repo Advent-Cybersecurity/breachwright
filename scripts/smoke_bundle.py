@@ -72,6 +72,17 @@ def main() -> int:
                 raise RuntimeError("Packaged local workspace was not immediately usable")
             if client.get("/api/auth/login").status_code != 404:
                 raise RuntimeError("Packaged authentication routes are still exposed")
+            missing_assistant = client.post(
+                "/api/assistant/chat",
+                json={
+                    "message": "Summarize this engagement",
+                    "engagement_id": "00000000-0000-0000-0000-000000000000",
+                },
+            )
+            if missing_assistant.status_code != 404:
+                raise RuntimeError(
+                    "Packaged Assistant initialized a provider for an invalid engagement"
+                )
             headers = {}
             engagement = client.post(
                 "/api/engagements",

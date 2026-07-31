@@ -37,6 +37,10 @@ AI-assisted and analyst reviewed.
   markers.
 - Assistant responses receive bounded context with citation markers and show
   the sources supplied to the model.
+- Assistant requests reject missing engagement scopes before provider
+  initialization. Citation IDs are accepted only when their markers survived
+  the final context bound, and the interface shows the active provider and
+  redaction state before a message is sent.
 
 ## Zero-cost regression baseline
 

@@ -197,6 +197,19 @@ class UserJourneyTests(unittest.TestCase):
             json={"message": "x" * 20001},
         )
         self.assertEqual(oversized_assistant_message.status_code, 422)
+        missing_assistant_context = self.client.post(
+            "/api/assistant/chat",
+            headers=headers,
+            json={
+                "message": "Summarize this engagement",
+                "engagement_id": "00000000-0000-0000-0000-000000000000",
+            },
+        )
+        self.assertEqual(
+            missing_assistant_context.status_code,
+            404,
+            missing_assistant_context.text,
+        )
 
         invalid_provider = self.client.put(
             "/api/settings/provider",
