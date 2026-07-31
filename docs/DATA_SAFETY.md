@@ -41,6 +41,10 @@ Settings also reports whether no verified backup exists and whether the newest
 backup is current, aging, or stale. Create a new backup after confirming both
 integrity checks.
 
+Every stored backup is checksum-verified when Settings loads. A damaged archive
+remains visible as invalid so it can be deleted and replaced. Verification runs
+in the background and does not block the rest of the local workspace.
+
 ## Create and download a backup
 
 Open **Settings**, select **Create Backup**, and download the resulting ZIP

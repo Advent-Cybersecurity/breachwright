@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import closing
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import platform
@@ -46,7 +47,54 @@ def _backup_metadata(path: Path) -> dict:
         "size": path.stat().st_size,
         "created_at": manifest["created_at"],
         "app_version": manifest["app_version"],
+        "file_count": len(manifest["files"]),
+        "valid": True,
     }
+
+
+def _list_backup_metadata(backup_dir: Path) -> list[dict]:
+    """Verify stored backups without blocking the application's request loop."""
+    def modified_time(path: Path) -> float:
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return 0
+
+    paths = list(backup_dir.glob("breachwright-backup-*.zip"))
+    paths.sort(key=modified_time, reverse=True)
+    results: list[dict] = []
+    for path in paths:
+        try:
+            results.append(_backup_metadata(path))
+        except (OSError, ValueError, KeyError) as exc:
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            results.append(
+                {
+                    "filename": path.name,
+                    "size": stat.st_size,
+                    "created_at": datetime.fromtimestamp(
+                        stat.st_mtime,
+                        timezone.utc,
+                    ).isoformat(),
+                    "app_version": None,
+                    "file_count": None,
+                    "valid": False,
+                    "error": str(exc),
+                }
+            )
+    return results
+
+
+def _create_backup_metadata() -> dict:
+    path = create_backup(
+        settings.data_dir,
+        settings.resolved_database_url,
+        APP_VERSION,
+    )
+    return _backup_metadata(path)
 
 
 async def _stored_file_diagnostics(db: AsyncSession) -> dict:
@@ -139,30 +187,13 @@ async def diagnostics(
 @router.get("/backups")
 async def list_backups(admin: User = Depends(require_admin)):
     backup_dir = Path(settings.data_dir) / "backups"
-    backups = sorted(
-        backup_dir.glob("breachwright-backup-*.zip"),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    valid_backups = []
-    for path in backups:
-        try:
-            valid_backups.append(_backup_metadata(path))
-        except (OSError, ValueError, KeyError):
-            continue
-    return valid_backups
+    return await asyncio.to_thread(_list_backup_metadata, backup_dir)
 
 
 @router.post("/backups", status_code=201)
 async def make_backup(admin: User = Depends(require_admin)):
     try:
-        backup_path = await asyncio.to_thread(
-            create_backup,
-            settings.data_dir,
-            settings.resolved_database_url,
-            APP_VERSION,
-        )
-        return _backup_metadata(backup_path)
+        return await asyncio.to_thread(_create_backup_metadata)
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -179,7 +210,7 @@ async def download_backup(
     if backup_path.parent != expected_parent or not backup_path.is_file():
         raise HTTPException(status_code=404, detail="Backup not found")
     try:
-        validate_backup(backup_path)
+        await asyncio.to_thread(validate_backup, backup_path)
     except (OSError, ValueError, KeyError) as exc:
         raise HTTPException(status_code=409, detail=f"Backup is invalid: {exc}") from exc
     return FileResponse(

@@ -1100,6 +1100,8 @@ class UserJourneyTests(unittest.TestCase):
         backup = self.client.post("/api/system/backups", headers=headers)
         self.assertEqual(backup.status_code, 201, backup.text)
         backup_name = backup.json()["filename"]
+        self.assertTrue(backup.json()["valid"])
+        self.assertGreaterEqual(backup.json()["file_count"], 1)
         backup_list = self.client.get("/api/system/backups", headers=headers)
         self.assertEqual(backup_list.status_code, 200, backup_list.text)
         self.assertIn(
@@ -1116,6 +1118,26 @@ class UserJourneyTests(unittest.TestCase):
             backup_download.headers["x-content-type-options"],
             "nosniff",
         )
+        invalid_name = "breachwright-backup-corrupt.zip"
+        invalid_path = self.data_dir / "backups" / invalid_name
+        invalid_path.write_text("not a zip archive", encoding="utf-8")
+        backup_list = self.client.get("/api/system/backups", headers=headers)
+        self.assertEqual(backup_list.status_code, 200, backup_list.text)
+        invalid = next(
+            item for item in backup_list.json() if item["filename"] == invalid_name
+        )
+        self.assertFalse(invalid["valid"])
+        self.assertIn("cannot be read", invalid["error"])
+        invalid_download = self.client.get(
+            f"/api/system/backups/{invalid_name}",
+            headers=headers,
+        )
+        self.assertEqual(invalid_download.status_code, 409, invalid_download.text)
+        invalid_delete = self.client.delete(
+            f"/api/system/backups/{invalid_name}",
+            headers=headers,
+        )
+        self.assertEqual(invalid_delete.status_code, 204, invalid_delete.text)
         deleted_backup = self.client.delete(
             f"/api/system/backups/{backup_name}",
             headers=headers,
