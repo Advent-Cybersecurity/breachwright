@@ -27,9 +27,9 @@ configured AI providers on the host where it runs. It is a single-owner local
 desktop tool with no application login or user roles. The packaged application
 and included Docker configuration bind to loopback by default.
 
-The API also accepts only `127.0.0.1`, `localhost`, and the internal test host
-in the HTTP `Host` header. This reduces DNS-rebinding exposure and intentionally
-does not support publishing the local workspace behind a custom hostname.
+The API also accepts only `127.0.0.1` and `localhost` in the HTTP `Host` header.
+This reduces DNS-rebinding exposure and intentionally does not support
+publishing the local workspace behind a custom hostname.
 
 The Tool Runner executes operator-supplied shell commands with the
 operating-system permissions of the Breachwright process. Anyone with access

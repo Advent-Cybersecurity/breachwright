@@ -74,7 +74,7 @@ app = FastAPI(
 # arbitrary Host headers so a rebinding hostname cannot impersonate them.
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["127.0.0.1", "localhost", "testserver"],
+    allowed_hosts=["127.0.0.1", "localhost"],
 )
 
 # CORS
