@@ -89,6 +89,30 @@ def verify(path: Path) -> None:
     if missing_documents:
         raise SystemExit(f"Archive is missing required documents: {missing_documents}")
 
+    dependency_licenses = {
+        name
+        for name in members
+        if name.startswith("Breachwright/THIRD_PARTY_LICENSES/")
+    }
+    if len(dependency_licenses) < 10:
+        raise SystemExit("Archive is missing the dependency license inventory")
+    required_license_groups = {
+        "Python FastAPI": "Breachwright/THIRD_PARTY_LICENSES/python/fastapi-",
+        "JavaScript React": (
+            "Breachwright/THIRD_PARTY_LICENSES/javascript/react-"
+        ),
+    }
+    missing_license_groups = sorted(
+        label
+        for label, prefix in required_license_groups.items()
+        if not any(name.startswith(prefix) for name in dependency_licenses)
+    )
+    if missing_license_groups:
+        raise SystemExit(
+            "Archive is missing required dependency licenses: "
+            + ", ".join(missing_license_groups)
+        )
+
     forbidden = sorted(
         name for name in members if PurePosixPath(name).name.lower() in FORBIDDEN_NAMES
     )

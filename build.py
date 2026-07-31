@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import argparse
+from importlib import metadata
+import json
 import os
 import platform
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -128,6 +131,122 @@ def include_distribution_files(bundle_dir: Path) -> None:
     (bundle_dir / "VERSION").write_text(f"{APP_VERSION}\n", encoding="utf-8")
 
 
+def _safe_path_component(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip(".-") or "unknown"
+
+
+def _is_license_file(path: Path) -> bool:
+    return path.name.lower().startswith(
+        ("license", "licence", "copying", "notice", "authors", "copyright")
+    )
+
+
+def _node_package_roots(node_modules: Path):
+    """Yield installed npm package roots, including nested dependencies."""
+    pending = [node_modules]
+    visited: set[Path] = set()
+    while pending:
+        modules = pending.pop()
+        try:
+            resolved = modules.resolve()
+        except OSError:
+            continue
+        if resolved in visited or not modules.is_dir():
+            continue
+        visited.add(resolved)
+        for entry in modules.iterdir():
+            if entry.name.startswith("."):
+                continue
+            package_dirs = (
+                list(entry.iterdir())
+                if entry.name.startswith("@") and entry.is_dir()
+                else [entry]
+            )
+            for package_dir in package_dirs:
+                if not (package_dir / "package.json").is_file():
+                    continue
+                yield package_dir
+                nested = package_dir / "node_modules"
+                if nested.is_dir():
+                    pending.append(nested)
+
+
+def include_dependency_licenses(bundle_dir: Path) -> None:
+    """Bundle license texts exposed by installed Python and npm packages."""
+    license_root = bundle_dir / "THIRD_PARTY_LICENSES"
+    python_root = license_root / "python"
+    javascript_root = license_root / "javascript"
+    copied_paths: set[Path] = set()
+
+    for distribution in metadata.distributions():
+        distribution_name = distribution.metadata.get("Name") or "unknown"
+        destination_name = _safe_path_component(
+            f"{distribution_name}-{distribution.version}"
+        )
+        for item in distribution.files or ():
+            parts = list(item.parts)
+            dist_info_index = next(
+                (
+                    index
+                    for index, part in enumerate(parts)
+                    if part.lower().endswith(".dist-info")
+                ),
+                None,
+            )
+            if dist_info_index is None:
+                continue
+            relative = Path(*parts[dist_info_index + 1 :])
+            if (
+                not relative.parts
+                or relative.is_absolute()
+                or ".." in relative.parts
+            ):
+                continue
+            if not (
+                _is_license_file(relative)
+                or "licenses" in {part.lower() for part in relative.parts}
+            ):
+                continue
+            source = Path(distribution.locate_file(item))
+            if not source.is_file():
+                continue
+            destination = python_root / destination_name / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            copied_paths.add(destination)
+
+    node_modules = FRONTEND_DIR / "node_modules"
+    if node_modules.is_dir():
+        for package_dir in _node_package_roots(node_modules):
+            try:
+                package = json.loads(
+                    (package_dir / "package.json").read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            destination_name = _safe_path_component(
+                f"{package.get('name', package_dir.name)}-"
+                f"{package.get('version', 'unknown')}"
+            )
+            for source in package_dir.iterdir():
+                if not source.is_file() or not _is_license_file(source):
+                    continue
+                destination = javascript_root / destination_name / source.name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
+                copied_paths.add(destination)
+
+    if not copied_paths:
+        raise SystemExit("No dependency license files were found for the bundle.")
+    license_root.mkdir(parents=True, exist_ok=True)
+    (license_root / "README.txt").write_text(
+        "License texts collected from installed dependency metadata at build "
+        "time. See ../THIRD_PARTY_NOTICES.md for the dependency summary.\n",
+        encoding="utf-8",
+    )
+    print(f"Bundled {len(copied_paths)} dependency license files.")
+
+
 def validate_bundle(executable: Path, run_executable: bool) -> None:
     internal = executable.parent / "_internal"
     required = [
@@ -188,6 +307,7 @@ def main() -> int:
     build_frontend(args.skip_frontend)
     executable = build_bundle()
     include_distribution_files(executable.parent)
+    include_dependency_licenses(executable.parent)
     validate_bundle(executable, not args.skip_executable_smoke)
     archive = package_bundle()
     print(f"Candidate bundle: {archive}")
