@@ -46,6 +46,13 @@ const EMPTY_FINDING_TEMPLATE_FORM = {
   cvss_score: '', remediation: '',
 };
 
+function formatFileSize(bytes) {
+  if (bytes == null) return 'File unavailable';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function RetestBadge({ status }) {
   if (!status) return null;
   const label = RETEST_OPTIONS.find(o => o.value === status)?.label || status;
@@ -234,6 +241,7 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
   const [templateForm, setTemplateForm] = useState(EMPTY_FINDING_TEMPLATE_FORM);
   const [editingTemplateId, setEditingTemplateId] = useState(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [duplicateMatches, setDuplicateMatches] = useState([]);
 
   const loadFindingTemplates = useCallback(async () => {
     const templates = await findingTemplatesApi.list();
@@ -247,6 +255,23 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
       type: 'error',
     }));
   }, [loadFindingTemplates, toast]);
+
+  useEffect(() => {
+    if (!showAdd || form.title.trim().length < 2) {
+      setDuplicateMatches([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      findingsApi.duplicateCheck(engId, form.title.trim(), form.affected_hosts)
+        .then(result => { if (!cancelled) setDuplicateMatches(result.matches || []); })
+        .catch(() => { if (!cancelled) setDuplicateMatches([]); });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [engId, showAdd, form.title, form.affected_hosts]);
 
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -596,6 +621,30 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
               ))}
             </select>
             <p className="text-xs themed-text-muted mt-1">Templates fill reusable wording and scoring. Target-specific hosts and evidence stay blank.</p>
+          </div>
+        )}
+        {duplicateMatches.length > 0 && (
+          <div className="mb-4 rounded-md border border-yellow-500/40 bg-yellow-500/5 p-3" role="status">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={15} className="text-yellow-400 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="text-xs font-medium themed-text-primary">A finding with this title already exists.</p>
+                <p className="text-[10px] themed-text-muted mt-0.5">Review the existing record before saving. You can still create a separate finding when the affected system or evidence differs.</p>
+              </div>
+            </div>
+            <div className="space-y-1 mt-2">
+              {duplicateMatches.slice(0, 3).map(match => (
+                <div key={match.id} className="flex items-center gap-2 rounded p-2" style={{ backgroundColor: 'var(--bg-800)' }}>
+                  <SeverityBadge severity={match.severity} />
+                  <span className="text-xs themed-text-secondary flex-1 truncate">{match.title}{match.affected_hosts ? ` · ${match.affected_hosts}` : ''}</span>
+                  {match.host_overlap && <span className="text-[10px] text-yellow-300">Same host</span>}
+                  <button type="button" className="btn-ghost text-xs" onClick={() => {
+                    setFindingQuery(match.title);
+                    setShowAdd(false);
+                  }}>Review existing</button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
         <FindingForm form={form} setForm={setForm} onSubmit={handleAdd} saving={saving} submitLabel="Save Finding" />
@@ -1268,6 +1317,19 @@ function WorkspaceSearch({ engId, onOpenTab, toast }) {
   const [query, setQuery] = useState('');
   const [searchState, setSearchState] = useState({ loading: false, data: null });
   const requestSequence = useRef(0);
+  const searchInput = useRef(null);
+
+  useEffect(() => {
+    const focusSearch = event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        searchInput.current?.focus();
+        searchInput.current?.select();
+      }
+    };
+    document.addEventListener('keydown', focusSearch);
+    return () => document.removeEventListener('keydown', focusSearch);
+  }, []);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -1297,7 +1359,8 @@ function WorkspaceSearch({ engId, onOpenTab, toast }) {
       <div className="relative">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 themed-text-muted" />
         <input
-          className="input w-full pl-10 pr-10"
+          ref={searchInput}
+          className="input w-full pl-10 pr-20"
           value={query}
           onChange={event => setQuery(event.target.value)}
           onKeyDown={event => {
@@ -1311,6 +1374,7 @@ function WorkspaceSearch({ engId, onOpenTab, toast }) {
           aria-label="Search this engagement"
         />
         {searchState.loading && <Spinner className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 themed-text-muted" />}
+        {!searchState.loading && <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono themed-text-muted border rounded px-1.5 py-0.5">Ctrl K</kbd>}
       </div>
       {query.trim().length >= 2 && !searchState.loading && searchState.data && (
         <div className="absolute top-full left-0 right-0 mt-1 card shadow-xl max-h-[28rem] overflow-y-auto">
@@ -1728,6 +1792,12 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
         {scans.length > 0 && (
           <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
             <p className="text-[10px] themed-text-muted mb-2">First checkbox: include in AI analysis. Second checkbox: include in the next structured snapshot.</p>
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button className="btn-ghost text-xs" onClick={() => setAnalysisScanIds(new Set(scans.slice(0, 50).map(scan => scan.id)))}>Select first 50 for AI</button>
+              <button className="btn-ghost text-xs" onClick={() => setAnalysisScanIds(new Set())}>Clear AI selection</button>
+              <button className="btn-ghost text-xs" onClick={() => setSelectedScanIds(new Set(scans.filter(scan => scan.scan_type !== 'custom').slice(0, 50).map(scan => scan.id)))}>Select structured snapshot</button>
+              <button className="btn-ghost text-xs" onClick={() => setSelectedScanIds(new Set())}>Clear snapshot selection</button>
+            </div>
             <div className="space-y-2">
               {scans.map(s => (
                 <div key={s.id} className="flex items-center gap-3 text-sm">
@@ -1740,8 +1810,8 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
                       if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
                       return next;
                     })} />
-                  <input type="checkbox" checked={selectedScanIds.has(s.id)} disabled={s.scan_type === 'custom'}
-                    title={s.scan_type === 'custom' ? 'Raw uploads cannot be included in structured scan snapshots' : ''}
+                  <input type="checkbox" checked={selectedScanIds.has(s.id)} disabled={s.scan_type === 'custom' || (!selectedScanIds.has(s.id) && selectedScanIds.size >= 50)}
+                    title={s.scan_type === 'custom' ? 'Raw uploads cannot be included in structured scan snapshots' : (!selectedScanIds.has(s.id) && selectedScanIds.size >= 50) ? 'Deselect another upload before adding this one' : 'Include this upload in the next snapshot'}
                     aria-label={`Include ${s.filename} in snapshot`}
                     onChange={() => setSelectedScanIds(prev => {
                       const next = new Set(prev);
@@ -1749,7 +1819,9 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
                       return next;
                     })} />
                   <FileText size={14} className="themed-text-muted" />
-                  <span className="font-mono themed-text-secondary flex-1">{s.filename}</span>
+                  <span className="font-mono themed-text-secondary flex-1 min-w-0 truncate" title={s.filename}>{s.filename}</span>
+                  <span className={`hidden md:inline text-[10px] font-mono ${s.stored_file_available ? 'themed-text-muted' : 'text-red-400'}`}>{formatFileSize(s.size_bytes)}</span>
+                  {s.source_job_id && <span className="hidden lg:inline text-[10px] themed-text-muted">Tool Runner</span>}
                   <span className="badge" style={{ backgroundColor: 'var(--bg-600)', color: 'var(--text-muted)' }}>
                     {s.scan_type}
                   </span>
@@ -2816,7 +2888,7 @@ export default function EngagementDetail() {
   const [engagement, setEngagement] = useState(null);
   const [findingsList, setFindingsList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('findings');
+  const [activeTab, setActiveTab] = useState('overview');
   const [fullNarrative, setFullNarrative] = useState(null);
   const [toastData, setToastData] = useState(null);
 

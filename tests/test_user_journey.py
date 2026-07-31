@@ -227,6 +227,9 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(diagnostics.json()["database_type"], "sqlite")
         self.assertEqual(diagnostics.json()["database_integrity"], "ok")
         self.assertTrue(diagnostics.json()["data_directory_writable"])
+        self.assertEqual(diagnostics.json()["stored_files"]["status"], "ok")
+        self.assertEqual(diagnostics.json()["stored_files"]["missing"], 0)
+        self.assertTrue(diagnostics.json()["stored_files"]["complete"])
 
         unsafe_logo = self.client.post(
             "/api/report-templates",
@@ -510,6 +513,9 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(scans.status_code, 200, scans.text)
         self.assertEqual(len(scans.json()), 1)
         self.assertEqual(scans.json()[0]["id"], scan_upload.json()["id"])
+        self.assertEqual(scans.json()[0]["size_bytes"], len(b"safe scan content"))
+        self.assertTrue(scans.json()[0]["stored_file_available"])
+        self.assertIsNotNone(scans.json()[0]["created_at"])
         correlated = self.client.post(
             f"/api/engagements/{engagement_id}/correlate",
             headers=headers,
@@ -543,6 +549,24 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(finding.status_code, 201, finding.text)
         finding_id = finding.json()["id"]
+        duplicate_check = self.client.post(
+            f"/api/engagements/{engagement_id}/findings/duplicate-check",
+            headers=headers,
+            json={
+                "title": "  OUTDATED SERVICE  ",
+                "affected_hosts": "10.0.0.5, 192.0.2.55",
+            },
+        )
+        self.assertEqual(duplicate_check.status_code, 200, duplicate_check.text)
+        self.assertEqual(duplicate_check.json()["count"], 1)
+        self.assertEqual(duplicate_check.json()["matches"][0]["id"], finding_id)
+        self.assertTrue(duplicate_check.json()["matches"][0]["host_overlap"])
+        distinct_check = self.client.post(
+            f"/api/engagements/{engagement_id}/findings/duplicate-check",
+            headers=headers,
+            json={"title": "Distinct finding"},
+        )
+        self.assertEqual(distinct_check.json()["count"], 0)
         saved_narrative = self.client.post(
             f"/api/engagements/{engagement_id}/narrative/full/save",
             headers=headers,
@@ -1980,6 +2004,30 @@ class UserJourneyTests(unittest.TestCase):
             json={"scan_ids": ["00000000-0000-0000-0000-000000000000"]},
         )
         self.assertEqual(wrong_engagement_preview.status_code, 422)
+        self.assertEqual(
+            self.client.delete(f"/api/engagements/{engagement_id}").status_code,
+            204,
+        )
+
+    def test_diagnostics_detects_missing_database_backed_file(self):
+        engagement = self.client.post(
+            "/api/engagements",
+            json={"name": "File Integrity", "client_name": "Local Test"},
+        )
+        self.assertEqual(engagement.status_code, 201, engagement.text)
+        engagement_id = engagement.json()["id"]
+        upload = self.client.post(
+            f"/api/engagements/{engagement_id}/upload-scan?scan_type=custom",
+            files={"file": ("integrity.txt", b"test evidence", "text/plain")},
+        )
+        self.assertEqual(upload.status_code, 200, upload.text)
+        stored_files = list((self.data_dir / "uploads" / engagement_id).iterdir())
+        self.assertEqual(len(stored_files), 1)
+        stored_files[0].unlink()
+        diagnostics = self.client.get("/api/system/diagnostics")
+        self.assertEqual(diagnostics.status_code, 200, diagnostics.text)
+        self.assertEqual(diagnostics.json()["stored_files"]["status"], "missing_files")
+        self.assertEqual(diagnostics.json()["stored_files"]["missing"], 1)
         self.assertEqual(
             self.client.delete(f"/api/engagements/{engagement_id}").status_code,
             204,

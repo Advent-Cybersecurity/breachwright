@@ -220,6 +220,18 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn(".limit(MAX_ANALYSIS_SCANS + 1)", source)
         self.assertIn("source.read(MAX_SCAN_SIZE + 1)", source)
 
+    def test_workspace_overview_sections_fail_independently(self):
+        source = (
+            ROOT / "frontend" / "src" / "components" / "WorkspaceOverviewTab.jsx"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Promise.allSettled", source)
+        self.assertIn("Overview loaded with unavailable sections", source)
+        engagement_page = (
+            ROOT / "frontend" / "src" / "pages" / "EngagementDetail.jsx"
+        ).read_text(encoding="utf-8")
+        self.assertIn("event.key.toLowerCase() === 'k'", engagement_page)
+        self.assertIn("useState('overview')", engagement_page)
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")

@@ -32,6 +32,7 @@ export default function Settings() {
   const [savingProvider, setSavingProvider] = useState(false);
   const [localStatus, setLocalStatus] = useState(null);
   const [checkingLocal, setCheckingLocal] = useState(false);
+  const [refreshingDiagnostics, setRefreshingDiagnostics] = useState(false);
   const newestBackup = backups[0] || null;
   const newestBackupAgeDays = newestBackup
     ? Math.max(0, Math.floor((Date.now() - new Date(newestBackup.created_at).getTime()) / 86400000))
@@ -362,9 +363,24 @@ export default function Settings() {
 
       {/* System */}
       <div className="card p-5 mb-5">
-        <div className="flex items-center gap-2.5 mb-4">
-          <Server size={18} className="text-blue-400" />
-          <h2 className="text-base font-semibold themed-text-primary">System</h2>
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2.5">
+            <Server size={18} className="text-blue-400" />
+            <h2 className="text-base font-semibold themed-text-primary">System</h2>
+          </div>
+          <button className="btn-ghost text-xs flex items-center gap-2" disabled={refreshingDiagnostics} onClick={async () => {
+            setRefreshingDiagnostics(true);
+            try {
+              setDiagnostics(await system.diagnostics());
+              setToast({ message: 'System and stored-file diagnostics refreshed', type: 'success' });
+            } catch (err) {
+              setToast({ message: `Diagnostics could not be refreshed: ${err.message}`, type: 'error' });
+            } finally {
+              setRefreshingDiagnostics(false);
+            }
+          }}>
+            <RefreshCw size={13} className={refreshingDiagnostics ? 'animate-spin' : ''} /> Refresh
+          </button>
         </div>
         {health && (
           <div>
@@ -385,6 +401,19 @@ export default function Settings() {
                     value={
                       <span className={diagnostics.database_integrity === 'ok' ? 'text-green-400' : 'text-yellow-400'}>
                         {diagnostics.database_integrity}
+                      </span>
+                    }
+                    mono
+                  />
+                )}
+                {diagnostics.stored_files && (
+                  <InfoRow
+                    label="Stored file integrity"
+                    value={
+                      <span className={diagnostics.stored_files.missing > 0 ? 'text-red-400' : diagnostics.stored_files.complete ? 'text-green-400' : 'text-yellow-400'}>
+                        {diagnostics.stored_files.missing === 0
+                          ? `${diagnostics.stored_files.checked} checked, none missing${diagnostics.stored_files.complete ? '' : ' (partial check)'}`
+                          : `${diagnostics.stored_files.missing} missing of ${diagnostics.stored_files.checked} checked`}
                       </span>
                     }
                     mono
