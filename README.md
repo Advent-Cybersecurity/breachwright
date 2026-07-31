@@ -118,8 +118,9 @@ AI configuration is optional for manual findings, evidence management, checklist
 ## Back up and restore data
 
 Administrators can create and download verified local backups from the
-Settings page. Backups include the SQLite database, evidence, uploads, and
-reports. API keys and token-signing secrets are excluded.
+Settings page. Backups include the SQLite database, evidence, uploads, reports,
+custom template assets, and Tool Runner output. API keys and token-signing
+secrets are excluded.
 
 Restores are offline by design and preserve displaced data in a recovery
 folder. See [docs/DATA_SAFETY.md](docs/DATA_SAFETY.md) for packaged and source

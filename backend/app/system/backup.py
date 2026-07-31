@@ -15,7 +15,7 @@ from sqlalchemy.engine import make_url
 
 
 BACKUP_FORMAT_VERSION = 1
-DATA_FOLDERS = ("evidence", "uploads", "reports")
+DATA_FOLDERS = ("evidence", "uploads", "reports", "templates", "jobs")
 MAX_BACKUP_ENTRIES = 10000
 MAX_BACKUP_MEMBER_SIZE = 2 * 1024 * 1024 * 1024
 MAX_BACKUP_TOTAL_SIZE = 10 * 1024 * 1024 * 1024
@@ -216,7 +216,13 @@ def validate_backup(backup_path: Path) -> dict:
             raise ValueError("Backup manifest structure is invalid")
         if manifest.get("format_version") != BACKUP_FORMAT_VERSION:
             raise ValueError("Unsupported backup format version")
-        for name, expected in manifest.get("files", {}).items():
+        manifest_files = manifest["files"]
+        expected_members = set(manifest_files) | {"manifest.json"}
+        if set(members) != expected_members:
+            raise ValueError("Backup contents do not match the manifest")
+        if manifest.get("database") not in manifest_files:
+            raise ValueError("Backup database is not protected by a checksum")
+        for name, expected in manifest_files.items():
             if (
                 not isinstance(name, str)
                 or not isinstance(expected, dict)
@@ -235,8 +241,6 @@ def validate_backup(backup_path: Path) -> dict:
                     digest.update(chunk)
             if digest.hexdigest() != expected["sha256"]:
                 raise ValueError(f"Backup checksum mismatch: {name}")
-        if manifest.get("database") not in members:
-            raise ValueError("Backup database is missing")
         return manifest
 
 

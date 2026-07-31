@@ -99,7 +99,8 @@ separately.
 ## Backup before upgrading
 
 Administrators can create a verified backup from **Settings > Data Safety**.
-Backups include the SQLite database, evidence, uploaded scans, and reports.
+Backups include the SQLite database, evidence, uploaded scans, reports, custom
+template assets, and Tool Runner output.
 API keys and token-signing secrets are excluded.
 
 For command-line backup and restore instructions, including the required

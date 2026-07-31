@@ -33,6 +33,12 @@ class BackupTests(unittest.TestCase):
         evidence_dir = self.data_dir / "evidence" / "finding-1"
         evidence_dir.mkdir(parents=True)
         (evidence_dir / "proof.txt").write_text("evidence", encoding="utf-8")
+        template_dir = self.data_dir / "templates" / "template-1"
+        template_dir.mkdir(parents=True)
+        (template_dir / "logo.png").write_bytes(b"template-logo")
+        job_dir = self.data_dir / "jobs" / "job-1"
+        job_dir.mkdir(parents=True)
+        (job_dir / "output.txt").write_text("tool output", encoding="utf-8")
         (self.data_dir / ".env").write_text("API_KEY=must-not-leak", encoding="utf-8")
         (self.data_dir / ".secret_key").write_text("secret", encoding="utf-8")
 
@@ -52,6 +58,8 @@ class BackupTests(unittest.TestCase):
             members = archive.namelist()
             self.assertIn("database/breachwright.db", members)
             self.assertIn("data/evidence/finding-1/proof.txt", members)
+            self.assertIn("data/templates/template-1/logo.png", members)
+            self.assertIn("data/jobs/job-1/output.txt", members)
             self.assertNotIn(".env", members)
             self.assertNotIn(".secret_key", members)
 
@@ -66,6 +74,10 @@ class BackupTests(unittest.TestCase):
             connection.commit()
         proof = self.data_dir / "evidence" / "finding-1" / "proof.txt"
         proof.write_text("modified evidence", encoding="utf-8")
+        logo = self.data_dir / "templates" / "template-1" / "logo.png"
+        logo.write_bytes(b"modified logo")
+        job_output = self.data_dir / "jobs" / "job-1" / "output.txt"
+        job_output.write_text("modified output", encoding="utf-8")
 
         safety_path = restore_backup(
             backup,
@@ -77,6 +89,8 @@ class BackupTests(unittest.TestCase):
             value = connection.execute("SELECT value FROM sample").fetchone()[0]
         self.assertEqual(value, "original")
         self.assertEqual(proof.read_text(encoding="utf-8"), "evidence")
+        self.assertEqual(logo.read_bytes(), b"template-logo")
+        self.assertEqual(job_output.read_text(encoding="utf-8"), "tool output")
         self.assertTrue(
             (safety_path / "database" / "breachwright.db").is_file()
         )
@@ -85,6 +99,16 @@ class BackupTests(unittest.TestCase):
                 encoding="utf-8"
             ),
             "modified evidence",
+        )
+        self.assertEqual(
+            (safety_path / "templates" / "template-1" / "logo.png").read_bytes(),
+            b"modified logo",
+        )
+        self.assertEqual(
+            (safety_path / "jobs" / "job-1" / "output.txt").read_text(
+                encoding="utf-8"
+            ),
+            "modified output",
         )
 
     def test_rejects_traversal_and_checksum_tampering(self):
@@ -125,6 +149,45 @@ class BackupTests(unittest.TestCase):
             )
         with self.assertRaisesRegex(ValueError, "checksum mismatch"):
             validate_backup(tampered_backup)
+
+        unsigned_database_backup = self.root / "unsigned-database.zip"
+        with ZipFile(unsigned_database_backup, "w") as archive:
+            archive.writestr("database/breachwright.db", database_content)
+            archive.writestr(
+                "manifest.json",
+                json.dumps(
+                    {
+                        "format_version": 1,
+                        "database": "database/breachwright.db",
+                        "files": {},
+                    }
+                ),
+            )
+        with self.assertRaisesRegex(ValueError, "contents do not match"):
+            validate_backup(unsigned_database_backup)
+
+        unmanifested_file_backup = self.root / "unmanifested-file.zip"
+        database_digest = hashlib.sha256(database_content).hexdigest()
+        with ZipFile(unmanifested_file_backup, "w") as archive:
+            archive.writestr("database/breachwright.db", database_content)
+            archive.writestr("data/templates/template-1/logo.png", b"unsigned")
+            archive.writestr(
+                "manifest.json",
+                json.dumps(
+                    {
+                        "format_version": 1,
+                        "database": "database/breachwright.db",
+                        "files": {
+                            "database/breachwright.db": {
+                                "size": len(database_content),
+                                "sha256": database_digest,
+                            }
+                        },
+                    }
+                ),
+            )
+        with self.assertRaisesRegex(ValueError, "contents do not match"):
+            validate_backup(unmanifested_file_backup)
 
 
 if __name__ == "__main__":
