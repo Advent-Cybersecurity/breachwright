@@ -400,7 +400,7 @@ export default function Settings() {
             <h2 className="text-base font-semibold themed-text-primary">Data Safety</h2>
           </div>
           <p className="text-xs themed-text-muted mb-4">
-            Create a verified local backup of the database, evidence, uploads, and reports. API keys and signing secrets are excluded.
+            Create a verified local backup of the database, evidence, uploads, reports, template assets, and Tool Runner output. API keys and signing secrets are excluded.
           </p>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-xs themed-text-secondary">

@@ -24,4 +24,8 @@ We will acknowledge receipt when capacity allows, investigate the report, and co
 
 Breachwright stores assessment evidence, reports, credentials for configured AI providers, and authentication data on the host where it runs. Operators are responsible for host security, backups, access control, TLS termination, network restrictions, and the handling requirements that apply to their client data.
 
-The Tool Runner executes operator-supplied shell commands with the operating-system permissions of the Breachwright process. Every authenticated user can access this function. Do not create accounts for untrusted people, do not expose the application directly to an untrusted network, and review each command before execution.
+The Tool Runner executes operator-supplied shell commands with the
+operating-system permissions of the Breachwright process. Administrators and
+analysts can access this function; viewers cannot. Do not create editing
+accounts for untrusted people, do not expose the application directly to an
+untrusted network, and review each command before execution.
