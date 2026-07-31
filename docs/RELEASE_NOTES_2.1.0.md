@@ -17,6 +17,7 @@ usage limits.
   Runner output
 - System diagnostics, version visibility, and bounded application logs
 - Safer evidence, scan, logo, Active Directory, and engagement-import handling
+- Validation and size limits for AI-generated findings and attack paths
 - Bounded Tool Runner output and cleanup of deleted engagement data
 - Browser interface accessibility and error-recovery improvements
 - Anthropic, OpenAI, Azure OpenAI, AWS Bedrock, and local compatible model

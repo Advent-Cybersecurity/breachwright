@@ -12,6 +12,7 @@ from app.engagements.models import Engagement
 from app.ad.parser import parse_sharphound_zip, build_ad_summary
 from app.ad.prompts import AD_ANALYSIS_PROMPT
 from app.ai.provider import get_provider
+from app.ai.output_validation import validate_ai_ad_paths
 
 logger = logging.getLogger(__name__)
 
@@ -340,17 +341,26 @@ async def analyze_ad_paths(
         logger.error("Failed to parse AD analysis response: %s", response[:500])
         raise HTTPException(status_code=502, detail="AI returned invalid JSON")
 
+    try:
+        validated_paths = validate_ai_ad_paths(paths_data)
+    except ValueError as exc:
+        logger.warning("Rejected invalid AI Active Directory output: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
     # Store paths and create findings
     created = []
     findings_created = 0
-    for pd in paths_data:
+    for validated in validated_paths:
+        path_nodes = [
+            node.model_dump(mode="json") for node in validated.path_nodes
+        ]
         path = ADAttackPath(
             import_id=latest.id,
-            name=pd.get("name", "Unnamed Path"),
-            description=pd.get("description"),
-            risk_level=pd.get("risk_level"),
-            path_nodes=pd.get("path_nodes"),
-            remediation=pd.get("remediation"),
+            name=validated.name,
+            description=validated.description,
+            risk_level=validated.risk_level,
+            path_nodes=path_nodes,
+            remediation=validated.remediation,
         )
         db.add(path)
         await db.flush()
@@ -367,26 +377,30 @@ async def analyze_ad_paths(
         from app.engagements.models import Finding
         risk_to_severity = {"critical": "critical", "high": "high", "medium": "medium", "low": "low"}
         risk_to_cvss = {"critical": 9.8, "high": 8.5, "medium": 6.5, "low": 3.5}
-        sev = risk_to_severity.get(pd.get("risk_level", "medium"), "medium")
-        cvss = risk_to_cvss.get(pd.get("risk_level", "medium"), 6.5)
+        sev = risk_to_severity[validated.risk_level]
+        cvss = risk_to_cvss[validated.risk_level]
 
         # Build evidence from path nodes
         evidence_lines = ["Attack Path Chain:"]
-        for i, node in enumerate(pd.get("path_nodes", [])):
+        for i, node in enumerate(path_nodes):
             evidence_lines.append(f"  {i+1}. [{node.get('type', '?').upper()}] {node.get('name', '?')} -- {node.get('technique', '')}")
 
         # Build affected hosts from computer nodes
-        hosts = [n.get("name", "") for n in pd.get("path_nodes", []) if n.get("type") in ("computer", "domain")]
+        hosts = [
+            node["name"]
+            for node in path_nodes
+            if node["type"] in ("computer", "domain")
+        ]
 
         finding = Finding(
             engagement_id=engagement_id,
-            title=f"AD: {pd.get('name', 'Attack Path')}",
-            description=pd.get("description"),
+            title=f"AD: {validated.name}",
+            description=validated.description,
             severity=sev,
             cvss_score=cvss,
             affected_hosts=", ".join(hosts) if hosts else latest.domain,
             evidence="\n".join(evidence_lines),
-            remediation=pd.get("remediation"),
+            remediation=validated.remediation,
             source="ai_generated",
             created_by=current_user.id,
         )

@@ -52,5 +52,11 @@ Remote evidence for application candidate `0a49dda`:
 - [CodeQL](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30606345897)
 - [Windows and Linux candidate build](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30606345894)
 
+Remote evidence for the documentation-complete candidate `6d9fcc0`:
+
+- [CI and dependency audits](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30606527810)
+- [CodeQL](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30606527830)
+- [Windows and Linux candidate build](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30606527807)
+
 Only deliberate review of the final release archives and checksums remains
 before publication.

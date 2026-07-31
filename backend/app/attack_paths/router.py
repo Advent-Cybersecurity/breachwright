@@ -10,6 +10,7 @@ from app.auth.models import User
 from app.engagements.models import Engagement, Finding, AttackPath
 from app.engagements.schemas import AttackPathResponse
 from app.ai.provider import get_provider
+from app.ai.output_validation import validate_ai_attack_paths
 from app.ai.prompts.loader import get_prompt
 
 logger = logging.getLogger(__name__)
@@ -92,20 +93,26 @@ async def generate_attack_paths(
         logger.error("Failed to parse AI response as JSON")
         raise HTTPException(status_code=502, detail="AI returned invalid JSON response")
 
+    try:
+        validated_paths = validate_ai_attack_paths(paths_data)
+    except ValueError as exc:
+        logger.warning("Rejected invalid AI attack-path output: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
     created = []
-    for pd in paths_data:
+    for validated in validated_paths:
         # Build description with target hosts prepended
-        target_hosts = pd.get("target_hosts", "")
-        description = pd.get("description", "")
+        target_hosts = validated.target_hosts or ""
+        description = validated.description or ""
         if target_hosts:
             description = f"[Targets: {target_hosts}]\n\n{description}"
 
         attack_path = AttackPath(
             engagement_id=engagement_id,
-            name=pd.get("name", "Unnamed Path"),
+            name=validated.name,
             description=description,
-            steps=pd.get("steps"),
-            risk_level=pd.get("risk_level"),
+            steps=validated.steps,
+            risk_level=validated.risk_level,
         )
         db.add(attack_path)
         await db.flush()

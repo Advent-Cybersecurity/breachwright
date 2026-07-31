@@ -12,6 +12,7 @@ from app.auth.models import User
 from app.engagements.models import Engagement, Finding, ScanUpload
 from app.engagements.schemas import FindingResponse
 from app.ai.provider import get_provider
+from app.ai.output_validation import validate_ai_findings
 from app.ai.prompts.loader import get_prompt
 from app.analysis.parsers import parse_scan_file
 from app.correlation.structured_parsers import parse_structured
@@ -224,6 +225,12 @@ async def analyze_scans(
     if not isinstance(findings_data, list):
         findings_data = [findings_data] if isinstance(findings_data, dict) else []
 
+    try:
+        validated_findings = validate_ai_findings(findings_data)
+    except ValueError as exc:
+        logger.warning("Rejected invalid AI finding output: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
     # Load existing findings for dedup
     from app.findings.dedup import find_duplicate, should_update_finding
     existing_result = await db.execute(
@@ -239,9 +246,10 @@ async def analyze_scans(
     # Create or update findings
     created = []
     updated = 0
-    for fd in findings_data:
-        new_title = fd.get("title", "Untitled Finding")
-        new_hosts = fd.get("affected_hosts", "")
+    for validated in validated_findings:
+        fd = validated.model_dump(mode="json")
+        new_title = fd["title"]
+        new_hosts = fd.get("affected_hosts") or ""
 
         dup = find_duplicate(new_title, new_hosts, existing_findings)
         if dup:
@@ -259,13 +267,13 @@ async def analyze_scans(
 
         finding = Finding(
             engagement_id=engagement_id,
-            title=new_title,
-            description=fd.get("description"),
-            severity=fd.get("severity", "info"),
-            cvss_score=fd.get("cvss_score"),
-            affected_hosts=fd.get("affected_hosts"),
-            evidence=fd.get("evidence"),
-            remediation=fd.get("remediation"),
+            title=validated.title,
+            description=validated.description,
+            severity=validated.severity,
+            cvss_score=validated.cvss_score,
+            affected_hosts=validated.affected_hosts,
+            evidence=validated.evidence,
+            remediation=validated.remediation,
             source="ai_generated",
             created_by=current_user.id,
         )
