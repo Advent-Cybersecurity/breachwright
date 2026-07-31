@@ -135,7 +135,12 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The Docker deployment listens on port 80 by default. Review authentication, TLS termination, network exposure, backups, and secret management before using it with real assessment data.
+The Docker deployment listens on port 80 by default. Application files and
+the generated signing key persist in `./data`; PostgreSQL data persists in the
+`pgdata` volume. The built-in portable backup currently supports SQLite
+installations, so Docker/PostgreSQL users must back up both PostgreSQL and
+`./data`. Review authentication, TLS termination, network exposure, backups,
+and secret management before using it with real assessment data.
 
 ## Architecture
 

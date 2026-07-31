@@ -8,13 +8,13 @@ services:
       - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-breachwright}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-breachwright}
+      - DATA_DIR=/app/data
       - DESKTOP=false
     depends_on:
       db:
         condition: service_healthy
     volumes:
-      - ./data/uploads:/app/data/uploads
-      - ./data/reports:/app/data/reports
+      - ./data:/app/data
     restart: unless-stopped
 
   db:

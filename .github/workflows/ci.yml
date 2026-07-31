@@ -34,6 +34,11 @@ jobs:
           python -m pip_audit -r backend/requirements.txt
       - name: Compile backend
         run: python -m compileall -q backend/app
+      - name: Validate Docker Compose configuration
+        if: runner.os == 'Linux'
+        env:
+          POSTGRES_PASSWORD: ci-only-placeholder
+        run: docker compose config --quiet
       - name: Verify open-source invariants
         run: python -m unittest discover -s tests -v
 

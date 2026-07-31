@@ -38,6 +38,7 @@
   instead of a generic unauthorized error
 - Fixed session restoration after desktop WebView and browser page reloads
 - Fixed engagement deletion so methodology checklist data is removed reliably
+- Fixed Docker Compose persistence for evidence, configuration, and signing data
 
 ### Security
 

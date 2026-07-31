@@ -84,6 +84,13 @@ class OpenSourceReleaseTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertNotIn("dangerouslySetInnerHTML", assistant)
 
+    def test_docker_application_data_is_persistent(self):
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn("- DATA_DIR=/app/data", compose)
+        self.assertIn("- ./data:/app/data", compose)
+        self.assertNotIn("./data/uploads:/app/data/uploads", compose)
+        self.assertNotIn("./data/reports:/app/data/reports", compose)
+
 
 if __name__ == "__main__":
     unittest.main()
