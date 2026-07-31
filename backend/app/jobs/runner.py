@@ -113,7 +113,7 @@ def read_job_artifact(output_dir: str) -> Optional[tuple[str, str]]:
 
 def start_job(job_id: str, command: str, tool: str, output_dir: str) -> Optional[int]:
     os.makedirs(output_dir, exist_ok=True)
-    logger.info("Starting job %s: %s", job_id, command)
+    logger.info("Starting %s job %s", tool, job_id)
     try:
         process = subprocess.Popen(
             command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

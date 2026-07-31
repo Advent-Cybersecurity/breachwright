@@ -1,10 +1,11 @@
 import os
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from typing import Literal, Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +29,14 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 class JobCreate(BaseModel):
     engagement_id: str = Field(min_length=1, max_length=36)
     tool: str = Field(min_length=1, max_length=50)
-    command: str = Field(min_length=1, max_length=20000)
+    execution_mode: Literal["preset", "custom"] = "custom"
+    command: Optional[str] = Field(default=None, min_length=1, max_length=20000)
+    preset: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    target: Optional[str] = Field(default=None, min_length=1, max_length=2048)
+    ports: Optional[str] = Field(default=None, max_length=1000)
+    timing: Optional[str] = Field(default=None, max_length=2)
+
+    model_config = {"str_strip_whitespace": True, "extra": "forbid"}
 
 
 class JobResponse(BaseModel):
@@ -66,6 +74,64 @@ class NotebookFromJobInput(BaseModel):
         return value
 
 
+SAFE_PRESET_TARGET = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._:/?&=#@+,\-\[\]]{0,2047}$"
+)
+SAFE_NMAP_PORTS = re.compile(r"^[0-9][0-9,\-]{0,999}$")
+SAFE_NMAP_TIMING = re.compile(r"^T[1-5]$")
+
+
+def _build_job_command(body: JobCreate) -> str:
+    if body.execution_mode == "custom":
+        command = (body.command or "").strip()
+        if not command:
+            raise HTTPException(status_code=400, detail="Custom command cannot be empty")
+        dangerous = ["rm -rf /", "mkfs", "dd if=", "> /dev/sd", ":(){ :|:& };:"]
+        if any(marker in command.lower() for marker in dangerous):
+            raise HTTPException(status_code=400, detail="Command blocked for safety")
+        return command
+
+    presets = TOOL_PRESETS.get(body.tool)
+    preset = presets.get(body.preset or "") if presets else None
+    if not preset:
+        raise HTTPException(status_code=400, detail="Unknown Tool Runner preset")
+
+    target = (body.target or "").strip()
+    if not SAFE_PRESET_TARGET.fullmatch(target):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Preset targets must be one hostname, IP address, CIDR, or URL "
+                "without spaces or shell-control characters"
+            ),
+        )
+
+    command = preset["cmd"].replace("{target}", f'"{target}"')
+    command = command.replace(
+        "{output_file}",
+        "output.jsonl" if body.tool == "nuclei" else "output.txt",
+    )
+    command = command.replace("{output_dir}", ".")
+    command = command.replace("{input_file}", "input.txt")
+
+    if body.tool == "nmap":
+        ports = (body.ports or "").strip()
+        if ports:
+            if not SAFE_NMAP_PORTS.fullmatch(ports):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Nmap ports may contain only digits, commas, and hyphens",
+                )
+            command = re.sub(r"--top-ports \d+", f"-p {ports}", command)
+            command = command.replace("-p-", f"-p {ports}")
+        timing = (body.timing or "T3").strip()
+        if not SAFE_NMAP_TIMING.fullmatch(timing):
+            raise HTTPException(status_code=422, detail="Nmap timing must be T1 through T5")
+        command = re.sub(r"-T\d", f"-{timing}", command)
+
+    return command
+
+
 @router.get("/presets")
 async def list_presets(current_user: User = Depends(get_current_user)):
     """List available tool presets and check which tools are installed."""
@@ -84,22 +150,13 @@ async def create_job(
     if not engagement_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Engagement not found")
 
-    # Validate command is not empty
-    if not body.command.strip():
-        raise HTTPException(status_code=400, detail="Command cannot be empty")
-
-    # Basic safety: block obviously dangerous commands
-    dangerous = ["rm -rf /", "mkfs", "dd if=", "> /dev/sd", ":(){ :|:& };:"]
-    cmd_lower = body.command.lower()
-    for d in dangerous:
-        if d in cmd_lower:
-            raise HTTPException(status_code=400, detail="Command blocked for safety")
+    command = _build_job_command(body)
 
     # Create job record
     job = Job(
         engagement_id=body.engagement_id,
         tool=body.tool,
-        command=body.command,
+        command=command,
         status="running",
         created_by=current_user.id,
         started_at=datetime.now(timezone.utc),
@@ -111,7 +168,7 @@ async def create_job(
     output_dir = os.path.join(settings.data_dir, "jobs", job.id)
 
     # Start the subprocess
-    pid = start_job(job.id, body.command, body.tool, output_dir)
+    pid = start_job(job.id, command, body.tool, output_dir)
     if pid is None:
         job.status = "failed"
         job.output = "Failed to start process"
@@ -122,7 +179,7 @@ async def create_job(
     job.pid = pid
     await db.flush()
 
-    logger.info("Started job %s (PID %d): %s", job.id, pid, body.command)
+    logger.info("Started %s job %s (PID %d)", body.tool, job.id, pid)
 
     return _job_to_response(job)
 

@@ -90,6 +90,11 @@ When **Analyze with AI** is selected for a completed Tool Runner job,
 Breachwright copies that job's structured result into Scans and submits only
 that scan ID. Other scans in the engagement are not included implicitly.
 
+Tool Runner presets are constructed again on the server from a known preset,
+one validated target, and validated Nmap options. The Custom mode intentionally
+runs an operator-authored local shell command and requires a separate
+confirmation before it starts.
+
 Common API keys, bearer tokens, authorization headers, passwords, private-key
 blocks, and JWT-shaped values are redacted locally from AI context by default.
 The operator can change this behavior in Settings. Pattern-based redaction

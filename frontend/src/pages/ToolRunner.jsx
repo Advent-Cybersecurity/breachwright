@@ -23,6 +23,9 @@ const STATUS_STYLES = {
   queued: { color: '#71717a', label: 'QUEUED', icon: Clock },
 };
 
+const SAFE_PRESET_TARGET = /^[A-Za-z0-9][A-Za-z0-9._:/?&=#@+,\-\[\]]{0,2047}$/;
+const SAFE_NMAP_PORTS = /^[0-9][0-9,\-]{0,999}$/;
+
 function PresetCard({ preset, selected, onClick }) {
   return (
     <button onClick={onClick}
@@ -261,7 +264,7 @@ export default function ToolRunner() {
     if (!preset) return '';
 
     let cmd = preset.cmd;
-    cmd = cmd.replace('{target}', target || 'TARGET');
+    cmd = cmd.replace('{target}', `"${target || 'TARGET'}"`);
     cmd = cmd.replace('{output_file}', currentTool === 'nuclei' ? 'output.jsonl' : 'output.txt');
     cmd = cmd.replace('{output_dir}', '.');
     cmd = cmd.replace('{input_file}', 'input.txt');
@@ -279,6 +282,12 @@ export default function ToolRunner() {
   }, [selectedPreset, target, ports, timing, toolPresets, currentTool, editingCmd, customCmd]);
 
   const command = buildCommand();
+  const presetTargetValid = SAFE_PRESET_TARGET.test(target.trim());
+  const presetPortsValid = !ports.trim() || SAFE_NMAP_PORTS.test(ports.trim());
+  const presetInputsValid = presetTargetValid && presetPortsValid;
+  const canRun = Boolean(
+    command.trim() && selectedEng && (editingCmd || presetInputsValid)
+  );
 
   // Auto-select first preset when tab or tool changes
   useEffect(() => {
@@ -295,10 +304,33 @@ export default function ToolRunner() {
   }, [activeTab]);
 
   const handleRun = async () => {
-    if (!command.trim() || !selectedEng) return;
+    if (!canRun) return;
+    if (editingCmd) {
+      const confirmed = window.confirm(
+        'Run this custom command with your local shell? Review it carefully. ' +
+        'The command and its output will be stored in this engagement history.',
+      );
+      if (!confirmed) return;
+    }
     setRunning(true);
     try {
-      const job = await jobsApi.create(selectedEng, currentTool, command);
+      const request = editingCmd
+        ? {
+            engagement_id: selectedEng,
+            tool: currentTool,
+            execution_mode: 'custom',
+            command,
+          }
+        : {
+            engagement_id: selectedEng,
+            tool: currentTool,
+            execution_mode: 'preset',
+            preset: selectedPreset,
+            target: target.trim(),
+            ports: ports.trim() || null,
+            timing,
+          };
+      const job = await jobsApi.create(request);
       setJobList(prev => [job, ...prev]);
       setToast({ message: `${currentTool} started (PID ${job.pid})`, type: 'success' });
     } catch (err) {
@@ -522,6 +554,11 @@ export default function ToolRunner() {
               onChange={(e) => setTarget(e.target.value)}
               placeholder={activeTab === 'web' ? 'http://target:port' : activeTab === 'recon' ? 'example.com' : 'IP, CIDR, or hostname'}
             />
+            {!editingCmd && target.trim() && !presetTargetValid && (
+              <p className="text-xs mt-1" style={{ color: '#ef4444' }}>
+                Enter one hostname, IP address, CIDR, or URL without spaces or shell-control characters.
+              </p>
+            )}
           </div>
           {currentTool === 'nmap' && (
             <>
@@ -532,6 +569,11 @@ export default function ToolRunner() {
                 <input id="tool-ports" className="input-field font-mono text-sm" value={ports}
                   onChange={(e) => setPorts(e.target.value)}
                   placeholder="Default" />
+                {ports.trim() && !presetPortsValid && (
+                  <p className="text-xs mt-1" style={{ color: '#ef4444' }}>
+                    Use digits, commas, and hyphens only.
+                  </p>
+                )}
               </div>
               <div style={{ width: 80 }}>
                 <label htmlFor="tool-timing" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
@@ -578,7 +620,7 @@ export default function ToolRunner() {
               Use Preset
             </button>
           )}
-          <button onClick={handleRun} disabled={running || !command.trim() || !target.trim()}
+          <button onClick={handleRun} disabled={running || !canRun}
             className="btn-primary flex items-center gap-2 text-sm">
             {running ? <Spinner className="w-4 h-4" /> : <Play size={14} />}
             {running ? 'Starting...' : 'Run'}
