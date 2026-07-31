@@ -5,20 +5,20 @@ fully open source.
 
 ## Hard release gates
 
-- [ ] All source tests pass on `windows-latest`
-- [ ] All source tests pass on `ubuntu-latest`
-- [ ] Frontend production build and release audit pass
-- [ ] Windows candidate builds from a clean checkout
-- [ ] Linux candidate builds from a clean checkout
+- [x] All source tests pass on `windows-latest`
+- [x] All source tests pass on `ubuntu-latest`
+- [x] Frontend production build and release audit pass
+- [x] Windows candidate builds from a clean checkout
+- [x] Linux candidate builds from a clean checkout
 - [x] Windows packaged first-run and core user journey pass
-- [ ] Linux packaged first-run and core user journey pass
+- [x] Linux packaged first-run and core user journey pass
 - [x] Windows desktop window smoke test passes
-- [ ] Linux GTK and WebKit desktop window smoke test passes
+- [x] Linux GTK and WebKit desktop window smoke test passes
 - [x] Backup creation, validation, download, restore, and rollback pass
 - [x] Markdown and DOCX reports generate without an AI key
 - [x] Upgrade from a copy of a v2.0.0 SQLite database succeeds
-- [ ] Candidate archives contain the license, notices, documentation, and CLI
-- [ ] Dependency audits and CodeQL have no unexplained release blockers
+- [x] Candidate archives contain the license, notices, documentation, and CLI
+- [x] Dependency audits and CodeQL have no unexplained release blockers
 - [ ] Release archives and checksums are reviewed before publication
 
 ## Cost gate
@@ -38,9 +38,18 @@ As of 2026-07-30:
 - [x] Windows packaged v2.1.0-rc.1 user journey passes after the final local changes
 - [x] Windows packaged backup and offline restore pass after the final local changes
 - [x] Windows desktop window smoke test passes
+- [x] Windows native install, version, uninstall, and data preservation pass
 - [x] A database created by the v2.0.0 source upgrades with its account, engagement, and finding intact
 - [x] Browser setup, login, engagement, finding, DOCX report, diagnostics, and backup flows passed
+- [x] Docker Compose configuration and persistent application data mapping pass
+- [x] GitHub-hosted Linux packaged journey, desktop window, native install, and archive gates pass
 - [x] The public v2.0.0 source release remains unchanged
 
-Linux and clean-checkout gates remain open until the GitHub-hosted candidate
-workflow completes.
+Remote evidence for application candidate `8e24f05`:
+
+- [CI and dependency audits](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30605036784)
+- [CodeQL](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30605036779)
+- [Windows and Linux candidate build](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30605036781)
+
+Only deliberate review of the final release archives and checksums remains
+before publication.
