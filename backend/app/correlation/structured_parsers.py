@@ -303,22 +303,29 @@ def parse_nuclei_structured(content: str) -> list[dict]:
         if line.startswith("{"):
             try:
                 j = _json.loads(line)
+                if not isinstance(j, dict):
+                    continue
                 matched = str(j.get("matched-at", ""))
                 raw_host = str(j.get("host", j.get("ip", "unknown")))
-                parsed_target = urlparse(matched if "://" in matched else raw_host)
-                host_str = parsed_target.hostname or raw_host
                 try:
+                    parsed_target = urlparse(matched if "://" in matched else raw_host)
+                    host_str = parsed_target.hostname or raw_host
                     port = int(j.get("port")) if j.get("port") is not None else parsed_target.port
                 except (TypeError, ValueError):
+                    parsed_target = urlparse("")
+                    host_str = raw_host
                     port = None
                 if not port and parsed_target.scheme == "https":
                     port = 443
                 elif not port and parsed_target.scheme == "http":
                     port = 80
-                template_id = j.get("template-id", j.get("templateID", ""))
-                severity = j.get("info", {}).get("severity", "info") if isinstance(j.get("info"), dict) else "info"
-                name = j.get("info", {}).get("name", template_id) if isinstance(j.get("info"), dict) else template_id
-                desc = j.get("info", {}).get("description", "") if isinstance(j.get("info"), dict) else ""
+                template_id = str(j.get("template-id", j.get("templateID", "")))
+                info = j.get("info") if isinstance(j.get("info"), dict) else {}
+                severity = str(info.get("severity") or "info").lower()
+                if severity not in ("critical", "high", "medium", "low", "info"):
+                    severity = "info"
+                name = str(info.get("name") or template_id or "Nuclei observation")[:500]
+                desc = str(info.get("description") or "")
 
                 if host_str not in hosts_map:
                     hosts_map[host_str] = {

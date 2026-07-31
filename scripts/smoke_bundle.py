@@ -118,7 +118,7 @@ def main() -> int:
             updated = client.put(
                 f"/api/engagements/{engagement_id}/findings/{finding_id}",
                 headers=headers,
-                json={"evidence": "The administrative endpoint was reachable."},
+                json={"description": "The administrative endpoint was verified in the packaged application."},
             )
             updated.raise_for_status()
             history = client.get(

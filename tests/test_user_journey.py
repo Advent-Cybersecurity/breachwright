@@ -661,6 +661,56 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(bulk_delete.status_code, 200, bulk_delete.text)
         self.assertEqual(bulk_delete.json()["count"], 1)
         self.assertFalse(bulk_evidence_directory.exists())
+        remaining_findings = self.client.get(
+            f"/api/engagements/{engagement_id}/findings",
+            headers=headers,
+        )
+        self.assertNotIn(
+            bulk_cleanup_id,
+            {item["id"] for item in remaining_findings.json()},
+        )
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT COUNT(*) FROM finding_history WHERE finding_id = ?",
+                    (bulk_cleanup_id,),
+                ).fetchone()[0],
+                0,
+            )
+
+        direct_cleanup_finding = self.client.post(
+            f"/api/engagements/{engagement_id}/findings",
+            headers=headers,
+            json={"title": "Direct cleanup finding", "severity": "info"},
+        )
+        self.assertEqual(
+            direct_cleanup_finding.status_code,
+            201,
+            direct_cleanup_finding.text,
+        )
+        direct_cleanup_id = direct_cleanup_finding.json()["id"]
+        direct_delete = self.client.delete(
+            f"/api/engagements/{engagement_id}/findings/{direct_cleanup_id}",
+            headers=headers,
+        )
+        self.assertEqual(direct_delete.status_code, 204, direct_delete.text)
+        remaining_findings = self.client.get(
+            f"/api/engagements/{engagement_id}/findings",
+            headers=headers,
+        )
+        self.assertNotIn(
+            direct_cleanup_id,
+            {item["id"] for item in remaining_findings.json()},
+        )
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            history_rows = connection.execute(
+                "SELECT action, source FROM finding_history WHERE finding_id = ?",
+                (direct_cleanup_id,),
+            ).fetchall()
+            self.assertEqual(
+                history_rows,
+                [],
+            )
 
         markdown_report = self.client.post(
             f"/api/engagements/{engagement_id}/reports",
@@ -994,10 +1044,19 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(readiness.status_code, 200, readiness.text)
         self.assertFalse(readiness.json()["ready"])
         self.assertEqual(len(readiness.json()["blockers"]), 2)
+        attachment = self.client.post(
+            f"/api/engagements/{engagement_id}/findings/{finding_id}/evidence",
+            files={"file": ("admin-proof.png", b"\x89PNG\r\n\x1a\nproof", "image/png")},
+        )
+        self.assertEqual(attachment.status_code, 200, attachment.text)
+        readiness = self.client.get(f"/api/engagements/{engagement_id}/report-readiness")
+        self.assertEqual(
+            [blocker["code"] for blocker in readiness.json()["blockers"]],
+            ["high_risk_missing_remediation"],
+        )
         updated = self.client.put(
             f"/api/engagements/{engagement_id}/findings/{finding_id}",
             json={
-                "evidence": "The endpoint returned an administrative console.",
                 "remediation": "Require authorization for the administrative route.",
             },
         )
@@ -1007,7 +1066,7 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(history.status_code, 200, history.text)
         self.assertEqual([entry["action"] for entry in history.json()], ["updated", "created"])
-        self.assertIn("evidence", history.json()[0]["changes"])
+        self.assertIn("remediation", history.json()[0]["changes"])
         readiness = self.client.get(f"/api/engagements/{engagement_id}/report-readiness")
         self.assertTrue(readiness.json()["ready"])
         self.assertGreater(readiness.json()["score"], 0)
@@ -1109,6 +1168,41 @@ class UserJourneyTests(unittest.TestCase):
         with closing(sqlite3.connect(self.database_path)) as connection:
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM scan_snapshots WHERE engagement_id = ?", (engagement_id,)).fetchone()[0], 0)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM finding_history WHERE engagement_id = ?", (engagement_id,)).fetchone()[0], 0)
+
+    def test_all_engagement_templates_create_their_methodology(self):
+        expected = {
+            "web": "owasp_top10",
+            "api": "owasp_top10",
+            "external": "network_pentest",
+            "internal": "network_pentest",
+            "active_directory": "ptes",
+            "cloud": "nist_800_115",
+        }
+        for template_key, methodology in expected.items():
+            with self.subTest(template=template_key):
+                created = self.client.post(
+                    "/api/engagements",
+                    json={
+                        "name": f"{template_key} template check",
+                        "client_name": "Local Test",
+                        "template_key": template_key,
+                    },
+                )
+                self.assertEqual(created.status_code, 201, created.text)
+                engagement_id = created.json()["id"]
+                checklist = self.client.get(
+                    f"/api/engagements/{engagement_id}/checklists"
+                )
+                self.assertEqual(checklist.status_code, 200, checklist.text)
+                self.assertGreater(len(checklist.json()), 0)
+                self.assertEqual(
+                    {item["methodology"] for item in checklist.json()},
+                    {methodology},
+                )
+                self.assertEqual(
+                    self.client.delete(f"/api/engagements/{engagement_id}").status_code,
+                    204,
+                )
 
 
 if __name__ == "__main__":

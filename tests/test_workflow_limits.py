@@ -1,0 +1,50 @@
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+import uuid
+
+from fastapi import HTTPException
+from pydantic import ValidationError
+
+
+BACKEND = Path(__file__).resolve().parents[1] / "backend"
+if str(BACKEND) not in sys.path:
+    sys.path.insert(0, str(BACKEND))
+
+from app.workflow.router import (
+    MAX_SNAPSHOT_SCANS,
+    SnapshotCreate,
+    _read_snapshot_payload,
+)
+
+
+class SnapshotInputLimitTests(unittest.TestCase):
+    def test_snapshot_requires_uuid_sized_scan_ids(self):
+        with self.assertRaises(ValidationError):
+            SnapshotCreate(label="Baseline", scan_ids=["not-a-scan-id"])
+
+    def test_snapshot_caps_selected_scan_count(self):
+        with self.assertRaises(ValidationError):
+            SnapshotCreate(
+                label="Too many scans",
+                scan_ids=[str(uuid.uuid4()) for _ in range(MAX_SNAPSHOT_SCANS + 1)],
+            )
+
+    def test_snapshot_reader_stops_at_remaining_byte_budget(self):
+        with tempfile.TemporaryDirectory(prefix="breachwright-snapshot-limit-") as temp_dir:
+            scan = Path(temp_dir) / "scan.jsonl"
+            scan.write_bytes(b"1234")
+            with self.assertRaises(HTTPException) as raised:
+                _read_snapshot_payload(str(scan), scan.name, 3)
+        self.assertEqual(raised.exception.status_code, 413)
+
+    def test_snapshot_reader_reports_missing_stored_file(self):
+        missing = Path(tempfile.gettempdir()) / f"missing-{uuid.uuid4()}.jsonl"
+        with self.assertRaises(HTTPException) as raised:
+            _read_snapshot_payload(str(missing), missing.name, 100)
+        self.assertEqual(raised.exception.status_code, 409)
+
+
+if __name__ == "__main__":
+    unittest.main()

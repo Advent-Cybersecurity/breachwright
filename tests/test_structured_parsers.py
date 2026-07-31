@@ -26,6 +26,27 @@ class StructuredInterchangeParserTests(unittest.TestCase):
         self.assertEqual(records[0]["vulns"][0]["plugin_id"], "CVE-2024-0001-check")
         self.assertEqual(records[0]["vulns"][0]["cve"], "CVE-2024-0001")
 
+    def test_malformed_nuclei_metadata_is_safely_normalized(self):
+        records = parse_structured(
+            json.dumps({
+                "template-id": {"unexpected": "object"},
+                "host": "https://[broken-ipv6",
+                "port": "not-a-port",
+                "matched-at": "https://[broken-ipv6/path",
+                "info": {
+                    "name": {"unexpected": "object"},
+                    "severity": ["high"],
+                    "description": ["unexpected"],
+                },
+            }),
+            "nuclei",
+        )
+        self.assertEqual(records[0]["host"], "https://[broken-ipv6")
+        finding = records[0]["vulns"][0]
+        self.assertIsNone(finding["port"])
+        self.assertEqual(finding["severity"], "info")
+        self.assertIsInstance(finding["title"], str)
+
     def test_sarif_21_rule_metadata_and_location_are_normalized(self):
         document = {
             "version": "2.1.0",

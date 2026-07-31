@@ -880,7 +880,9 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
     try {
       const scan = await analysisApi.uploadScan(engId, file, scanType);
       setScans(prev => [...prev, scan]);
-      setSelectedScanIds(prev => new Set([...prev, scan.id]));
+      if (scan.scan_type !== 'custom') {
+        setSelectedScanIds(prev => new Set([...prev, scan.id]));
+      }
       toast({ message: `Uploaded ${scan.filename}`, type: 'success' });
     } catch (err) {
       toast({ message: err.message, type: 'error' });
@@ -962,7 +964,9 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
             <div className="space-y-2">
               {scans.map(s => (
                 <div key={s.id} className="flex items-center gap-3 text-sm">
-                  <input type="checkbox" checked={selectedScanIds.has(s.id)} aria-label={`Include ${s.filename} in snapshot`}
+                  <input type="checkbox" checked={selectedScanIds.has(s.id)} disabled={s.scan_type === 'custom'}
+                    title={s.scan_type === 'custom' ? 'Raw uploads cannot be included in structured scan snapshots' : ''}
+                    aria-label={`Include ${s.filename} in snapshot`}
                     onChange={() => setSelectedScanIds(prev => {
                       const next = new Set(prev);
                       if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
@@ -1001,6 +1005,7 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
             <label htmlFor="snapshot-label" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Scan Snapshot</label>
             <input id="snapshot-label" className="input-field text-sm" value={snapshotLabel}
               onChange={e => setSnapshotLabel(e.target.value)} placeholder="Baseline or Retest 1" />
+            <p className="text-xs themed-text-muted mt-1">Select up to 50 structured uploads, with a combined limit of 250 MB.</p>
           </div>
           <button className="btn-secondary text-sm" onClick={createSnapshot}
             disabled={snapshotting || !snapshotLabel.trim() || selectedScanIds.size === 0}>

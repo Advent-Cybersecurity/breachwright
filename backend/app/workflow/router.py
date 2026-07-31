@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from datetime import date, datetime, timezone
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -18,6 +19,7 @@ from app.db.session import get_db
 from app.engagements.models import (
     AIFindingDraft,
     Engagement,
+    EvidenceAttachment,
     Finding,
     ScanObservation,
     ScanSnapshot,
@@ -30,11 +32,15 @@ from app.workflow.templates import ENGAGEMENT_TEMPLATES
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["workflow"])
 SNAPSHOT_PARSER_VERSION = "structured-v1"
+MAX_SNAPSHOT_SCANS = 50
+MAX_SNAPSHOT_BYTES = 250 * 1024 * 1024
 
 
 class SnapshotCreate(BaseModel):
     label: str = Field(min_length=1, max_length=255)
-    scan_ids: list[str] = Field(min_length=1, max_length=1000)
+    scan_ids: list[
+        Annotated[str, Field(min_length=36, max_length=36)]
+    ] = Field(min_length=1, max_length=MAX_SNAPSHOT_SCANS)
 
     model_config = {"str_strip_whitespace": True}
 
@@ -54,6 +60,22 @@ def _fingerprint(*, cve, title, host, port) -> str:
         separators=(",", ":"),
     )
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _read_snapshot_payload(file_path: str, filename: str, remaining: int) -> bytes:
+    try:
+        with open(file_path, "rb") as handle:
+            payload = handle.read(remaining + 1)
+    except FileNotFoundError:
+        raise HTTPException(status_code=409, detail=f"Stored file is missing for {filename}")
+    except OSError as exc:
+        raise HTTPException(status_code=409, detail=f"Stored file could not be read for {filename}") from exc
+    if len(payload) > remaining:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Selected scans exceed the {MAX_SNAPSHOT_BYTES // (1024 * 1024)} MB snapshot limit",
+        )
+    return payload
 
 
 async def _require_engagement(db: AsyncSession, engagement_id: str) -> Engagement:
@@ -187,6 +209,16 @@ async def report_readiness(
 ):
     engagement = await _require_engagement(db, engagement_id)
     findings = list((await db.execute(select(Finding).where(Finding.engagement_id == engagement_id))).scalars().all())
+    finding_ids = [finding.id for finding in findings]
+    attachment_finding_ids = (
+        set((await db.execute(
+            select(EvidenceAttachment.finding_id).where(
+                EvidenceAttachment.finding_id.in_(finding_ids)
+            )
+        )).scalars().all())
+        if finding_ids
+        else set()
+    )
     checklist_counts = dict(
         (await db.execute(
             select(ChecklistItem.status, func.count(ChecklistItem.id))
@@ -204,7 +236,11 @@ async def report_readiness(
         select(func.count(ScanSnapshot.id)).where(ScanSnapshot.engagement_id == engagement_id)
     )).scalar_one())
 
-    missing_evidence = [f for f in findings if _severity_value(f.severity) in {"critical", "high"} and not (f.evidence or f.evidence_refs)]
+    missing_evidence = [
+        f for f in findings
+        if _severity_value(f.severity) in {"critical", "high"}
+        and not (f.evidence or f.evidence_refs or f.id in attachment_finding_ids)
+    ]
     missing_remediation = [f for f in findings if _severity_value(f.severity) in {"critical", "high"} and not f.remediation]
     unresolved = [f for f in findings if f.retest_status in {"open", "retest_needed"}]
     blockers = []
@@ -277,14 +313,17 @@ async def create_snapshot(
         raise HTTPException(status_code=404, detail="One or more scan files were not found")
 
     by_tool: dict[str, list[dict]] = {}
+    total_bytes = 0
     for scan in scans:
         if scan.scan_type == "custom":
             raise HTTPException(status_code=422, detail=f"{scan.filename} has no structured parser and cannot be snapshotted")
-        try:
-            with open(scan.file_path, "r", encoding="utf-8", errors="replace") as handle:
-                records = parse_structured(handle.read(), scan.scan_type)
-        except FileNotFoundError:
-            raise HTTPException(status_code=409, detail=f"Stored file is missing for {scan.filename}")
+        payload = _read_snapshot_payload(
+            scan.file_path,
+            scan.filename,
+            MAX_SNAPSHOT_BYTES - total_bytes,
+        )
+        total_bytes += len(payload)
+        records = parse_structured(payload.decode("utf-8", errors="replace"), scan.scan_type)
         if not records:
             raise HTTPException(status_code=422, detail=f"No structured observations could be parsed from {scan.filename}")
         for record in records:
