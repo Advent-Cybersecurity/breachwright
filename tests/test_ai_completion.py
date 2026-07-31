@@ -14,7 +14,11 @@ from app.ai.context import (
     build_bounded_untrusted_context,
     redact_sensitive_text,
 )
-from app.assistant.router import build_assistant_user_message
+from app.assistant.router import (
+    build_assistant_user_message,
+    citation_ids_in_order,
+    citations_present_in_context,
+)
 
 
 class FakeProvider:
@@ -34,6 +38,26 @@ class FakeProvider:
 
 
 class AICompletionTests(unittest.IsolatedAsyncioTestCase):
+    def test_assistant_citations_are_context_bound_and_ordered(self):
+        self.assertEqual(
+            citation_ids_in_order(
+                "[FINDING:second] then [FINDING:first] then [FINDING:second]"
+            ),
+            ["FINDING:second", "FINDING:first"],
+        )
+        citations = [
+            {"id": "FINDING:first", "label": "First"},
+            {"id": "FINDING:second", "label": "Second"},
+            {"id": "FINDING:truncated", "label": "Truncated"},
+        ]
+        self.assertEqual(
+            citations_present_in_context(
+                "Context [FINDING:first] and [FINDING:second]",
+                citations,
+            ),
+            citations[:2],
+        )
+
     def test_parser_rejects_json_hidden_inside_prose(self):
         with self.assertRaisesRegex(ValueError, "malformed JSON"):
             parse_json_response('Here is the result: [{"title": "x"}]')

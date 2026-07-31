@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
 MAX_ASSISTANT_CONTEXT_CHARS = 60_000
+MAX_ASSISTANT_FINDINGS = 200
+MAX_ASSISTANT_SCANS = 100
+MAX_ASSISTANT_PATHS = 100
+MAX_ASSISTANT_AD_PATHS = 100
+CITATION_PATTERN = re.compile(r"\[([A-Z_]+:[A-Za-z0-9._:-]+)\]")
 
 GENERIC_SYSTEM_PROMPT = """You are an AI assistant embedded in Breachwright, a penetration testing management tool. You help penetration testers by answering questions about their engagements, findings, attack paths, and scan data.
 
@@ -46,6 +51,19 @@ class ChatResponse(BaseModel):
     response: str
     context_used: list[str] = []
     citations: list[dict] = []
+
+
+def citation_ids_in_order(text: str) -> list[str]:
+    """Return unique citation IDs in the order supplied to the operator."""
+    return list(dict.fromkeys(CITATION_PATTERN.findall(text)))
+
+
+def citations_present_in_context(
+    context: str,
+    citations: list[dict],
+) -> list[dict]:
+    supplied_ids = set(citation_ids_in_order(context))
+    return [citation for citation in citations if citation["id"] in supplied_ids]
 
 
 def build_assistant_user_message(
@@ -83,6 +101,8 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
             select(Engagement).where(Engagement.id == engagement_id)
         )
         eng = eng_result.scalar_one_or_none()
+        if not eng:
+            raise HTTPException(status_code=404, detail="Engagement not found")
         if eng:
             context_parts.append(
                 f"[ENGAGEMENT:{eng.id}] Current Engagement: {eng.name}\n"
@@ -110,7 +130,7 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
                     Finding.created_at,
                     Finding.id,
                 )
-                .limit(200)
+                .limit(MAX_ASSISTANT_FINDINGS)
             )
             findings = finding_result.scalars().all()
             if findings:
@@ -156,7 +176,10 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
             # Include scan info if question is about scans
             if any(kw in question_lower for kw in ['scan', 'nmap', 'nessus', 'burp', 'upload', 'port', 'service']):
                 scan_result = await db.execute(
-                    select(ScanUpload).where(ScanUpload.engagement_id == engagement_id)
+                    select(ScanUpload)
+                    .where(ScanUpload.engagement_id == engagement_id)
+                    .order_by(ScanUpload.created_at, ScanUpload.id)
+                    .limit(MAX_ASSISTANT_SCANS)
                 )
                 scans = scan_result.scalars().all()
                 if scans:
@@ -185,7 +208,9 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
             # Include attack paths if question is about paths/chains
             if any(kw in question_lower for kw in ['attack', 'path', 'chain', 'exploit', 'lateral', 'escalat']):
                 ap_result = await db.execute(
-                    select(AttackPath).where(AttackPath.engagement_id == engagement_id).limit(100)
+                    select(AttackPath)
+                    .where(AttackPath.engagement_id == engagement_id)
+                    .limit(MAX_ASSISTANT_PATHS)
                 )
                 paths = ap_result.scalars().all()
                 if paths:
@@ -220,7 +245,9 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
                         context_labels.append(f"AD data: {ad_import.domain}")
 
                         ad_paths = await db.execute(
-                            select(ADAttackPath).where(ADAttackPath.import_id == ad_import.id)
+                            select(ADAttackPath)
+                            .where(ADAttackPath.import_id == ad_import.id)
+                            .limit(MAX_ASSISTANT_AD_PATHS)
                         )
                         ad_paths_list = ad_paths.scalars().all()
                         if ad_paths_list:
@@ -264,7 +291,11 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
             + "\n[Context truncated at the local safety limit.]"
         )
         context_labels.append("Context safety limit applied")
-    return context, context_labels, list(unique_citations.values())
+    supplied_citations = citations_present_in_context(
+        context,
+        list(unique_citations.values()),
+    )
+    return context, context_labels, supplied_citations
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -300,8 +331,8 @@ async def chat(
         raise HTTPException(status_code=502, detail=f"AI provider error: {e}")
 
     available = {citation["id"]: citation for citation in citations}
-    cited_ids = set(re.findall(r"\[([A-Z_]+:[A-Za-z0-9._:-]+)\]", response))
-    unknown = sorted(cited_ids - set(available))
+    cited_ids = citation_ids_in_order(response)
+    unknown = sorted(set(cited_ids) - set(available))
     if unknown:
         raise HTTPException(
             status_code=502,

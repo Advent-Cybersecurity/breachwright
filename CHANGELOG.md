@@ -96,6 +96,10 @@
   of implicitly including other engagement scans. Job history is bounded and
   user-selectable, interrupted jobs are labeled, and deletion confirms process
   termination while preserving linked Notebook and Scans copies.
+- AI Assistant context now bounds scan and AD path queries, rejects missing
+  engagement scopes before provider initialization, removes citations truncated
+  out of the final prompt, preserves citation display order, and shows provider
+  plus redaction state before each request.
 
 ## v2.2.0 (2026-07-31)
 

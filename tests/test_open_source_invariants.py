@@ -288,6 +288,21 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("window.confirm(confirmation)", frontend)
         self.assertIn("Stop &amp; Delete", frontend)
 
+    def test_assistant_context_and_citations_are_bounded_before_provider_use(self):
+        router = (ROOT / "backend" / "app" / "assistant" / "router.py").read_text(
+            encoding="utf-8"
+        )
+        frontend = (ROOT / "frontend" / "src" / "pages" / "Assistant.jsx").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('raise HTTPException(status_code=404, detail="Engagement not found")', router)
+        self.assertIn(".limit(MAX_ASSISTANT_SCANS)", router)
+        self.assertIn(".limit(MAX_ASSISTANT_AD_PATHS)", router)
+        self.assertIn("citations_present_in_context", router)
+        self.assertIn("citation_ids_in_order(response)", router)
+        self.assertIn("Sensitive-data redaction:", frontend)
+        self.assertIn("bounded context from the selected engagement", frontend)
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")
