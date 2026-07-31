@@ -9,7 +9,7 @@ from pathlib import Path, PurePosixPath
 import shutil
 import sqlite3
 import uuid
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 
 from sqlalchemy.engine import make_url
 
@@ -206,49 +206,59 @@ def _safe_members(archive: ZipFile) -> list[str]:
 
 def validate_backup(backup_path: Path) -> dict:
     """Validate archive structure, version, sizes, and SHA-256 checksums."""
-    with ZipFile(backup_path, "r") as archive:
-        members = _safe_members(archive)
-        if "manifest.json" not in members:
-            raise ValueError("Backup manifest is missing")
-        if archive.getinfo("manifest.json").file_size > MAX_MANIFEST_SIZE:
-            raise ValueError("Backup manifest is too large")
-        try:
-            manifest = json.loads(archive.read("manifest.json"))
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise ValueError("Backup manifest is invalid") from exc
-        if not isinstance(manifest, dict) or not isinstance(
-            manifest.get("files"),
-            dict,
-        ):
-            raise ValueError("Backup manifest structure is invalid")
-        if manifest.get("format_version") != BACKUP_FORMAT_VERSION:
-            raise ValueError("Unsupported backup format version")
-        manifest_files = manifest["files"]
-        expected_members = set(manifest_files) | {"manifest.json"}
-        if set(members) != expected_members:
-            raise ValueError("Backup contents do not match the manifest")
-        if manifest.get("database") not in manifest_files:
-            raise ValueError("Backup database is not protected by a checksum")
-        for name, expected in manifest_files.items():
-            if (
-                not isinstance(name, str)
-                or not isinstance(expected, dict)
-                or not isinstance(expected.get("size"), int)
-                or not isinstance(expected.get("sha256"), str)
+    try:
+        with ZipFile(backup_path, "r") as archive:
+            members = _safe_members(archive)
+            if "manifest.json" not in members:
+                raise ValueError("Backup manifest is missing")
+            if archive.getinfo("manifest.json").file_size > MAX_MANIFEST_SIZE:
+                raise ValueError("Backup manifest is too large")
+            try:
+                manifest = json.loads(archive.read("manifest.json"))
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                raise ValueError("Backup manifest is invalid") from exc
+            if not isinstance(manifest, dict) or not isinstance(
+                manifest.get("files"),
+                dict,
             ):
-                raise ValueError("Backup manifest file metadata is invalid")
-            if name not in members:
-                raise ValueError(f"Backup file is missing: {name}")
-            info = archive.getinfo(name)
-            if info.file_size != expected["size"]:
-                raise ValueError(f"Backup file size mismatch: {name}")
-            digest = hashlib.sha256()
-            with archive.open(name) as source:
-                for chunk in iter(lambda: source.read(1024 * 1024), b""):
-                    digest.update(chunk)
-            if digest.hexdigest() != expected["sha256"]:
-                raise ValueError(f"Backup checksum mismatch: {name}")
-        return manifest
+                raise ValueError("Backup manifest structure is invalid")
+            if manifest.get("format_version") != BACKUP_FORMAT_VERSION:
+                raise ValueError("Unsupported backup format version")
+            manifest_files = manifest["files"]
+            expected_members = set(manifest_files) | {"manifest.json"}
+            if set(members) != expected_members:
+                raise ValueError("Backup contents do not match the manifest")
+            if manifest.get("database") not in manifest_files:
+                raise ValueError("Backup database is not protected by a checksum")
+            for name, expected in manifest_files.items():
+                if (
+                    not isinstance(name, str)
+                    or not isinstance(expected, dict)
+                    or not isinstance(expected.get("size"), int)
+                    or not isinstance(expected.get("sha256"), str)
+                ):
+                    raise ValueError("Backup manifest file metadata is invalid")
+                if name not in members:
+                    raise ValueError(f"Backup file is missing: {name}")
+                info = archive.getinfo(name)
+                if info.file_size != expected["size"]:
+                    raise ValueError(f"Backup file size mismatch: {name}")
+                digest = hashlib.sha256()
+                with archive.open(name) as source:
+                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                if digest.hexdigest() != expected["sha256"]:
+                    raise ValueError(f"Backup checksum mismatch: {name}")
+            if (
+                not isinstance(manifest.get("app_version"), str)
+                or not manifest["app_version"].strip()
+                or not isinstance(manifest.get("created_at"), str)
+                or not manifest["created_at"].strip()
+            ):
+                raise ValueError("Backup manifest metadata is invalid")
+            return manifest
+    except (BadZipFile, OSError) as exc:
+        raise ValueError("Backup archive cannot be read") from exc
 
 
 def restore_backup(

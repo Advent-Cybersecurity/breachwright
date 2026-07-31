@@ -238,6 +238,38 @@ class BackupTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "contents do not match"):
             validate_backup(unmanifested_file_backup)
 
+    def test_rejects_unreadable_archives_and_missing_display_metadata(self):
+        unreadable_backup = self.root / "not-a-backup.zip"
+        unreadable_backup.write_text("plain text", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "archive cannot be read"):
+            validate_backup(unreadable_backup)
+
+        missing_backup = self.root / "missing.zip"
+        with self.assertRaisesRegex(ValueError, "archive cannot be read"):
+            validate_backup(missing_backup)
+
+        database_content = b"not-a-real-database"
+        incomplete_backup = self.root / "incomplete-metadata.zip"
+        with ZipFile(incomplete_backup, "w") as archive:
+            archive.writestr("database/breachwright.db", database_content)
+            archive.writestr(
+                "manifest.json",
+                json.dumps(
+                    {
+                        "format_version": 1,
+                        "database": "database/breachwright.db",
+                        "files": {
+                            "database/breachwright.db": {
+                                "size": len(database_content),
+                                "sha256": hashlib.sha256(database_content).hexdigest(),
+                            }
+                        },
+                    }
+                ),
+            )
+        with self.assertRaisesRegex(ValueError, "manifest metadata is invalid"):
+            validate_backup(incomplete_backup)
+
 
 if __name__ == "__main__":
     unittest.main()

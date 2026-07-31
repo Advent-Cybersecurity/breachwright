@@ -471,6 +471,18 @@ def main() -> int:
         )
         if len(backups) != 1:
             raise RuntimeError("Packaged CLI did not create exactly one backup")
+        validation = subprocess.run(
+            [str(cli), "--validate-backup", str(backups[0])],
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        ).stdout.strip()
+        if not validation.startswith("Backup valid:"):
+            raise RuntimeError(
+                f"Packaged CLI backup validation was unavailable: {validation}"
+            )
         subprocess.run(
             [
                 str(cli),

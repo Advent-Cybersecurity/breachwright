@@ -71,6 +71,20 @@ that directory.
 
 ## Validate a backup
 
+Packaged Windows users can run:
+
+```powershell
+.\BreachwrightCLI.exe --validate-backup C:\path\to\breachwright-backup.zip
+```
+
+Packaged Linux users can run:
+
+```bash
+./BreachwrightCLI --validate-backup /path/to/breachwright-backup.zip
+```
+
+Source installations can run:
+
 ```bash
 python -m app.system.backup_cli validate /path/to/breachwright-backup.zip
 ```

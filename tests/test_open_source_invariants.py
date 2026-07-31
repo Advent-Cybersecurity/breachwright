@@ -239,6 +239,14 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertNotIn('expanduser("~/Desktop', source)
         self.assertNotIn("â", source)
 
+    def test_packaged_cli_exposes_read_only_backup_validation(self):
+        launcher = (ROOT / "run.py").read_text(encoding="utf-8")
+        smoke = (ROOT / "scripts" / "smoke_bundle.py").read_text(encoding="utf-8")
+        self.assertIn('"--validate-backup"', launcher)
+        self.assertIn("manifest = validate_backup", launcher)
+        self.assertIn("Backup validation failed:", launcher)
+        self.assertIn('[str(cli), "--validate-backup"', smoke)
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")
