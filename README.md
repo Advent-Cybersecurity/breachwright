@@ -24,6 +24,8 @@ Third-party AI services may charge for API usage. Local model support does not r
   local activity, and direct access to the next assessment task
 - Conservative local auto-detection and scan ingestion for Nmap, Nessus, Burp
   Suite, Nuclei JSONL, SARIF, and raw evidence
+- Provider-free cross-tool correlation with bounded file-count, per-file, and
+  combined input limits
 - A latest-snapshot asset and service inventory with new, persistent,
   regressed, and resolved observation context
 - Engagement-wide local search across findings, checklist items, assets,

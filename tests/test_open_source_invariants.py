@@ -424,6 +424,17 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("MAX_AI_ATTACK_PATHS = 25", validation)
         self.assertIn("MAX_AI_AD_PATHS = 100", validation)
 
+    def test_no_ai_correlation_uses_bounded_worker_thread_reads(self):
+        router = (ROOT / "backend" / "app" / "correlation" / "router.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("MAX_CORRELATION_SCANS = 50", router)
+        self.assertIn("MAX_CORRELATION_FILE_BYTES = 50 * 1024 * 1024", router)
+        self.assertIn("MAX_CORRELATION_TOTAL_BYTES = 250 * 1024 * 1024", router)
+        self.assertIn("await asyncio.to_thread(", router)
+        self.assertIn(".limit(MAX_CORRELATION_SCANS + 1)", router)
+        self.assertNotIn("raw = f.read()", router)
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")
