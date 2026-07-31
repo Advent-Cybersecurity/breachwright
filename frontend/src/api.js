@@ -466,8 +466,8 @@ export const jobs = {
     request(`/jobs?engagement_id=${encodeURIComponent(engId)}&limit=${limit}`),
   get: (jobId) =>
     request(`/jobs/${jobId}`),
-  create: (engId, tool, command) =>
-    request('/jobs', { method: 'POST', body: { engagement_id: engId, tool, command } }),
+  create: (body) =>
+    request('/jobs', { method: 'POST', body }),
   stop: (jobId) =>
     request(`/jobs/${jobId}/stop`, { method: 'POST' }),
   saveToNotebook: (jobId, data = {}) =>

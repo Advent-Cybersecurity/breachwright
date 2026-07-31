@@ -143,6 +143,10 @@
   database record counts before materializing AI context or initializing a
   provider. Saved narrative deletion requires confirmation, and clipboard
   failures are reported instead of showing a false success message.
+- Tool Runner preset commands are now rebuilt from validated server-side
+  inputs, quote their single target, and reject shell-control characters.
+  Intentionally custom commands remain available behind an explicit local-shell
+  confirmation, and command text is no longer copied into application logs.
 
 ## v2.2.0 (2026-07-31)
 

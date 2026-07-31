@@ -6,6 +6,8 @@ import shutil
 import unittest
 import uuid
 
+from fastapi import HTTPException
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
@@ -22,6 +24,7 @@ from app.jobs.runner import (
     read_job_artifact,
     TOOL_PRESETS,
 )
+from app.jobs.router import JobCreate, _build_job_command
 
 
 def output_state() -> dict:
@@ -86,6 +89,47 @@ class JobOutputTests(unittest.TestCase):
     def test_nuclei_presets_emit_structured_jsonl(self):
         for preset in TOOL_PRESETS["nuclei"].values():
             self.assertIn("-jsonl", preset["cmd"])
+
+    def test_preset_commands_are_built_from_validated_server_inputs(self):
+        command = _build_job_command(JobCreate(
+            engagement_id="engagement-1",
+            tool="nmap",
+            execution_mode="preset",
+            preset="quick",
+            target="10.20.30.0/24",
+            ports="80,443,8000-8100",
+            timing="T4",
+        ))
+        self.assertIn('"10.20.30.0/24"', command)
+        self.assertIn("-p 80,443,8000-8100", command)
+        self.assertIn("-T4", command)
+
+    def test_preset_targets_cannot_inject_shell_commands(self):
+        for target in (
+            "example.test;whoami",
+            "example.test && whoami",
+            "$(whoami)",
+            "`whoami`",
+            "%COMSPEC%",
+        ):
+            with self.subTest(target=target), self.assertRaises(HTTPException) as caught:
+                _build_job_command(JobCreate(
+                    engagement_id="engagement-1",
+                    tool="nmap",
+                    execution_mode="preset",
+                    preset="quick",
+                    target=target,
+                ))
+            self.assertEqual(caught.exception.status_code, 422)
+
+    def test_custom_commands_remain_an_explicit_mode(self):
+        command = _build_job_command(JobCreate(
+            engagement_id="engagement-1",
+            tool="nmap",
+            execution_mode="custom",
+            command="nmap --version",
+        ))
+        self.assertEqual(command, "nmap --version")
 
 
 if __name__ == "__main__":

@@ -283,6 +283,24 @@ class OpenSourceReleaseTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("limit: int = Query(default=50, ge=1, le=200)", router)
+
+    def test_tool_runner_presets_are_server_built_and_custom_commands_are_explicit(self):
+        router = (ROOT / "backend" / "app" / "jobs" / "router.py").read_text(
+            encoding="utf-8"
+        )
+        frontend = (ROOT / "frontend" / "src" / "pages" / "ToolRunner.jsx").read_text(
+            encoding="utf-8"
+        )
+        runner = (ROOT / "backend" / "app" / "jobs" / "runner.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('execution_mode: Literal["preset", "custom"]', router)
+        self.assertIn("SAFE_PRESET_TARGET.fullmatch(target)", router)
+        self.assertIn("command = _build_job_command(body)", router)
+        self.assertIn("execution_mode: 'preset'", frontend)
+        self.assertIn("execution_mode: 'custom'", frontend)
+        self.assertIn("Run this custom command with your local shell?", frontend)
+        self.assertNotIn('logger.info("Starting job %s: %s"', runner)
         self.assertIn(".limit(limit)", router)
         self.assertIn("analysisApi.run(selectedEng, [scanId])", frontend)
         self.assertIn("window.confirm(confirmation)", frontend)
