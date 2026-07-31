@@ -76,6 +76,7 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("MINIMUM_NODE_MAJOR = 20", builder)
         self.assertIn("validate_node_version", builder)
         self.assertIn('[ "$NODE_MAJOR" -ge 20 ]', installer)
+        self.assertIn("npm ci --silent --no-fund --no-audit", installer)
         self.assertIn("Node.js 20 or newer", readme)
         self.assertIn("Node 20 source-install baseline", dependency_review)
 

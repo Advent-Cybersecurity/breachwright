@@ -154,7 +154,8 @@
   desktop, localhost Docker, and test entry points.
 - Source builds and the Linux source installer now require and validate Node.js
   20 or newer, matching the pinned frontend runtime instead of failing later
-  with a package engine error.
+  with a package engine error. Source installation also uses the committed npm
+  lockfile for repeatable dependency resolution.
 
 ## v2.2.0 (2026-07-31)
 

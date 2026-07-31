@@ -168,7 +168,7 @@ else
     # Build frontend
     info "Building frontend..."
     cd "$APP_DIR/frontend"
-    npm install --silent --no-fund --no-audit 2>/dev/null
+    npm ci --silent --no-fund --no-audit 2>/dev/null
     npm run build 2>/dev/null
     rm -rf "$APP_DIR/frontend/node_modules"
     success "Frontend built"
