@@ -294,6 +294,78 @@ class UserJourneyTests(unittest.TestCase):
             json={"role": "analyst"},
         )
         self.assertEqual(self_update.status_code, 400, self_update.text)
+        old_refresh_cookie = next(
+            cookie
+            for cookie in self.client.cookies.jar
+            if cookie.name == "refresh_token" and cookie.path == "/"
+        )
+
+        wrong_password_change = self.client.post(
+            "/api/auth/change-password",
+            headers=headers,
+            json={
+                "current_password": "not-the-current-password",
+                "new_password": "replacement-admin-password",
+            },
+        )
+        self.assertEqual(
+            wrong_password_change.status_code,
+            400,
+            wrong_password_change.text,
+        )
+        reused_password = self.client.post(
+            "/api/auth/change-password",
+            headers=headers,
+            json={
+                "current_password": "correct-horse-battery-staple",
+                "new_password": "correct-horse-battery-staple",
+            },
+        )
+        self.assertEqual(reused_password.status_code, 400, reused_password.text)
+        changed_password = self.client.post(
+            "/api/auth/change-password",
+            headers=headers,
+            json={
+                "current_password": "correct-horse-battery-staple",
+                "new_password": "replacement-admin-password",
+            },
+        )
+        self.assertEqual(changed_password.status_code, 200, changed_password.text)
+        revoked_access = self.client.get("/api/auth/me", headers=headers)
+        self.assertEqual(revoked_access.status_code, 401, revoked_access.text)
+        self.client.cookies.set(
+            old_refresh_cookie.name,
+            old_refresh_cookie.value,
+            domain=old_refresh_cookie.domain,
+            path=old_refresh_cookie.path,
+        )
+        revoked_refresh = self.client.post("/api/auth/refresh")
+        self.assertEqual(revoked_refresh.status_code, 401, revoked_refresh.text)
+        old_password_login = self.client.post(
+            "/api/auth/login",
+            json={
+                "email": "admin@example.com",
+                "password": "correct-horse-battery-staple",
+            },
+        )
+        self.assertEqual(old_password_login.status_code, 401, old_password_login.text)
+        replacement_login = self.client.post(
+            "/api/auth/login",
+            json={
+                "email": "admin@example.com",
+                "password": "replacement-admin-password",
+            },
+        )
+        self.assertEqual(replacement_login.status_code, 200, replacement_login.text)
+        replacement_refresh = self.client.post("/api/auth/refresh")
+        self.assertEqual(
+            replacement_refresh.status_code,
+            200,
+            replacement_refresh.text,
+        )
+        token = replacement_refresh.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
         viewer_login = self.client.post(
             "/api/auth/login",
             json={

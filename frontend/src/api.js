@@ -16,6 +16,7 @@ export function setAuthErrorHandler(handler) {
 }
 
 async function request(path, options = {}) {
+  const isAuthenticatedRequest = Boolean(accessToken && !options.noAuth);
   const headers = {
     ...(options.headers || {}),
   };
@@ -35,7 +36,7 @@ async function request(path, options = {}) {
     credentials: 'include',
   });
 
-  if (res.status === 401 && onAuthError) {
+  if (res.status === 401 && onAuthError && isAuthenticatedRequest) {
     onAuthError();
     throw new Error('Unauthorized');
   }
@@ -66,7 +67,11 @@ async function request(path, options = {}) {
 // Auth
 export const auth = {
   login: (email, password) =>
-    request('/auth/login', { method: 'POST', body: { email, password } }),
+    request('/auth/login', {
+      method: 'POST',
+      body: { email, password },
+      noAuth: true,
+    }),
   refresh: () =>
     request('/auth/refresh', { method: 'POST', noAuth: true }),
 
@@ -82,6 +87,14 @@ export const auth = {
     request('/auth/logout', { method: 'POST' }),
   me: () =>
     request('/auth/me'),
+  changePassword: (currentPassword, newPassword) =>
+    request('/auth/change-password', {
+      method: 'POST',
+      body: {
+        current_password: currentPassword,
+        new_password: newPassword,
+      },
+    }),
   listUsers: () =>
     request('/auth/users'),
   createUser: (data) =>

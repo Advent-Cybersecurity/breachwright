@@ -6,6 +6,7 @@ from typing import Optional
 from app.db.session import get_db
 from app.auth.schemas import (
     LoginRequest,
+    ChangePasswordRequest,
     TokenResponse,
     UserCreate,
     UserResponse,
@@ -14,7 +15,7 @@ from app.auth.schemas import (
 from app.auth.service import (
     authenticate_user, create_access_token, create_refresh_token,
     decode_token, create_user, get_user_by_id, get_active_user_count,
-    DuplicateEmailError,
+    hash_password, verify_password, DuplicateEmailError,
 )
 from app.auth.dependencies import get_current_user, require_admin
 from app.auth.models import User, UserRole
@@ -59,8 +60,8 @@ async def login(request: LoginRequest, response: Response, db: AsyncSession = De
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    access_token = create_access_token(user.id, user.role.value)
-    refresh_token = create_refresh_token(user.id)
+    access_token = create_access_token(user.id, user.role.value, user.token_version)
+    refresh_token = create_refresh_token(user.id, user.token_version)
 
     response.set_cookie(
         key="refresh_token",
@@ -90,9 +91,11 @@ async def refresh(
     user = await get_user_by_id(db, payload["sub"])
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
+    if payload.get("ver", 0) != user.token_version:
+        raise HTTPException(status_code=401, detail="Session has been revoked")
 
-    access_token = create_access_token(user.id, user.role.value)
-    new_refresh = create_refresh_token(user.id)
+    access_token = create_access_token(user.id, user.role.value, user.token_version)
+    new_refresh = create_refresh_token(user.id, user.token_version)
 
     response.set_cookie(
         key="refresh_token",
@@ -117,6 +120,29 @@ async def logout(response: Response):
 @router.get("/me", response_model=UserResponse)
 async def me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.post("/change-password")
+async def change_password(
+    request: ChangePasswordRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not verify_password(request.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if verify_password(request.new_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=400,
+            detail="New password must be different from the current password",
+        )
+
+    current_user.password_hash = hash_password(request.new_password)
+    current_user.token_version += 1
+    await db.flush()
+    response.delete_cookie("refresh_token", path="/")
+    response.delete_cookie("refresh_token", path="/api/auth")
+    return {"message": "Password changed. Sign in again with your new password."}
 
 
 @router.post("/users", response_model=UserResponse)

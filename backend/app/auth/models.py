@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, DateTime, Enum as SAEnum, func
+from sqlalchemy import String, DateTime, Enum as SAEnum, Integer, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin
 import enum
@@ -26,4 +26,5 @@ class User(Base, TimestampMixin):
         SAEnum(UserRole), default=UserRole.analyst, nullable=False
     )
     is_active: Mapped[bool] = mapped_column(default=True)
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -3,7 +3,7 @@ import { system, auth as authApi, appSettings } from '../api';
 import { useAuth } from '../auth';
 import { useTheme } from '../theme';
 import { Modal, Toast, Spinner } from '../components/UI';
-import { Users, Server, UserPlus, Sun, Moon, Palette, MessageSquare, RotateCcw, Bot, Save, Wifi, WifiOff, RefreshCw, DatabaseBackup, Download, ShieldCheck } from 'lucide-react';
+import { Users, Server, UserPlus, Sun, Moon, Palette, MessageSquare, RotateCcw, Bot, Save, Wifi, WifiOff, RefreshCw, DatabaseBackup, Download, ShieldCheck, KeyRound } from 'lucide-react';
 
 function InfoRow({ label, value, mono = false }) {
   return (
@@ -15,7 +15,7 @@ function InfoRow({ label, value, mono = false }) {
 }
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
   const [health, setHealth] = useState(null);
   const [diagnostics, setDiagnostics] = useState(null);
@@ -25,6 +25,13 @@ export default function Settings() {
   const [deletingBackup, setDeletingBackup] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddUser, setShowAddUser] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    current: '',
+    next: '',
+    confirm: '',
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
   const [toast, setToast] = useState(null);
   const [userAccounts, setUserAccounts] = useState([]);
   const [userForm, setUserForm] = useState({ email: '', password: '', display_name: '', role: 'analyst' });
@@ -92,6 +99,25 @@ export default function Settings() {
       setToast({ message: err.message, type: 'error' });
     } finally {
       setUpdatingUserId(null);
+    }
+  };
+
+  const handleChangePassword = async (event) => {
+    event.preventDefault();
+    if (passwordForm.next !== passwordForm.confirm) {
+      setToast({ message: 'New passwords do not match', type: 'error' });
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      await authApi.changePassword(passwordForm.current, passwordForm.next);
+      setShowChangePassword(false);
+      setPasswordForm({ current: '', next: '', confirm: '' });
+      await logout();
+    } catch (err) {
+      setToast({ message: err.message, type: 'error' });
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -342,6 +368,28 @@ export default function Settings() {
             )}
           </div>
         )}
+      </div>
+
+      {/* Account security */}
+      <div className="card p-5 mb-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <KeyRound size={18} className="text-yellow-400" />
+            <div>
+              <h2 className="text-base font-semibold themed-text-primary">Account Security</h2>
+              <p className="text-xs themed-text-muted mt-0.5">
+                Changing your password signs out every session for this account.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowChangePassword(true)}
+            className="btn-secondary text-sm whitespace-nowrap"
+          >
+            Change Password
+          </button>
+        </div>
       </div>
 
       {/* Data safety */}
@@ -622,6 +670,78 @@ export default function Settings() {
           </Modal>
         </div>
       )}
+
+      <Modal
+        open={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+        title="Change Password"
+      >
+        <form onSubmit={handleChangePassword} className="space-y-4">
+          <div>
+            <label htmlFor="current-password" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+              Current Password
+            </label>
+            <input
+              id="current-password"
+              className="input-field text-sm"
+              type="password"
+              autoComplete="current-password"
+              value={passwordForm.current}
+              onChange={(event) => setPasswordForm({ ...passwordForm, current: event.target.value })}
+              required
+              autoFocus
+            />
+          </div>
+          <div>
+            <label htmlFor="next-password" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+              New Password
+            </label>
+            <input
+              id="next-password"
+              className="input-field text-sm"
+              type="password"
+              autoComplete="new-password"
+              minLength={12}
+              value={passwordForm.next}
+              onChange={(event) => setPasswordForm({ ...passwordForm, next: event.target.value })}
+              required
+            />
+            <p className="text-xs themed-text-muted mt-1">At least 12 characters.</p>
+          </div>
+          <div>
+            <label htmlFor="confirm-next-password" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+              Confirm New Password
+            </label>
+            <input
+              id="confirm-next-password"
+              className="input-field text-sm"
+              type="password"
+              autoComplete="new-password"
+              minLength={12}
+              value={passwordForm.confirm}
+              onChange={(event) => setPasswordForm({ ...passwordForm, confirm: event.target.value })}
+              required
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowChangePassword(false)}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={changingPassword}
+              className="btn-primary flex items-center gap-2"
+            >
+              {changingPassword && <Spinner className="w-4 h-4" />}
+              Change Password
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {toast && <Toast {...toast} onDismiss={() => setToast(null)} />}
     </div>

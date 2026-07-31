@@ -13,6 +13,22 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+def validate_bcrypt_password(value: str) -> str:
+    if len(value.encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 UTF-8 bytes")
+    return value
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def password_fits_bcrypt(cls, value: str) -> str:
+        return validate_bcrypt_password(value)
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=12, max_length=128)
@@ -26,9 +42,7 @@ class UserCreate(BaseModel):
     @field_validator("password")
     @classmethod
     def password_fits_bcrypt(cls, value: str) -> str:
-        if len(value.encode("utf-8")) > 72:
-            raise ValueError("Password must be at most 72 UTF-8 bytes")
-        return value
+        return validate_bcrypt_password(value)
 
 
 class UserResponse(BaseModel):
