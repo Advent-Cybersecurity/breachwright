@@ -1451,10 +1451,9 @@ function ReportsTab({ engId, toast }) {
       const templateId = reportFormat === 'docx' && selectedTemplate ? selectedTemplate : null;
       const report = await reportsApi.generate(engId, reportFormat, templateId, useAI);
       setReportList(prev => [report, ...prev]);
-      const tName = templates.find(t => t.id === selectedTemplate)?.name;
       const fellBack = report.format !== reportFormat;
       toast({
-        message: `${report.format.toUpperCase()} report generated${useAI ? ' with AI enhancement' : ' locally'}${report.template_used && tName ? ` with "${tName}" template` : ''}${fellBack ? ' (Word generation was unavailable)' : ''}`,
+        message: `${report.format.toUpperCase()} report generated${useAI ? ' with AI enhancement' : ' locally'}${report.template_used ? ` with "${report.template_used}" template` : ''}${fellBack ? ' (Word generation was unavailable)' : ''}`,
         type: fellBack ? 'info' : 'success',
       });
     } catch (err) {
@@ -1479,6 +1478,10 @@ function ReportsTab({ engId, toast }) {
       }
       const tmpls = await templatesApi.list();
       setTemplates(tmpls);
+      const defaultTemplate = tmpls.find(t => t.is_default);
+      if (defaultTemplate && (result.is_default || !selectedTemplate)) {
+        setSelectedTemplate(defaultTemplate.id);
+      }
       setShowTemplateForm(false);
       setEditingTemplate(null);
       setLogoFile(null);
@@ -1513,6 +1516,7 @@ function ReportsTab({ engId, toast }) {
   };
 
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>;
+  const defaultTemplate = templates.find(t => t.is_default);
 
   return (
     <div>
@@ -1644,7 +1648,7 @@ function ReportsTab({ engId, toast }) {
         {reportFormat === 'docx' && templates.length > 0 && (
           <select aria-label="Report template" className="input-field text-sm" style={{ maxWidth: 200 }} value={selectedTemplate}
             onChange={e => setSelectedTemplate(e.target.value)}>
-            <option value="">Default Branding</option>
+            <option value="">{defaultTemplate ? `Automatic: ${defaultTemplate.name}` : 'Breachwright Default'}</option>
             {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         )}

@@ -182,6 +182,16 @@ class OpenSourceReleaseTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertNotIn("detail.entry.default_cvss &&", knowledge_page)
 
+    def test_report_template_selection_matches_the_server_default(self):
+        engagement_page = (
+            ROOT / "frontend" / "src" / "pages" / "EngagementDetail.jsx"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn(">Default Branding</option>", engagement_page)
+        self.assertIn("setSelectedTemplate(defaultTemplate.id);", engagement_page)
+        self.assertIn("Automatic: ${defaultTemplate.name}", engagement_page)
+        self.assertIn('report.template_used ? ` with "${report.template_used}" template`', engagement_page)
+
     def test_advertised_bedrock_provider_is_installed_and_packaged(self):
         requirements = (ROOT / "backend" / "requirements.txt").read_text(
             encoding="utf-8"
