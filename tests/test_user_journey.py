@@ -92,6 +92,7 @@ class UserJourneyTests(unittest.TestCase):
         cls.log_file.flush()
         logs = cls.log_path.read_text(encoding="utf-8", errors="replace")
         cls._stop_server()
+        cls._cleanup_test_workspace()
         raise RuntimeError(
             f"Breachwright server did not become healthy: {last_error}\n{logs}"
         )
@@ -127,17 +128,21 @@ class UserJourneyTests(unittest.TestCase):
                     process.wait(timeout=5)
 
     @classmethod
+    def _cleanup_test_workspace(cls):
+        log_file = getattr(cls, "log_file", None)
+        if log_file and not log_file.closed:
+            log_file.close()
+        temp_root = getattr(cls, "temp_root", None)
+        if temp_root:
+            shutil.rmtree(temp_root, ignore_errors=True)
+
+    @classmethod
     def tearDownClass(cls):
         client = getattr(cls, "client", None)
         if client:
             client.close()
         cls._stop_server()
-        log_file = getattr(cls, "log_file", None)
-        if log_file:
-            log_file.close()
-        temp_root = getattr(cls, "temp_root", None)
-        if temp_root:
-            shutil.rmtree(temp_root, ignore_errors=True)
+        cls._cleanup_test_workspace()
 
     def test_complete_local_workspace_to_report_and_export(self):
         health = self.client.get("/api/health")

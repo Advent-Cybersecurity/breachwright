@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { engagements as engApi, assistant as assistantApi, appSettings } from '../api';
+import { engagements as engApi, assistant as assistantApi } from '../api';
 import { Toast, Spinner } from '../components/UI';
-import { Send, Bot, User, Info, ChevronDown } from 'lucide-react';
+import AIProviderNotice, { confirmAIAction } from '../components/AIProviderNotice';
+import { Send, Bot, User, ChevronDown } from 'lucide-react';
 
 function InlineContent({ text }) {
   const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
@@ -124,18 +125,13 @@ export default function Assistant() {
   }, []);
 
   useEffect(() => {
-    appSettings.getProvider().then(setProviderConfig).catch((err) => {
-      setToast({ message: `Could not load AI privacy settings: ${err.message}`, type: 'error' });
-    });
-  }, []);
-
-  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleSend = async () => {
     const msg = input.trim();
     if (!msg || sending) return;
+    if (!confirmAIAction(providerConfig, 'Assistant request')) return;
 
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: msg }]);
@@ -199,17 +195,9 @@ export default function Assistant() {
         )}
       </div>
 
-      {providerConfig && (
-        <div className="flex items-start gap-2 rounded px-3 py-2 mb-4 text-xs themed-text-secondary shrink-0"
-          style={{ border: '1px solid var(--border)', backgroundColor: 'var(--bg-800)' }} role="status">
-          <Info size={14} className="mt-0.5 shrink-0" style={{ color: '#06b6d4' }} />
-          <span>
-            Provider: <strong className="themed-text-primary">{providerConfig.ai_provider}</strong>
-            {' · '}Sensitive-data redaction: <strong className={providerConfig.ai_redact_sensitive_data ? 'text-green-400' : 'text-yellow-400'}>{providerConfig.ai_redact_sensitive_data ? 'on' : 'off'}</strong>
-            {' · '}Each message can send bounded context from the selected engagement to this provider.
-          </span>
-        </div>
-      )}
+      <div className="mb-4 shrink-0">
+        <AIProviderNotice actionLabel="an Assistant request" onConfigChange={setProviderConfig} />
+      </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto rounded-lg p-4 mb-4 space-y-4"
@@ -279,14 +267,14 @@ export default function Assistant() {
             rows={1}
             className="input-field text-sm pr-12 resize-none"
             style={{ minHeight: 44, maxHeight: 120 }}
-            disabled={sending}
+            disabled={sending || !providerConfig}
           />
         </div>
         <button
           type="button"
           aria-label="Send message"
           onClick={handleSend}
-          disabled={sending || !input.trim()}
+          disabled={sending || !providerConfig || !input.trim()}
           className="btn-primary flex items-center gap-2 self-end"
           style={{ height: 44 }}>
           {sending ? <Spinner className="w-4 h-4" /> : <Send size={16} />}

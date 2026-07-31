@@ -302,6 +302,9 @@ async def delete_report(
         except OSError as exc:
             raise HTTPException(
                 status_code=409,
-                detail=f"Report file could not be removed: {exc}",
+                detail=(
+                    "Report file could not be removed. Review file permissions "
+                    "and retry."
+                ),
             ) from exc
     await db.delete(report)

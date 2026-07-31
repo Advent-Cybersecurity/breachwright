@@ -29,6 +29,10 @@ AI-assisted and analyst reviewed.
 
 - Exploitation chains must cite exact accepted finding IDs. Existing chains
   are not removed until a valid grounded replacement is ready.
+- Exploitation-chain input is capped at 200 findings with bounded free-text
+  fields, and a model response can contain at most 25 chains. Active Directory
+  analysis accepts at most 100 returned paths. Larger results fail without
+  replacing previously reviewed records.
 - Active Directory paths must cite exact object or relationship Evidence IDs,
   and every proposed node must exist in the imported graph.
 - Narratives must preserve finding and evidence citation markers.
@@ -98,6 +102,12 @@ provider's data-handling and pricing terms. Local OpenAI-compatible endpoints
 can keep model traffic on operator-controlled systems. Breachwright's project
 CI does not call model APIs, provision hosted AI services, or require a paid
 test platform.
+
+Every generative action shows the active provider and local redaction state
+before it can start. External-provider actions include a cost notice. If the
+local privacy-settings check cannot complete, the action stays disabled with a
+retry control. When redaction is intentionally disabled, Breachwright requires
+an additional confirmation before sending context.
 
 Provider initialization and request failures are handled at the workflow
 boundary. The interface receives a stable recovery message, while logs record

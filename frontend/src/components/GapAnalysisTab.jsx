@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { gapAnalysis } from '../api';
 import { SeverityBadge, Spinner } from './UI';
+import AIProviderNotice, { confirmAIAction } from './AIProviderNotice';
 import {
   ShieldAlert, CheckCircle2, XCircle, AlertTriangle, ChevronDown,
   ChevronRight, Play, ExternalLink, Gauge,
@@ -119,8 +120,10 @@ export default function GapAnalysisTab({ engId, toast }) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [methodologies, setMethodologies] = useState(null);
+  const [aiProviderConfig, setAiProviderConfig] = useState(null);
 
   const runAnalysis = async () => {
+    if (!confirmAIAction(aiProviderConfig, 'coverage review')) return;
     setLoading(true);
     setResult(null);
     try {
@@ -165,6 +168,10 @@ export default function GapAnalysisTab({ engId, toast }) {
             It understands your scope and only flags gaps that are relevant.
           </p>
 
+          <div className="mb-4">
+            <AIProviderNotice actionLabel="coverage review" onConfigChange={setAiProviderConfig} />
+          </div>
+
           <div className="flex gap-3">
             <select className="input flex-1 text-sm" value={methodology}
               onChange={e => setMethodology(e.target.value)}>
@@ -182,7 +189,7 @@ export default function GapAnalysisTab({ engId, toast }) {
               )}
             </select>
             <button className="btn-primary flex items-center gap-2 text-sm" onClick={runAnalysis}
-              disabled={loading}>
+              disabled={loading || !aiProviderConfig}>
               {loading ? <Spinner className="w-4 h-4" /> : <Play size={15} />}
               {loading ? 'Analyzing...' : 'Review Coverage'}
             </button>

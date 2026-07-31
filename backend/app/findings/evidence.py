@@ -268,6 +268,9 @@ async def delete_evidence(
         except OSError as exc:
             raise HTTPException(
                 status_code=409,
-                detail=f"Evidence file could not be removed: {exc}",
+                detail=(
+                    "Evidence file could not be removed. Review file "
+                    "permissions and retry."
+                ),
             ) from exc
     await db.delete(att)

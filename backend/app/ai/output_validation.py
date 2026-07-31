@@ -14,6 +14,8 @@ from app.engagements.schemas import FindingCreate
 
 
 MAX_AI_RECORDS = 1000
+MAX_AI_ATTACK_PATHS = 25
+MAX_AI_AD_PATHS = 100
 MAX_ATTACK_PATH_STEPS_SIZE = 500_000
 
 
@@ -168,11 +170,17 @@ class FullNarrativeCandidate(BaseModel):
     model_config = {"str_strip_whitespace": True}
 
 
-def _validate_list(raw: object, model: type[BaseModel], label: str) -> list[BaseModel]:
+def _validate_list(
+    raw: object,
+    model: type[BaseModel],
+    label: str,
+    *,
+    max_records: int = MAX_AI_RECORDS,
+) -> list[BaseModel]:
     if not isinstance(raw, list):
         raise ValueError(f"AI returned {label} in an invalid format")
-    if len(raw) > MAX_AI_RECORDS:
-        raise ValueError(f"AI returned more than {MAX_AI_RECORDS} {label}")
+    if len(raw) > max_records:
+        raise ValueError(f"AI returned more than {max_records} {label}")
 
     validated = []
     for index, item in enumerate(raw):
@@ -193,11 +201,21 @@ def validate_ai_findings(raw: object) -> list[AIFindingCandidate]:
 
 
 def validate_ai_attack_paths(raw: object) -> list[AttackPathCandidate]:
-    return _validate_list(raw, AttackPathCandidate, "attack path")
+    return _validate_list(
+        raw,
+        AttackPathCandidate,
+        "attack path",
+        max_records=MAX_AI_ATTACK_PATHS,
+    )
 
 
 def validate_ai_ad_paths(raw: object) -> list[ADAttackPathCandidate]:
-    return _validate_list(raw, ADAttackPathCandidate, "Active Directory path")
+    return _validate_list(
+        raw,
+        ADAttackPathCandidate,
+        "Active Directory path",
+        max_records=MAX_AI_AD_PATHS,
+    )
 
 
 def validate_gap_analysis(raw: object) -> GapAnalysisCandidate:

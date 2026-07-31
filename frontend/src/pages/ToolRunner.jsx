@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { engagements as engApi, jobs as jobsApi, analysis as analysisApi } from '../api';
 import { Toast, Spinner, SeverityBadge } from '../components/UI';
+import AIProviderNotice from '../components/AIProviderNotice';
 import {
   Play, Square, Trash2, Brain, Download, ChevronDown, ChevronRight,
   Terminal, Wifi, Globe, Link, Settings, AlertCircle, CheckCircle,
@@ -37,7 +38,7 @@ function PresetCard({ preset, selected, onClick }) {
   );
 }
 
-function JobCard({ job, onStop, onDelete, onAnalyze, onAddToScans, onSaveNotebook, onDownloaded, onRefresh }) {
+function JobCard({ job, aiReady, onStop, onDelete, onAnalyze, onAddToScans, onSaveNotebook, onDownloaded, onRefresh }) {
   const [expanded, setExpanded] = useState(job.status === 'running');
   const outputRef = useRef(null);
   const statusInfo = STATUS_STYLES[job.status] || STATUS_STYLES.queued;
@@ -156,7 +157,7 @@ function JobCard({ job, onStop, onDelete, onAnalyze, onAddToScans, onSaveNoteboo
                   </button>
                 )}
                 {job.status === 'complete' && ['nmap', 'nikto', 'feroxbuster', 'nuclei'].includes(job.tool) && (
-                  <button onClick={onAnalyze} disabled={job._analyzing}
+                  <button onClick={onAnalyze} disabled={job._analyzing || !aiReady}
                     className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded font-medium"
                     style={{ backgroundColor: 'rgba(6,182,212,0.15)', color: '#06b6d4' }}>
                     {job._analyzing ? <Loader size={12} className="animate-spin" /> : <Brain size={12} />}
@@ -201,6 +202,7 @@ export default function ToolRunner() {
   const [jobList, setJobList] = useState([]);
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [aiProviderConfig, setAiProviderConfig] = useState(null);
 
   // Tool config state
   const [selectedPreset, setSelectedPreset] = useState('');
@@ -346,6 +348,19 @@ export default function ToolRunner() {
           ? { ...item, scan_upload_id: scan.id }
           : item));
       }
+      const preview = await analysisApi.preview(selectedEng, [scanId]);
+      if (!preview.ready) {
+        throw new Error(preview.issues.join(' ') || 'AI input preflight did not pass.');
+      }
+      if (!preview.redaction_enabled) {
+        const confirmed = window.confirm(
+          `Sensitive-data redaction is off. This Tool Runner result will be sent to ${preview.provider}. Continue?`
+        );
+        if (!confirmed) {
+          setToast({ message: 'AI analysis canceled. The Tool Runner result remains available in Scans.', type: 'info' });
+          return;
+        }
+      }
       const result = await analysisApi.run(selectedEng, [scanId]);
       const count = result?.drafts?.length || 0;
       setToast({
@@ -407,6 +422,10 @@ export default function ToolRunner() {
         style={{ border: '1px solid color-mix(in srgb, #f59e0b 45%, var(--border))', backgroundColor: 'color-mix(in srgb, #f59e0b 8%, var(--bg-800))' }}>
         Commands run on the Breachwright host with the permissions of the Breachwright process.
         Keep Breachwright on a trusted local machine. Review every command and target before running it.
+      </div>
+
+      <div className="mb-6">
+        <AIProviderNotice actionLabel="Tool Runner AI analysis" onConfigChange={setAiProviderConfig} />
       </div>
 
       {/* Engagement selector */}
@@ -589,7 +608,7 @@ export default function ToolRunner() {
           </div>
 
           {jobList.map(job => (
-            <JobCard key={job.id} job={job}
+            <JobCard key={job.id} job={job} aiReady={Boolean(aiProviderConfig)}
               onStop={() => handleStop(job.id)}
               onDelete={() => handleDelete(job)}
               onAnalyze={() => handleAnalyze(job)}

@@ -295,13 +295,18 @@ class OpenSourceReleaseTests(unittest.TestCase):
         frontend = (ROOT / "frontend" / "src" / "pages" / "Assistant.jsx").read_text(
             encoding="utf-8"
         )
+        privacy_notice = (ROOT / "frontend" / "src" / "components" / "AIProviderNotice.jsx").read_text(
+            encoding="utf-8"
+        )
         self.assertIn('raise HTTPException(status_code=404, detail="Engagement not found")', router)
         self.assertIn(".limit(MAX_ASSISTANT_SCANS)", router)
         self.assertIn(".limit(MAX_ASSISTANT_AD_PATHS)", router)
         self.assertIn("citations_present_in_context", router)
         self.assertIn("citation_ids_in_order(response)", router)
-        self.assertIn("Sensitive-data redaction:", frontend)
-        self.assertIn("bounded context from the selected engagement", frontend)
+        self.assertIn("AIProviderNotice", frontend)
+        self.assertIn("disabled={sending || !providerConfig", frontend)
+        self.assertIn("Local secret redaction:", privacy_notice)
+        self.assertIn("may send bounded engagement context", privacy_notice)
         self.assertIn("await asyncio.to_thread(", router)
         self.assertIn("read_scan_excerpt", router)
         self.assertIn("bounded_context_value(f.evidence", router)
@@ -317,6 +322,12 @@ class OpenSourceReleaseTests(unittest.TestCase):
         notebook_router = (ROOT / "backend" / "app" / "findings" / "notebook_router.py").read_text(
             encoding="utf-8"
         )
+        scan_router = (ROOT / "backend" / "app" / "analysis" / "router.py").read_text(
+            encoding="utf-8"
+        )
+        job_router = (ROOT / "backend" / "app" / "jobs" / "router.py").read_text(
+            encoding="utf-8"
+        )
         engagement_page = (ROOT / "frontend" / "src" / "pages" / "EngagementDetail.jsx").read_text(
             encoding="utf-8"
         )
@@ -326,6 +337,14 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("Report file could not be removed", report_router)
         self.assertIn("Evidence file could not be removed", evidence_router)
         self.assertIn("Notebook attachment could not be removed", notebook_router)
+        self.assertIn("Scan file could not be removed", scan_router)
+        self.assertIn("Tool Runner output could not be removed", job_router)
+        self.assertIn("await db.flush()", scan_router)
+        self.assertNotIn('could not be removed: {exc}', report_router)
+        self.assertNotIn('could not be removed: {exc}', evidence_router)
+        self.assertNotIn('could not be removed: {exc}', notebook_router)
+        self.assertNotIn('could not be removed: {exc}', scan_router)
+        self.assertNotIn('could not be removed: {exc}', job_router)
         self.assertIn('Delete generated report', engagement_page)
         self.assertIn('Delete evidence attachment', engagement_page)
         self.assertIn('Delete notebook attachment', notebook_page)
@@ -347,6 +366,32 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn('disabled={!aiPreflight}', engagement_page)
         self.assertNotIn('detail=f"AI provider error: {e}"', report_router)
 
+    def test_ai_actions_show_privacy_state_and_fail_closed_when_it_is_unavailable(self):
+        notice = (ROOT / "frontend" / "src" / "components" / "AIProviderNotice.jsx").read_text(
+            encoding="utf-8"
+        )
+        engagement_page = (ROOT / "frontend" / "src" / "pages" / "EngagementDetail.jsx").read_text(
+            encoding="utf-8"
+        )
+        coverage_page = (ROOT / "frontend" / "src" / "components" / "GapAnalysisTab.jsx").read_text(
+            encoding="utf-8"
+        )
+        assistant_page = (ROOT / "frontend" / "src" / "pages" / "Assistant.jsx").read_text(
+            encoding="utf-8"
+        )
+        tool_runner = (ROOT / "frontend" / "src" / "pages" / "ToolRunner.jsx").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("AI privacy settings unavailable:", notice)
+        self.assertIn("External provider usage may incur charges.", notice)
+        self.assertIn("onConfigChange(null)", notice)
+        self.assertIn("confirmAIAction", engagement_page)
+        self.assertIn("confirmAIAction", coverage_page)
+        self.assertIn("confirmAIAction", assistant_page)
+        self.assertIn("analysisApi.preview(selectedEng, [scanId])", tool_runner)
+        self.assertIn("disabled={job._analyzing || !aiReady}", tool_runner)
+        self.assertIn("setAnalysisPreview(null)", engagement_page)
+
     def test_ai_provider_failures_do_not_echo_raw_provider_responses(self):
         ai_workflows = (
             ROOT / "backend" / "app" / "analysis" / "router.py",
@@ -364,6 +409,20 @@ class OpenSourceReleaseTests(unittest.TestCase):
             self.assertNotIn('detail=f"AI analysis failed:', source, path)
             self.assertNotIn('return {"error": f"AI provider error:', source, path)
             self.assertNotIn('logger.error("AI provider', source, path)
+
+    def test_exploitation_chain_inputs_and_outputs_are_explicitly_bounded(self):
+        router = (ROOT / "backend" / "app" / "attack_paths" / "router.py").read_text(
+            encoding="utf-8"
+        )
+        validation = (ROOT / "backend" / "app" / "ai" / "output_validation.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("MAX_ATTACK_PATH_FINDINGS = 200", router)
+        self.assertIn(".limit(MAX_ATTACK_PATH_FINDINGS + 1)", router)
+        self.assertIn("MAX_ATTACK_PATH_DESCRIPTION_CHARS", router)
+        self.assertIn("MAX_ATTACK_PATH_SCOPE_CHARS", router)
+        self.assertIn("MAX_AI_ATTACK_PATHS = 25", validation)
+        self.assertIn("MAX_AI_AD_PATHS = 100", validation)
 
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
