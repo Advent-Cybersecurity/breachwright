@@ -21,6 +21,7 @@
 
 - Added complete Markdown and DOCX reporting without an AI provider
 - Added administrator account listing, role changes, deactivation, and reactivation
+- Account deactivation and reactivation now revoke all prior sessions
 - Added self-service password changes with current-password verification and
   immediate revocation of existing account sessions
 - Made AI report enhancement an explicit opt-in

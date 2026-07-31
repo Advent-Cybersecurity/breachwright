@@ -564,6 +564,15 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(reactivated_viewer.status_code, 200, reactivated_viewer.text)
         self.assertTrue(reactivated_viewer.json()["is_active"])
+        revoked_viewer_session = self.client.get(
+            "/api/engagements",
+            headers=viewer_headers,
+        )
+        self.assertEqual(
+            revoked_viewer_session.status_code,
+            401,
+            revoked_viewer_session.text,
+        )
 
         job = self.client.post(
             "/api/jobs",

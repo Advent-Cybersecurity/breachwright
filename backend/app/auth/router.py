@@ -224,6 +224,8 @@ async def update_user(
     if request.role is not None:
         target.role = request.role
     if request.is_active is not None:
+        if request.is_active != target.is_active:
+            target.token_version += 1
         target.is_active = request.is_active
     await db.flush()
     return target
