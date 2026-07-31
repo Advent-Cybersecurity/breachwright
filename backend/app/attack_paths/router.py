@@ -14,6 +14,7 @@ from app.ai.completion import complete_validated_json
 from app.ai.prompts.loader import get_prompt
 from app.ai.prompts.templates import ATTACK_PATH_GROUNDING_RULES
 from app.ai.context import AIContextTooLarge, build_bounded_untrusted_context
+from app.ai.errors import AI_PROVIDER_FAILURE_MESSAGE
 
 logger = logging.getLogger(__name__)
 
@@ -77,18 +78,18 @@ async def generate_attack_paths(
     except AIContextTooLarge as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
 
-    provider = get_provider()
     system_prompt = await get_prompt(db, "prompt_attack_paths") + ATTACK_PATH_GROUNDING_RULES
     try:
+        provider = get_provider()
         validated_paths, metadata = await complete_validated_json(
             provider,
             system_prompt=system_prompt,
             user_message=user_message,
             validator=validate_ai_attack_paths,
         )
-    except Exception as e:
-        logger.error("AI provider error: %s", e)
-        raise HTTPException(status_code=502, detail=f"AI provider error: {e}") from e
+    except Exception as exc:
+        logger.warning("Attack-path AI request failed with %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail=AI_PROVIDER_FAILURE_MESSAGE) from exc
 
     findings_by_id = {finding.id: finding for finding in findings}
     grounded_paths = []

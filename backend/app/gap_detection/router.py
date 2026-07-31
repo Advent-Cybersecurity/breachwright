@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
+from app.ai.errors import AI_PROVIDER_FAILURE_MESSAGE
 from app.gap_detection.service import analyze_gaps
 from app.checklists.methodologies import get_available_methodologies
 
@@ -45,7 +46,7 @@ async def run_gap_analysis(
     if "error" in result:
         if result["error"] == "Engagement not found":
             raise HTTPException(status_code=404, detail=result["error"])
-        if "AI provider" in result["error"]:
+        if result["error"] == AI_PROVIDER_FAILURE_MESSAGE:
             raise HTTPException(status_code=502, detail=result["error"])
         if "Unknown methodology" in result["error"]:
             raise HTTPException(status_code=400, detail=result["error"])

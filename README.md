@@ -53,6 +53,8 @@ Third-party AI services may charge for API usage. Local model support does not r
 - Exploitation chains and MITRE ATT&CK-aware attack narratives
 - SharpHound and BloodHound ZIP import with Active Directory attack-path analysis
 - Markdown and DOCX report generation
+- Provider-free AI report preflight with context limits, redaction visibility,
+  external-provider cost notice, and deterministic local fallback
 - Verified local backup and offline restore with secret exclusion
 - Built-in database and stored-file integrity diagnostics, backup freshness,
   and version visibility

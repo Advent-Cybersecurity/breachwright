@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.engagements.models import Engagement, Finding, AttackPath
 from app.ai.provider import get_provider
+from app.ai.errors import AI_PROVIDER_FAILURE_MESSAGE
 from app.ai.completion import complete_validated_json
 from app.ai.output_validation import (
     validate_full_narrative,
@@ -184,11 +185,11 @@ async def generate_narrative(
         return {"error": str(exc)}
 
     # Get provider and prompt
-    provider = get_provider()
     custom_prompt = await get_prompt(db, "prompt_narrative")
     system_prompt = (custom_prompt if custom_prompt else NARRATIVE_SYSTEM_PROMPT) + NARRATIVE_GROUNDING_RULES
 
     try:
+        provider = get_provider()
         candidate, metadata = await complete_validated_json(
             provider,
             system_prompt=system_prompt,
@@ -197,9 +198,9 @@ async def generate_narrative(
             max_tokens=4096,
             temperature=0.4,
         )
-    except Exception as e:
-        logger.error("AI provider error during narrative generation: %s", e)
-        return {"error": f"AI provider error: {str(e)}"}
+    except Exception as exc:
+        logger.warning("Path-narrative AI request failed with %s", type(exc).__name__)
+        return {"error": AI_PROVIDER_FAILURE_MESSAGE}
 
     result = candidate.model_dump(mode="json")
     missing = sorted(required_citations - set(result["citations"]))
@@ -389,10 +390,10 @@ OUTPUT FORMAT (JSON):
   "citations": ["FINDING:exact-id", "EVIDENCE:exact-id"]
 }"""
 
-    provider = get_provider()
     custom_prompt = await get_prompt(db, "prompt_narrative")
 
     try:
+        provider = get_provider()
         candidate, metadata = await complete_validated_json(
             provider,
             system_prompt=(custom_prompt if custom_prompt else unified_prompt) + NARRATIVE_GROUNDING_RULES,
@@ -401,9 +402,9 @@ OUTPUT FORMAT (JSON):
             max_tokens=6000,
             temperature=0.4,
         )
-    except Exception as e:
-        logger.error("AI provider error during engagement narrative: %s", e)
-        return {"error": f"AI provider error: {str(e)}"}
+    except Exception as exc:
+        logger.warning("Engagement-narrative AI request failed with %s", type(exc).__name__)
+        return {"error": AI_PROVIDER_FAILURE_MESSAGE}
 
     result = candidate.model_dump(mode="json")
     required_citations = {f"FINDING:{finding.id}" for finding in findings}

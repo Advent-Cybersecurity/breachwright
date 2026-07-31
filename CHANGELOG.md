@@ -103,6 +103,13 @@
 - Assistant scan excerpts now use bounded worker-thread reads, and large finding
   fields plus evidence-reference lists are capped before context assembly to
   avoid request-loop stalls and excessive transient memory use.
+- AI-assisted reports now show a provider-free preflight with context size,
+  provider, redaction state, readiness, and an external-provider cost notice.
+  Report generation requires explicit confirmation when local secret redaction
+  is disabled.
+- Generative workflows now return one user-safe provider failure message and
+  log only the exception type, preventing provider response text from being
+  copied into the interface or application log.
 - Report, finding-evidence, and Notebook-attachment deletion now confirms the
   stored-file impact and preserves the database record with a retryable conflict
   when the underlying file cannot be removed.

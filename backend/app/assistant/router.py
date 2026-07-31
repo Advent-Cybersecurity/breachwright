@@ -13,6 +13,7 @@ from app.auth.dependencies import require_editor
 from app.auth.models import User
 from app.engagements.models import Engagement, Finding, AttackPath, ScanUpload
 from app.ai.provider import get_provider
+from app.ai.errors import AI_PROVIDER_FAILURE_MESSAGE
 from app.ai.context import redact_sensitive_text
 from app.config import settings
 
@@ -351,17 +352,17 @@ async def chat(
         redact_sensitive=settings.ai_redact_sensitive_data,
     )
 
-    provider = get_provider()
     try:
+        provider = get_provider()
         response = await provider.complete(
             system_prompt=_get_system_prompt(),
             user_message=user_message,
             max_tokens=4096,
             temperature=0.3,
         )
-    except Exception as e:
-        logger.error("AI assistant error: %s", e)
-        raise HTTPException(status_code=502, detail=f"AI provider error: {e}")
+    except Exception as exc:
+        logger.warning("Assistant AI request failed with %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail=AI_PROVIDER_FAILURE_MESSAGE) from exc
 
     available = {citation["id"]: citation for citation in citations}
     cited_ids = citation_ids_in_order(response)

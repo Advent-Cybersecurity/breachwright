@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
+from app.ai.errors import AI_PROVIDER_FAILURE_MESSAGE
 from app.engagements.models import AttackPath, Engagement
 from app.narrative.service import (
     generate_all_narratives,
@@ -51,6 +52,8 @@ async def generate_path_narratives(
     if len(results) == 1 and "error" in results[0]:
         if "not found" in results[0]["error"].lower():
             raise HTTPException(status_code=404, detail=results[0]["error"])
+        if results[0]["error"] == AI_PROVIDER_FAILURE_MESSAGE:
+            raise HTTPException(status_code=502, detail=results[0]["error"])
         raise HTTPException(status_code=400, detail=results[0]["error"])
 
     return {
@@ -77,6 +80,8 @@ async def generate_full_narrative(
     if "error" in result:
         if "not found" in result["error"].lower():
             raise HTTPException(status_code=404, detail=result["error"])
+        if result["error"] == AI_PROVIDER_FAILURE_MESSAGE:
+            raise HTTPException(status_code=502, detail=result["error"])
         raise HTTPException(status_code=400, detail=result["error"])
 
     return result

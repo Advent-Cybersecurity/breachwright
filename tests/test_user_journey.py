@@ -910,10 +910,39 @@ class UserJourneyTests(unittest.TestCase):
                 "SELECT action, source FROM finding_history WHERE finding_id = ?",
                 (direct_cleanup_id,),
             ).fetchall()
-            self.assertEqual(
-                history_rows,
-                [],
-            )
+        self.assertEqual(
+            history_rows,
+            [],
+        )
+
+        report_ai_preflight = self.client.get(
+            f"/api/engagements/{engagement_id}/reports/ai-preflight",
+            headers=headers,
+        )
+        self.assertEqual(
+            report_ai_preflight.status_code,
+            200,
+            report_ai_preflight.text,
+        )
+        report_ai_preview = report_ai_preflight.json()
+        self.assertTrue(report_ai_preview["ready"])
+        self.assertGreater(report_ai_preview["context_chars"], 0)
+        self.assertLessEqual(
+            report_ai_preview["context_chars"],
+            report_ai_preview["max_context_chars"],
+        )
+        self.assertEqual(
+            report_ai_preview["finding_count"],
+            len(remaining_findings.json()),
+        )
+        self.assertTrue(report_ai_preview["redaction_enabled"])
+        self.assertEqual(
+            self.client.get(
+                "/api/engagements/missing/reports/ai-preflight",
+                headers=headers,
+            ).status_code,
+            404,
+        )
 
         markdown_report = self.client.post(
             f"/api/engagements/{engagement_id}/reports",

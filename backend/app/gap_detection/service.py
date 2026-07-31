@@ -20,6 +20,7 @@ from app.engagements.models import Engagement, Finding, ScanUpload, AttackPath
 from app.checklists.models import ChecklistItem
 from app.checklists.methodologies import METHODOLOGIES
 from app.ai.provider import get_provider
+from app.ai.errors import AI_PROVIDER_FAILURE_MESSAGE
 from app.ai.output_validation import validate_gap_analysis
 from app.ai.completion import complete_validated_json
 from app.ai.prompts.loader import get_prompt
@@ -289,8 +290,8 @@ async def analyze_gaps(
     )
 
     # Call AI
-    provider = get_provider()
     try:
+        provider = get_provider()
         candidate, metadata = await complete_validated_json(
             provider,
             system_prompt=system_prompt,
@@ -299,9 +300,9 @@ async def analyze_gaps(
             max_tokens=4096,
             temperature=0.2,
         )
-    except Exception as e:
-        logger.error("AI provider error during gap analysis: %s", e)
-        return {"error": f"AI provider error: {str(e)}"}
+    except Exception as exc:
+        logger.warning("Gap-analysis AI request failed with %s", type(exc).__name__)
+        return {"error": AI_PROVIDER_FAILURE_MESSAGE}
 
     methodology = METHODOLOGIES[methodology_key]
     result = candidate.model_dump(mode="json")
