@@ -12,7 +12,7 @@ This checklist is for the first public Breachwright release.
 - [x] Keep all AI-assisted workflows available through user-controlled providers
 - [x] Set the next application version to 2.0.0
 - [x] Complete clean-environment backend and frontend builds on Windows
-- [ ] Complete smoke tests on Windows and Linux
+- [x] Complete smoke tests on Windows and Linux
 
 ## Community files
 
