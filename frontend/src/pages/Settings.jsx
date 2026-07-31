@@ -33,6 +33,7 @@ export default function Settings() {
   const [localStatus, setLocalStatus] = useState(null);
   const [checkingLocal, setCheckingLocal] = useState(false);
   const [refreshingDiagnostics, setRefreshingDiagnostics] = useState(false);
+  const [downloadingSupport, setDownloadingSupport] = useState(false);
   const validBackups = backups.filter(backup => backup.valid !== false);
   const invalidBackups = backups.filter(backup => backup.valid === false);
   const newestBackup = validBackups[0] || null;
@@ -370,19 +371,34 @@ export default function Settings() {
             <Server size={18} className="text-blue-400" />
             <h2 className="text-base font-semibold themed-text-primary">System</h2>
           </div>
-          <button className="btn-ghost text-xs flex items-center gap-2" disabled={refreshingDiagnostics} onClick={async () => {
-            setRefreshingDiagnostics(true);
-            try {
-              setDiagnostics(await system.diagnostics());
-              setToast({ message: 'System and stored-file diagnostics refreshed', type: 'success' });
-            } catch (err) {
-              setToast({ message: `Diagnostics could not be refreshed: ${err.message}`, type: 'error' });
-            } finally {
-              setRefreshingDiagnostics(false);
-            }
-          }}>
-            <RefreshCw size={13} className={refreshingDiagnostics ? 'animate-spin' : ''} /> Refresh
-          </button>
+          <div className="flex items-center gap-1">
+            <button className="btn-ghost text-xs flex items-center gap-2" disabled={downloadingSupport} onClick={async () => {
+              setDownloadingSupport(true);
+              try {
+                await system.downloadSupportSnapshot();
+                setToast({ message: 'Privacy-bounded support snapshot downloaded', type: 'success' });
+              } catch (err) {
+                setToast({ message: `Support snapshot could not be downloaded: ${err.message}`, type: 'error' });
+              } finally {
+                setDownloadingSupport(false);
+              }
+            }} title="Download system and integrity metadata without logs, secrets, or workspace content">
+              <Download size={13} /> {downloadingSupport ? 'Preparing...' : 'Support Snapshot'}
+            </button>
+            <button className="btn-ghost text-xs flex items-center gap-2" disabled={refreshingDiagnostics} onClick={async () => {
+              setRefreshingDiagnostics(true);
+              try {
+                setDiagnostics(await system.diagnostics());
+                setToast({ message: 'System and stored-file diagnostics refreshed', type: 'success' });
+              } catch (err) {
+                setToast({ message: `Diagnostics could not be refreshed: ${err.message}`, type: 'error' });
+              } finally {
+                setRefreshingDiagnostics(false);
+              }
+            }}>
+              <RefreshCw size={13} className={refreshingDiagnostics ? 'animate-spin' : ''} /> Refresh
+            </button>
+          </div>
         </div>
         {health && (
           <div>
@@ -427,6 +443,9 @@ export default function Settings() {
             )}
           </div>
         )}
+        <p className="text-[10px] themed-text-muted mt-3">
+          Support snapshots exclude logs, credentials, the local data path, and all engagement content. Review any file before attaching it to a public issue.
+        </p>
       </div>
 
       {/* Data safety */}

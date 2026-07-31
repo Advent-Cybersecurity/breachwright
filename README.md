@@ -56,6 +56,8 @@ Third-party AI services may charge for API usage. Local model support does not r
 - Verified local backup and offline restore with secret exclusion
 - Built-in database and stored-file integrity diagnostics, backup freshness,
   and version visibility
+- Privacy-bounded support snapshots for community troubleshooting without logs,
+  credentials, local data paths, or assessment content
 - Validated image, PDF, HTTP, request, response, HAR, text, Markdown, CSV, and
   JSON evidence attachments
 - Tool Runner workflows for nmap, nikto, subfinder, feroxbuster, nuclei, and

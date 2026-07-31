@@ -260,6 +260,21 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("failed verification", settings)
         self.assertIn("protected file", settings)
 
+    def test_support_snapshot_has_a_bounded_privacy_contract(self):
+        router = (ROOT / "backend" / "app" / "system" / "router.py").read_text(
+            encoding="utf-8"
+        )
+        frontend = (ROOT / "frontend" / "src" / "pages" / "Settings.jsx").read_text(
+            encoding="utf-8"
+        )
+        smoke = (ROOT / "scripts" / "smoke_bundle.py").read_text(encoding="utf-8")
+        self.assertIn('diagnostic_data.pop("data_directory", None)', router)
+        self.assertIn('"contains_logs": False', router)
+        self.assertIn('"contains_credentials": False', router)
+        self.assertIn('"contains_workspace_content": False', router)
+        self.assertIn("Support snapshots exclude logs", frontend)
+        self.assertIn('client.get("/api/system/support-snapshot"', smoke)
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")

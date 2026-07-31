@@ -409,6 +409,19 @@ def main() -> int:
                 raise RuntimeError(
                     f"Packaged stored-file diagnostics failed: {stored_files}"
                 )
+            support = client.get("/api/system/support-snapshot", headers=headers)
+            support.raise_for_status()
+            support_body = support.json()
+            if (
+                "data_directory" in support_body.get("diagnostics", {})
+                or any(support_body.get("privacy", {}).values())
+                or not support.headers.get("content-disposition", "").startswith(
+                    "attachment; filename=\"breachwright-support-"
+                )
+            ):
+                raise RuntimeError(
+                    f"Packaged support snapshot exceeded its privacy contract: {support_body}"
+                )
         finally:
             client.close()
             if process.poll() is None:

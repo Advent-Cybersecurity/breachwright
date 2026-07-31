@@ -191,6 +191,27 @@ export const system = {
     request('/version-check'),
   diagnostics: () =>
     request('/system/diagnostics'),
+  downloadSupportSnapshot: async () => {
+    const res = await fetch('/api/system/support-snapshot');
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || 'Support snapshot download failed');
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('content-disposition') || '';
+    const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1]
+      || 'breachwright-support.json';
+    const blobUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = blobUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(blobUrl);
+    }, 1000);
+  },
   listBackups: () =>
     request('/system/backups'),
   createBackup: () =>
