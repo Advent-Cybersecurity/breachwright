@@ -29,6 +29,7 @@ from app.engagements.models import (
     EvidenceNote,
     EvidenceNoteAttachment,
     Finding,
+    Report,
     ScanObservation,
     ScanSnapshot,
     ScanUpload,
@@ -46,8 +47,9 @@ SNAPSHOT_PARSER_VERSION = "structured-v2"
 MAX_SNAPSHOT_SCANS = 50
 MAX_SNAPSHOT_BYTES = 250 * 1024 * 1024
 MAX_COMPARISON_DETAILS_PER_STATUS = 500
-MAX_ASSET_INVENTORY_ITEMS = 2000
-MAX_ASSET_OBSERVATIONS_PER_TYPE = 500
+MAX_ASSET_INVENTORY_ITEMS = 500
+MAX_ASSET_OBSERVATIONS_PER_TYPE = 100
+MAX_ASSET_FINDINGS_PER_HOST = 100
 SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
 
@@ -602,6 +604,105 @@ async def list_snapshots(
     return [_snapshot_response(snapshot) for snapshot in result.scalars().all()]
 
 
+@router.get("/activity")
+async def recent_activity(
+    engagement_id: str,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return a bounded local activity view reconstructed from durable records."""
+    await _require_engagement(db, engagement_id)
+    per_type = min(limit, 20)
+    findings = (await db.execute(
+        select(Finding)
+        .where(Finding.engagement_id == engagement_id)
+        .order_by(Finding.updated_at.desc(), Finding.id.desc())
+        .limit(per_type)
+    )).scalars().all()
+    notes = (await db.execute(
+        select(EvidenceNote)
+        .where(EvidenceNote.engagement_id == engagement_id)
+        .order_by(EvidenceNote.updated_at.desc(), EvidenceNote.id.desc())
+        .limit(per_type)
+    )).scalars().all()
+    scans = (await db.execute(
+        select(ScanUpload)
+        .where(ScanUpload.engagement_id == engagement_id)
+        .order_by(ScanUpload.created_at.desc(), ScanUpload.id.desc())
+        .limit(per_type)
+    )).scalars().all()
+    snapshots = (await db.execute(
+        select(ScanSnapshot)
+        .where(ScanSnapshot.engagement_id == engagement_id)
+        .order_by(ScanSnapshot.created_at.desc(), ScanSnapshot.id.desc())
+        .limit(per_type)
+    )).scalars().all()
+    reports = (await db.execute(
+        select(Report)
+        .where(Report.engagement_id == engagement_id)
+        .order_by(Report.created_at.desc(), Report.id.desc())
+        .limit(per_type)
+    )).scalars().all()
+
+    events = [
+        {
+            "kind": "finding",
+            "id": finding.id,
+            "title": finding.title,
+            "detail": f"{_severity_value(finding.severity).title()} finding activity",
+            "timestamp": finding.updated_at or finding.created_at,
+            "tab": "findings",
+        }
+        for finding in findings
+    ]
+    events.extend({
+        "kind": "evidence_note",
+        "id": note.id,
+        "title": note.title,
+        "detail": "Evidence Notebook activity",
+        "timestamp": note.updated_at or note.created_at,
+        "tab": "notebook",
+    } for note in notes)
+    events.extend({
+        "kind": "scan",
+        "id": scan.id,
+        "title": scan.filename,
+        "detail": f"{scan.scan_type.upper()} scan added",
+        "timestamp": scan.created_at,
+        "tab": "scans",
+    } for scan in scans)
+    events.extend({
+        "kind": "snapshot",
+        "id": snapshot.id,
+        "title": snapshot.label,
+        "detail": f"Snapshot with {snapshot.observation_count} observations",
+        "timestamp": snapshot.created_at,
+        "tab": "scans",
+    } for snapshot in snapshots)
+    events.extend({
+        "kind": "report",
+        "id": report.id,
+        "title": report.title,
+        "detail": f"{report.format.upper()} report generated",
+        "timestamp": report.created_at,
+        "tab": "reports",
+    } for report in reports)
+
+    def sort_key(event):
+        value = event["timestamp"]
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return (value, event["kind"], event["id"])
+
+    events.sort(key=sort_key, reverse=True)
+    return {
+        "count": min(len(events), limit),
+        "limit": limit,
+        "events": events[:limit],
+    }
+
+
 @router.get("/search")
 async def search_workspace(
     engagement_id: str,
@@ -861,7 +962,11 @@ def _csv_safe(value, redact_sensitive: bool) -> str:
     if redact_sensitive:
         text = redact_sensitive_text(text)
     text = text.replace("\x00", "")
-    if text.startswith(("=", "+", "-", "@", "\t", "\r")):
+    formula_candidate = text.lstrip(" \t\r\n")
+    if (
+        formula_candidate.startswith(("=", "+", "-", "@"))
+        or text.startswith(("\t", "\r"))
+    ):
         text = "'" + text
     return text
 
@@ -944,6 +1049,9 @@ async def asset_inventory(
                 "linked_findings": 0,
                 "unlinked_findings": 0,
                 "limited": False,
+                "asset_limit": MAX_ASSET_INVENTORY_ITEMS,
+                "observation_limit_per_type": MAX_ASSET_OBSERVATIONS_PER_TYPE,
+                "finding_limit_per_asset": MAX_ASSET_FINDINGS_PER_HOST,
             },
             "assets": [],
         }
@@ -985,6 +1093,15 @@ async def asset_inventory(
             operating_systems_by_host.setdefault(host, set()).add(operating_system)
 
     total_asset_count = len(grouped)
+    total_services = 0
+    total_vulnerabilities = 0
+    for observations in grouped.values():
+        for observation in observations:
+            ref = observation.evidence_ref if isinstance(observation.evidence_ref, dict) else {}
+            if any(ref.get(key) is not None for key in ("service", "protocol", "product", "version")):
+                total_services += 1
+            else:
+                total_vulnerabilities += 1
     selected_hosts = sorted(grouped)[:MAX_ASSET_INVENTORY_ITEMS]
     selected_raw_hosts = {
         raw_host
@@ -1037,21 +1154,20 @@ async def asset_inventory(
     }
     identity_to_primary = {
         identity: host
-        for host in selected_hosts
+        for host in grouped
         for identity in {host, *aliases_by_host.get(host, set())}
     }
     linked_finding_ids: set[str] = set()
     for finding in findings:
         for identity in _finding_hosts(finding):
             host = identity_to_primary.get(identity)
-            if host and finding not in findings_by_host[host]:
-                findings_by_host[host].append(finding)
+            if host:
                 linked_finding_ids.add(finding.id)
+                if host in findings_by_host and finding not in findings_by_host[host]:
+                    findings_by_host[host].append(finding)
 
     status_rank = {"regressed": 0, "new": 1, "persistent": 2}
     assets = []
-    total_services = 0
-    total_vulnerabilities = 0
     for host in selected_hosts:
         observations = sorted(
             grouped[host],
@@ -1076,8 +1192,6 @@ async def asset_inventory(
                 services.append(row)
             else:
                 vulnerabilities.append(row)
-        total_services += len(services)
-        total_vulnerabilities += len(vulnerabilities)
         linked = findings_by_host[host]
         states = [status_by_fingerprint[item.fingerprint] for item in observations]
         highest_severity = min(
@@ -1097,11 +1211,13 @@ async def asset_inventory(
             "snapshot_count": len(history[host]["snapshot_ids"]),
             "service_count": len(services),
             "vulnerability_count": len(vulnerabilities),
+            "finding_count": len(linked),
             "services": services[:MAX_ASSET_OBSERVATIONS_PER_TYPE],
             "vulnerabilities": vulnerabilities[:MAX_ASSET_OBSERVATIONS_PER_TYPE],
             "details_limited": (
                 len(services) > MAX_ASSET_OBSERVATIONS_PER_TYPE
                 or len(vulnerabilities) > MAX_ASSET_OBSERVATIONS_PER_TYPE
+                or len(linked) > MAX_ASSET_FINDINGS_PER_HOST
             ),
             "findings": [
                 {
@@ -1112,7 +1228,7 @@ async def asset_inventory(
                     "retest_due_date": finding.retest_due_date,
                     "evidence_attachment_count": attachment_counts.get(finding.id, 0),
                 }
-                for finding in linked
+                for finding in linked[:MAX_ASSET_FINDINGS_PER_HOST]
             ],
         })
 
@@ -1126,6 +1242,9 @@ async def asset_inventory(
             "linked_findings": len(linked_finding_ids),
             "unlinked_findings": len(findings) - len(linked_finding_ids),
             "limited": total_asset_count > MAX_ASSET_INVENTORY_ITEMS,
+            "asset_limit": MAX_ASSET_INVENTORY_ITEMS,
+            "observation_limit_per_type": MAX_ASSET_OBSERVATIONS_PER_TYPE,
+            "finding_limit_per_asset": MAX_ASSET_FINDINGS_PER_HOST,
         },
         "assets": assets,
     }

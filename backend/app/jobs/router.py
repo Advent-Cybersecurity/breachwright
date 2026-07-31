@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -283,7 +284,14 @@ async def save_job_to_notebook(
         created_by=current_user.id,
     )
     db.add(note)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="This Tool Runner job is already saved in the Evidence Notebook",
+        ) from exc
     await db.refresh(note)
     return {
         "id": note.id,
@@ -347,7 +355,24 @@ async def save_job_to_scans(
         uploaded_by=current_user.id,
     )
     db.add(scan)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        try:
+            os.remove(stored_path)
+        except OSError:
+            logger.warning("Could not remove failed Tool Runner scan copy %s", stored_path)
+        raise HTTPException(
+            status_code=409,
+            detail="This Tool Runner job is already present in Scans",
+        ) from exc
+    except Exception:
+        try:
+            os.remove(stored_path)
+        except OSError:
+            logger.warning("Could not remove failed Tool Runner scan copy %s", stored_path)
+        raise
     return {
         "id": scan.id,
         "filename": scan.filename,

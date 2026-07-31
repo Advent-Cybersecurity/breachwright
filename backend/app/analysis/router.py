@@ -2,11 +2,11 @@ import os
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -37,6 +37,8 @@ router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["analysis"])
 
 ALLOWED_SCAN_TYPES = {"nmap", "nessus", "burp", "nuclei", "sarif", "custom"}
 MAX_SCAN_SIZE = 50 * 1024 * 1024
+MAX_ANALYSIS_SCANS = 50
+MAX_ANALYSIS_TOTAL_BYTES = 250 * 1024 * 1024
 RAW_EVIDENCE_SEGMENT_CHARS = 4000
 
 
@@ -55,6 +57,56 @@ class DraftEdit(BaseModel):
 class BulkDraftReview(BaseModel):
     draft_ids: list[str] = Field(min_length=1, max_length=1000)
     action: Literal["accept", "reject"]
+
+
+class AnalysisSelection(BaseModel):
+    scan_ids: list[
+        Annotated[str, Field(min_length=36, max_length=36)]
+    ] = Field(default_factory=list, max_length=MAX_ANALYSIS_SCANS)
+
+    model_config = {"str_strip_whitespace": True}
+
+
+async def _selected_analysis_scans(
+    db: AsyncSession,
+    engagement_id: str,
+    selection: AnalysisSelection | None,
+) -> tuple[list[ScanUpload], int]:
+    if selection is None:
+        count_result = await db.execute(
+            select(func.count(ScanUpload.id)).where(
+                ScanUpload.engagement_id == engagement_id
+            )
+        )
+        scan_count = int(count_result.scalar_one())
+        scan_result = await db.execute(
+            select(ScanUpload)
+            .where(ScanUpload.engagement_id == engagement_id)
+            .order_by(ScanUpload.created_at, ScanUpload.id)
+            .limit(MAX_ANALYSIS_SCANS + 1)
+        )
+        return list(scan_result.scalars().all()), scan_count
+
+    requested_ids = list(dict.fromkeys(selection.scan_ids))
+    if len(requested_ids) != len(selection.scan_ids):
+        raise HTTPException(status_code=422, detail="Selected scan IDs must be unique")
+    if not requested_ids:
+        return [], 0
+    scan_result = await db.execute(
+        select(ScanUpload)
+        .where(
+            ScanUpload.engagement_id == engagement_id,
+            ScanUpload.id.in_(requested_ids),
+        )
+        .order_by(ScanUpload.created_at, ScanUpload.id)
+    )
+    scans = list(scan_result.scalars().all())
+    if len(scans) != len(requested_ids):
+        raise HTTPException(
+            status_code=422,
+            detail="One or more selected scans do not belong to this engagement",
+        )
+    return scans, len(scans)
 
 
 def _draft_response(draft: AIFindingDraft) -> dict:
@@ -163,6 +215,85 @@ async def list_scans(
     return [{"id": s.id, "filename": s.filename, "scan_type": s.scan_type} for s in scans]
 
 
+@router.get("/analysis-preview")
+@router.post("/analysis-preview")
+async def preview_analysis(
+    engagement_id: str,
+    selection: AnalysisSelection | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Describe bounded AI input without reading content or calling a provider."""
+    engagement_result = await db.execute(
+        select(Engagement.id).where(Engagement.id == engagement_id)
+    )
+    if engagement_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+    scans, scan_count = await _selected_analysis_scans(
+        db, engagement_id, selection
+    )
+    inspected_scans = scans[:MAX_ANALYSIS_SCANS]
+
+    files = []
+    total_bytes = 0
+    missing_files = 0
+    oversized_files = 0
+    for scan in inspected_scans:
+        try:
+            size_bytes = os.path.getsize(scan.file_path)
+        except OSError:
+            size_bytes = None
+            missing_files += 1
+        if size_bytes is not None:
+            total_bytes += size_bytes
+            if size_bytes > MAX_SCAN_SIZE:
+                oversized_files += 1
+        files.append(
+            {
+                "id": scan.id,
+                "filename": scan.filename,
+                "scan_type": scan.scan_type,
+                "size_bytes": size_bytes,
+                "within_file_limit": size_bytes is not None and size_bytes <= MAX_SCAN_SIZE,
+            }
+        )
+
+    issues = []
+    if scan_count == 0:
+        issues.append("Upload at least one scan before running AI analysis.")
+    if scan_count > MAX_ANALYSIS_SCANS:
+        issues.append(
+            f"Remove {scan_count - MAX_ANALYSIS_SCANS} scan file(s) to meet the "
+            f"{MAX_ANALYSIS_SCANS}-file limit."
+        )
+    if missing_files:
+        issues.append(
+            f"{missing_files} stored scan file(s) could not be found. Remove and upload them again."
+        )
+    if oversized_files:
+        issues.append(
+            f"{oversized_files} scan file(s) exceed the {MAX_SCAN_SIZE // (1024 * 1024)} MB per-file limit."
+        )
+    if scan_count <= MAX_ANALYSIS_SCANS and total_bytes > MAX_ANALYSIS_TOTAL_BYTES:
+        issues.append("The combined scan input exceeds the 250 MB analysis limit.")
+
+    return {
+        "scan_count": scan_count,
+        "inspected_scan_count": len(inspected_scans),
+        "total_bytes": total_bytes,
+        "total_bytes_complete": scan_count <= MAX_ANALYSIS_SCANS,
+        "max_scan_count": MAX_ANALYSIS_SCANS,
+        "max_scan_bytes": MAX_SCAN_SIZE,
+        "max_total_bytes": MAX_ANALYSIS_TOTAL_BYTES,
+        "redaction_enabled": settings.ai_redact_sensitive_data,
+        "provider": settings.ai_provider,
+        "ready": not issues,
+        "issues": issues,
+        "files": files,
+    }
+
+
 @router.delete("/scans/{scan_id}", status_code=204)
 async def delete_scan(
     engagement_id: str,
@@ -230,6 +361,7 @@ async def upload_scan(
 @router.post("/analyze")
 async def analyze_scans(
     engagement_id: str,
+    selection: AnalysisSelection | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_editor),
 ):
@@ -239,23 +371,49 @@ async def analyze_scans(
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
 
-    scan_result = await db.execute(
-        select(ScanUpload).where(ScanUpload.engagement_id == engagement_id)
+    scans, scan_count = await _selected_analysis_scans(
+        db, engagement_id, selection
     )
-    scans = scan_result.scalars().all()
     if not scans:
         raise HTTPException(
             status_code=400,
             detail="No scan files uploaded for this engagement",
         )
+    if scan_count > MAX_ANALYSIS_SCANS:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"AI analysis accepts at most {MAX_ANALYSIS_SCANS} scan files "
+                "at once. Remove or move older uploads before continuing."
+            ),
+        )
 
     by_tool: dict[str, list[dict]] = {}
     text_fallbacks: list[str] = []
     evidence_catalog: dict[str, dict] = {}
+    total_scan_bytes = 0
     for scan_index, scan in enumerate(scans, 1):
         try:
-            with open(scan.file_path, "r", errors="replace") as source:
-                raw = source.read()
+            with open(scan.file_path, "rb") as source:
+                raw_bytes = source.read(MAX_SCAN_SIZE + 1)
+            if len(raw_bytes) > MAX_SCAN_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"{scan.filename} exceeds the "
+                        f"{MAX_SCAN_SIZE // (1024 * 1024)} MB analysis limit"
+                    ),
+                )
+            total_scan_bytes += len(raw_bytes)
+            if total_scan_bytes > MAX_ANALYSIS_TOTAL_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        "The selected AI analysis set exceeds the 250 MB "
+                        "combined limit. Remove or move older uploads before continuing."
+                    ),
+                )
+            raw = raw_bytes.decode("utf-8", errors="replace")
             records = parse_structured(raw, scan.scan_type)
             if records:
                 for record in records:
@@ -272,6 +430,8 @@ async def analyze_scans(
                 raw_text, raw_refs = _raw_evidence(scan, parsed, scan_index)
                 text_fallbacks.append(raw_text)
                 evidence_catalog.update({ref["id"]: ref for ref in raw_refs})
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.warning("Could not read scan file %s: %s", scan.file_path, exc)
 

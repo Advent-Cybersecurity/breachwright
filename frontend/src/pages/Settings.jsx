@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { system, appSettings } from '../api';
 import { useTheme } from '../theme';
 import { Toast, Spinner } from '../components/UI';
-import { Server, Sun, Moon, Palette, MessageSquare, RotateCcw, Bot, Save, Wifi, WifiOff, RefreshCw, DatabaseBackup, Download, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Server, Sun, Moon, Palette, MessageSquare, RotateCcw, Bot, Save, Wifi, WifiOff, RefreshCw, DatabaseBackup, Download, ShieldCheck } from 'lucide-react';
 
 function InfoRow({ label, value, mono = false }) {
   return (
@@ -32,6 +32,10 @@ export default function Settings() {
   const [savingProvider, setSavingProvider] = useState(false);
   const [localStatus, setLocalStatus] = useState(null);
   const [checkingLocal, setCheckingLocal] = useState(false);
+  const newestBackup = backups[0] || null;
+  const newestBackupAgeDays = newestBackup
+    ? Math.max(0, Math.floor((Date.now() - new Date(newestBackup.created_at).getTime()) / 86400000))
+    : null;
 
   useEffect(() => {
     (async () => {
@@ -401,8 +405,31 @@ export default function Settings() {
             <h2 className="text-base font-semibold themed-text-primary">Data Safety</h2>
           </div>
           <p className="text-xs themed-text-muted mb-4">
-            Create a verified local backup of the database, evidence, uploads, reports, template assets, and Tool Runner output. API keys and environment configuration are excluded.
+            Create a verified local backup of the database, finding and notebook attachments, uploads, reports, template assets, and Tool Runner output. API keys and environment configuration are excluded.
           </p>
+          <div className={`mb-4 rounded-md border px-3 py-2 flex items-start gap-2 ${
+            newestBackupAgeDays === null || newestBackupAgeDays > 30
+              ? 'border-red-500/40 bg-red-500/5'
+              : newestBackupAgeDays > 7
+                ? 'border-yellow-500/40 bg-yellow-500/5'
+                : 'border-green-500/30 bg-green-500/5'
+          }`} role="status">
+            {newestBackupAgeDays === null || newestBackupAgeDays > 7
+              ? <AlertTriangle size={14} className={newestBackupAgeDays === null || newestBackupAgeDays > 30 ? 'text-red-400 mt-0.5' : 'text-yellow-400 mt-0.5'} />
+              : <ShieldCheck size={14} className="text-green-400 mt-0.5" />}
+            <div>
+              <p className="text-xs themed-text-primary">
+                {newestBackupAgeDays === null
+                  ? 'No verified backup is stored in this workspace.'
+                  : newestBackupAgeDays === 0
+                    ? 'The newest verified backup was created today.'
+                    : `The newest verified backup is ${newestBackupAgeDays} day${newestBackupAgeDays === 1 ? '' : 's'} old.`}
+              </p>
+              <p className="text-[10px] themed-text-muted mt-0.5">
+                Create a fresh backup before upgrades, workstation moves, or large imports.
+              </p>
+            </div>
+          </div>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-xs themed-text-secondary">
               <ShieldCheck size={14} className="text-green-400" />

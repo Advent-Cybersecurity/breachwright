@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BookOpen, ClipboardList, FileCheck2, FileText, RotateCcw, Server, ShieldCheck, Target, Upload } from 'lucide-react';
+import { Activity, AlertTriangle, BookOpen, ClipboardList, FileCheck2, FileText, RotateCcw, Server, ShieldCheck, Target, Upload } from 'lucide-react';
 
 import { checklists as checklistApi, evidenceNotebook as notebookApi, workflow as workflowApi } from '../api';
 import { SeverityBadge, Spinner } from './UI';
@@ -29,15 +29,16 @@ export default function WorkspaceOverviewTab({ engId, findings, toast, onOpenTab
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const [readiness, retests, assets, checklistProgress, snapshots, notebook] = await Promise.all([
+    const [readiness, retests, assets, checklistProgress, snapshots, notebook, activity] = await Promise.all([
       workflowApi.readiness(engId),
       workflowApi.retestOverview(engId),
       workflowApi.assets(engId),
       checklistApi.progress(engId),
       workflowApi.listSnapshots(engId),
       notebookApi.list(engId),
+      workflowApi.activity(engId),
     ]);
-    setData({ readiness, retests, assets, checklistProgress, snapshots, notebook });
+    setData({ readiness, retests, assets, checklistProgress, snapshots, notebook, activity });
   }, [engId]);
 
   useEffect(() => {
@@ -136,6 +137,30 @@ export default function WorkspaceOverviewTab({ engId, findings, toast, onOpenTab
             </div>
           )}
         </div>
+      </div>
+
+      <div className="card p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Activity size={15} className="themed-text-muted" />
+          <h3 className="text-sm font-semibold themed-text-primary">Recent workspace activity</h3>
+        </div>
+        {data.activity.events.length === 0 ? (
+          <p className="text-xs themed-text-muted">Activity appears here as assessment records are created or updated.</p>
+        ) : (
+          <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+            {data.activity.events.slice(0, 10).map(event => (
+              <button key={`${event.kind}-${event.id}`} className="w-full py-2 flex items-center gap-3 text-left hover:bg-white/[0.02]"
+                onClick={() => onOpenTab(event.tab)}>
+                <span className="badge shrink-0">{event.kind.replace('_', ' ')}</span>
+                <span className="text-xs themed-text-primary truncate flex-1">{event.title}</span>
+                <span className="hidden sm:block text-[10px] themed-text-muted">{event.detail}</span>
+                <time className="text-[10px] font-mono themed-text-muted shrink-0" dateTime={event.timestamp}>
+                  {new Date(event.timestamp).toLocaleString()}
+                </time>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

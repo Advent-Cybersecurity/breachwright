@@ -77,6 +77,11 @@ export const findings = {
 export const analysis = {
   listScans: (engId) =>
     request(`/engagements/${engId}/scans`),
+  preview: (engId, scanIds = null) =>
+    request(`/engagements/${engId}/analysis-preview`, {
+      method: 'POST',
+      ...(scanIds ? { body: { scan_ids: scanIds } } : {}),
+    }),
   uploadScan: (engId, file, scanType) => {
     const form = new FormData();
     form.append('file', file);
@@ -87,8 +92,11 @@ export const analysis = {
   },
   deleteScan: (engId, scanId) =>
     request(`/engagements/${engId}/scans/${scanId}`, { method: 'DELETE' }),
-  run: (engId) =>
-    request(`/engagements/${engId}/analyze`, { method: 'POST' }),
+  run: (engId, scanIds = null) =>
+    request(`/engagements/${engId}/analyze`, {
+      method: 'POST',
+      ...(scanIds ? { body: { scan_ids: scanIds } } : {}),
+    }),
   listDrafts: (engId, status = 'pending') =>
     request(`/engagements/${engId}/ai-drafts?status=${encodeURIComponent(status)}`),
   acceptDraft: (engId, draftId, edits = null) =>
@@ -211,6 +219,7 @@ export const workflow = {
   retestQueue: (engId) => request(`/engagements/${engId}/retest-queue`),
   retestOverview: (engId) => request(`/engagements/${engId}/retest-overview`),
   readiness: (engId) => request(`/engagements/${engId}/report-readiness`),
+  activity: (engId, limit = 20) => request(`/engagements/${engId}/activity?limit=${limit}`),
   search: (engId, query, limit = 100) =>
     request(`/engagements/${engId}/search?q=${encodeURIComponent(query)}&limit=${limit}`),
   downloadFindingsCsv: async (engId, redactSensitive = true) => {

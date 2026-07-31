@@ -26,7 +26,7 @@ def upgrade() -> None:
         batch_op.create_index(
             "ix_evidence_notes_source",
             ["engagement_id", "source_type", "source_id"],
-            unique=False,
+            unique=True,
         )
 
 
