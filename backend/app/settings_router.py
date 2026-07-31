@@ -102,10 +102,17 @@ class ProviderUpdate(BaseModel):
     openai_api_key: Optional[str] = Field(default=None, max_length=1000)
     anthropic_model: Optional[str] = Field(default=None, max_length=255)
     openai_model: Optional[str] = Field(default=None, max_length=255)
+    azure_openai_api_key: Optional[str] = Field(default=None, max_length=1000)
+    azure_openai_endpoint: Optional[str] = Field(default=None, max_length=2000)
+    azure_openai_deployment: Optional[str] = Field(default=None, max_length=255)
+    azure_openai_api_version: Optional[str] = Field(default=None, max_length=100)
+    aws_region: Optional[str] = Field(default=None, max_length=100)
+    bedrock_model_id: Optional[str] = Field(default=None, max_length=500)
     local_model_url: Optional[str] = Field(default=None, max_length=2000)
     local_model_name: Optional[str] = Field(default=None, max_length=255)
     local_model_api_key: Optional[str] = Field(default=None, max_length=1000)
     local_model_timeout: Optional[int] = Field(default=None, ge=10, le=600)
+    ai_redact_sensitive_data: Optional[bool] = None
 
     @field_validator("*")
     @classmethod
@@ -114,14 +121,14 @@ class ProviderUpdate(BaseModel):
             raise ValueError("Configuration values cannot contain line breaks or null bytes")
         return value
 
-    @field_validator("local_model_url")
+    @field_validator("local_model_url", "azure_openai_endpoint")
     @classmethod
     def validate_local_model_url(cls, value):
         if value is None:
             return value
         parsed = urlparse(value)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("Local model URL must be an HTTP or HTTPS URL")
+            raise ValueError("Model endpoint must be an HTTP or HTTPS URL")
         return value
 
 
@@ -130,16 +137,26 @@ async def get_provider_config(
     current_user: User = Depends(get_current_user),
 ):
     from app.config import settings as cfg
+    provider_name = cfg.ai_provider.lower()
+    if provider_name in {"ollama", "vllm", "llamacpp", "lmstudio"}:
+        provider_name = "local"
     return {
-        "ai_provider": cfg.ai_provider,
+        "ai_provider": provider_name,
         "anthropic_model": cfg.anthropic_model,
         "openai_model": cfg.openai_model,
         "has_anthropic_key": bool(cfg.anthropic_api_key),
         "has_openai_key": bool(cfg.openai_api_key),
+        "azure_openai_endpoint": cfg.azure_openai_endpoint,
+        "azure_openai_deployment": cfg.azure_openai_deployment,
+        "azure_openai_api_version": cfg.azure_openai_api_version,
+        "has_azure_openai_key": bool(cfg.azure_openai_api_key),
+        "aws_region": cfg.aws_region,
+        "bedrock_model_id": cfg.bedrock_model_id,
         "local_model_url": cfg.local_model_url,
         "local_model_name": cfg.local_model_name,
         "local_model_timeout": cfg.local_model_timeout,
         "has_local_key": bool(cfg.local_model_api_key),
+        "ai_redact_sensitive_data": cfg.ai_redact_sensitive_data,
     }
 
 
@@ -177,6 +194,18 @@ async def update_provider_config(
         updates["ANTHROPIC_MODEL"] = body.anthropic_model
     if body.openai_model is not None:
         updates["OPENAI_MODEL"] = body.openai_model
+    if body.azure_openai_api_key is not None:
+        updates["AZURE_OPENAI_API_KEY"] = body.azure_openai_api_key
+    if body.azure_openai_endpoint is not None:
+        updates["AZURE_OPENAI_ENDPOINT"] = body.azure_openai_endpoint
+    if body.azure_openai_deployment is not None:
+        updates["AZURE_OPENAI_DEPLOYMENT"] = body.azure_openai_deployment
+    if body.azure_openai_api_version is not None:
+        updates["AZURE_OPENAI_API_VERSION"] = body.azure_openai_api_version
+    if body.aws_region is not None:
+        updates["AWS_REGION"] = body.aws_region
+    if body.bedrock_model_id is not None:
+        updates["BEDROCK_MODEL_ID"] = body.bedrock_model_id
     if body.local_model_url is not None:
         updates["LOCAL_MODEL_URL"] = body.local_model_url
     if body.local_model_name is not None:
@@ -185,6 +214,8 @@ async def update_provider_config(
         updates["LOCAL_MODEL_API_KEY"] = body.local_model_api_key
     if body.local_model_timeout is not None:
         updates["LOCAL_MODEL_TIMEOUT"] = str(body.local_model_timeout)
+    if body.ai_redact_sensitive_data is not None:
+        updates["AI_REDACT_SENSITIVE_DATA"] = str(body.ai_redact_sensitive_data).lower()
 
     # Apply updates to env lines
     existing_keys = set()

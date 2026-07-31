@@ -20,6 +20,7 @@ _running_jobs: dict = {}
 _lock = threading.Lock()
 MAX_JOB_OUTPUT = 500_000
 TRUNCATION_NOTICE = "[Earlier output truncated]\n"
+ARTIFACT_FILENAMES = ("output.xml", "output.jsonl", "output.txt")
 
 TOOL_PRESETS = {
     "nmap": {
@@ -46,10 +47,10 @@ TOOL_PRESETS = {
         "default": {"name": "Directory Brute Force", "description": "Content discovery with common wordlist", "cmd": "feroxbuster -u {target} -w /usr/share/seclists/Discovery/Web-Content/common.txt -o {output_file} --no-state"},
     },
     "nuclei": {
-        "cves": {"name": "CVE Detection", "description": "Scan for known CVEs", "cmd": "nuclei -u {target} -t cves/ -o {output_file} -silent"},
-        "misconfig": {"name": "Misconfigurations", "description": "Detect common misconfigurations", "cmd": "nuclei -u {target} -t misconfiguration/ -o {output_file} -silent"},
-        "exposures": {"name": "Exposures", "description": "Detect exposed panels, files, and data", "cmd": "nuclei -u {target} -t exposures/ -o {output_file} -silent"},
-        "all": {"name": "Full Template Scan", "description": "Run all nuclei templates (slow)", "cmd": "nuclei -u {target} -o {output_file} -silent"},
+        "cves": {"name": "CVE Detection", "description": "Scan for known CVEs", "cmd": "nuclei -u {target} -t cves/ -jsonl -o {output_file} -silent"},
+        "misconfig": {"name": "Misconfigurations", "description": "Detect common misconfigurations", "cmd": "nuclei -u {target} -t misconfiguration/ -jsonl -o {output_file} -silent"},
+        "exposures": {"name": "Exposures", "description": "Detect exposed panels, files, and data", "cmd": "nuclei -u {target} -t exposures/ -jsonl -o {output_file} -silent"},
+        "all": {"name": "Full Template Scan", "description": "Run all nuclei templates (slow)", "cmd": "nuclei -u {target} -jsonl -o {output_file} -silent"},
     },
 }
 
@@ -87,6 +88,29 @@ def _render_job_output(state: dict) -> str:
     return output
 
 
+def read_job_artifact(output_dir: str) -> Optional[tuple[str, str]]:
+    """Read one app-owned text artifact without following links or exceeding the job bound."""
+    root = os.path.realpath(output_dir)
+    for filename in ARTIFACT_FILENAMES:
+        candidate = os.path.join(root, filename)
+        if os.path.islink(candidate) or not os.path.isfile(candidate):
+            continue
+        if os.path.dirname(os.path.realpath(candidate)) != root:
+            continue
+        try:
+            with open(candidate, "rb") as artifact:
+                content = artifact.read(MAX_JOB_OUTPUT + 1)
+        except OSError:
+            continue
+        truncated = len(content) > MAX_JOB_OUTPUT
+        text = content[:MAX_JOB_OUTPUT].decode("utf-8", errors="replace")
+        if truncated:
+            text += "\n[Saved tool artifact truncated]"
+        if text.strip():
+            return filename, text
+    return None
+
+
 def start_job(job_id: str, command: str, tool: str, output_dir: str) -> Optional[int]:
     os.makedirs(output_dir, exist_ok=True)
     logger.info("Starting job %s: %s", job_id, command)
@@ -113,6 +137,7 @@ def start_job(job_id: str, command: str, tool: str, output_dir: str) -> Optional
             "output_truncated": False,
             "tool": tool,
             "command": command, "started_at": datetime.now(timezone.utc),
+            "output_dir": output_dir,
         }
 
     thread = threading.Thread(target=_capture_output, args=(job_id, process), daemon=True)
@@ -136,6 +161,15 @@ def _capture_output(job_id: str, process: subprocess.Popen):
     finally:
         with _lock:
             if job_id in _running_jobs:
+                state = _running_jobs[job_id]
+                artifact = read_job_artifact(state["output_dir"])
+                if artifact:
+                    filename, artifact_text = artifact
+                    current = _render_job_output(state)
+                    if artifact_text.strip() not in current:
+                        if current.strip():
+                            _append_job_output(state, f"\n[Saved tool artifact: {filename}]\n")
+                        _append_job_output(state, artifact_text)
                 _running_jobs[job_id]["exit_code"] = process.returncode
                 _running_jobs[job_id]["completed_at"] = datetime.now(timezone.utc)
                 _running_jobs[job_id]["status"] = "complete" if process.returncode == 0 else "failed"

@@ -17,7 +17,9 @@ from app.workflow.router import (
     MAX_SNAPSHOT_SCANS,
     SnapshotCreate,
     _limited_keys,
+    _normalize_host,
     _read_snapshot_payload,
+    _search_pattern,
 )
 
 
@@ -58,6 +60,15 @@ class SnapshotInputLimitTests(unittest.TestCase):
         self.assertEqual(len(limited), MAX_COMPARISON_DETAILS_PER_STATUS)
         self.assertEqual(limited, sorted(limited))
         self.assertEqual(truncated, 25)
+
+    def test_asset_host_normalization_handles_urls_ports_and_ip_literals(self):
+        self.assertEqual(_normalize_host("HTTPS://App.Example.Test:8443/admin"), "app.example.test")
+        self.assertEqual(_normalize_host("app.example.test.:443/path"), "app.example.test")
+        self.assertEqual(_normalize_host("[2001:0db8::1]:443"), "2001:db8::1")
+        self.assertEqual(_normalize_host(""), "")
+
+    def test_search_pattern_treats_sql_wildcards_as_literal_text(self):
+        self.assertEqual(_search_pattern(r"rate_100%\done"), r"%rate\_100\%\\done%")
 
 
 

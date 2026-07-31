@@ -7,7 +7,7 @@ from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.engagements.models import Engagement, Finding
 from app.engagements.schemas import EngagementCreate, EngagementUpdate, EngagementResponse
-from app.workflow.templates import ENGAGEMENT_TEMPLATES
+from app.workflow.template_router import get_template
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -37,6 +37,11 @@ async def create_engagement(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_editor),
 ):
+    assessment_template = None
+    if request.template_key:
+        assessment_template = await get_template(db, request.template_key)
+        if not assessment_template:
+            raise HTTPException(status_code=422, detail="Unknown assessment template")
     engagement = Engagement(
         name=request.name,
         client_name=request.client_name,
@@ -48,11 +53,11 @@ async def create_engagement(
     )
     db.add(engagement)
     await db.flush()
-    if request.template_key:
+    if assessment_template:
         from app.checklists.methodologies import get_methodology_items
         from app.checklists.models import ChecklistItem
 
-        for methodology in ENGAGEMENT_TEMPLATES[request.template_key]["methodologies"]:
+        for methodology in assessment_template["methodologies"]:
             for item_data in get_methodology_items(methodology):
                 db.add(ChecklistItem(
                     engagement_id=engagement.id,
@@ -187,6 +192,8 @@ async def delete_engagement(
         FindingHistory,
         ScanSnapshot,
         ScanObservation,
+        EvidenceNote,
+        EvidenceNoteAttachment,
     )
     from app.ad.models import ADImport
     from app.checklists.models import ChecklistItem
@@ -216,6 +223,17 @@ async def delete_engagement(
             delete(ScanObservation).where(ScanObservation.snapshot_id.in_(snapshot_ids))
         )
     await db.execute(delete(ScanSnapshot).where(ScanSnapshot.engagement_id == engagement_id))
+    note_result = await db.execute(
+        select(EvidenceNote.id).where(EvidenceNote.engagement_id == engagement_id)
+    )
+    note_ids = list(note_result.scalars().all())
+    if note_ids:
+        await db.execute(
+            delete(EvidenceNoteAttachment).where(
+                EvidenceNoteAttachment.note_id.in_(note_ids)
+            )
+        )
+    await db.execute(delete(EvidenceNote).where(EvidenceNote.engagement_id == engagement_id))
     await db.execute(delete(Finding).where(Finding.engagement_id == engagement_id))
     await db.execute(delete(AttackPath).where(AttackPath.engagement_id == engagement_id))
     await db.execute(delete(Report).where(Report.engagement_id == engagement_id))
@@ -241,7 +259,7 @@ async def delete_engagement(
     # Clean up files
     import shutil, os
     from app.config import settings
-    for subdir in ["uploads", "reports"]:
+    for subdir in ["uploads", "reports", "notebook"]:
         path = os.path.join(settings.data_dir, subdir, engagement_id)
         if os.path.isdir(path):
             shutil.rmtree(path, ignore_errors=True)

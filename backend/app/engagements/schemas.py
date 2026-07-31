@@ -10,7 +10,7 @@ class EngagementCreate(BaseModel):
     scope: Optional[str] = Field(default=None, max_length=50000)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
-    template_key: Optional[Literal["web", "api", "external", "internal", "active_directory", "cloud"]] = None
+    template_key: Optional[str] = Field(default=None, min_length=1, max_length=50, pattern=r"^[a-z0-9_-]+$")
 
     model_config = {"str_strip_whitespace": True}
 

@@ -209,7 +209,28 @@ export const system = {
 export const workflow = {
   templates: (engId) => request(`/engagements/${engId}/workflow/templates`),
   retestQueue: (engId) => request(`/engagements/${engId}/retest-queue`),
+  retestOverview: (engId) => request(`/engagements/${engId}/retest-overview`),
   readiness: (engId) => request(`/engagements/${engId}/report-readiness`),
+  search: (engId, query, limit = 100) =>
+    request(`/engagements/${engId}/search?q=${encodeURIComponent(query)}&limit=${limit}`),
+  downloadFindingsCsv: async (engId, redactSensitive = true) => {
+    const res = await fetch(`/api/engagements/${engId}/findings.csv?redact_sensitive=${redactSensitive}`);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Findings CSV export failed');
+    const blob = await res.blob();
+    const disposition = res.headers.get('content-disposition') || '';
+    const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'findings.csv';
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    }, 1000);
+  },
+  assets: (engId) => request(`/engagements/${engId}/assets`),
   listSnapshots: (engId) => request(`/engagements/${engId}/scan-snapshots`),
   createSnapshot: (engId, label, scanIds) =>
     request(`/engagements/${engId}/scan-snapshots`, {
@@ -218,8 +239,12 @@ export const workflow = {
     }),
   compareSnapshot: (engId, snapshotId) =>
     request(`/engagements/${engId}/scan-snapshots/${snapshotId}/comparison`),
-  downloadSarif: async (engId) => {
-    const res = await fetch(`${BASE}/engagements/${engId}/findings.sarif`);
+  acceptObservation: (engId, snapshotId, fingerprint) =>
+    request(`/engagements/${engId}/scan-snapshots/${snapshotId}/observations/${fingerprint}/finding`, {
+      method: 'POST',
+    }),
+  downloadSarif: async (engId, redactSensitive = false) => {
+    const res = await fetch(`${BASE}/engagements/${engId}/findings.sarif?redact_sensitive=${redactSensitive}`);
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'SARIF export failed');
     const blob = await res.blob();
     const disposition = res.headers.get('content-disposition') || '';
@@ -234,6 +259,85 @@ export const workflow = {
       document.body.removeChild(anchor);
       URL.revokeObjectURL(url);
     }, 1000);
+  },
+};
+
+export const assessmentTemplates = {
+  list: () => request('/assessment-templates'),
+  methodologies: () => request('/assessment-templates/methodologies'),
+  create: (data) => request('/assessment-templates', { method: 'POST', body: data }),
+  update: (key, data) => request(`/assessment-templates/${key}`, { method: 'PUT', body: data }),
+  delete: (key) => request(`/assessment-templates/${key}`, { method: 'DELETE' }),
+  import: (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request('/assessment-templates/import', { method: 'POST', body: form });
+  },
+  export: async (key) => {
+    const res = await fetch(`${BASE}/assessment-templates/${key}/export`);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Template export failed');
+    const blob = await res.blob();
+    const disposition = res.headers.get('content-disposition') || '';
+    const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'assessment-template.json';
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    }, 1000);
+  },
+};
+
+export const findingTemplates = {
+  list: () => request('/finding-templates'),
+  create: (data) => request('/finding-templates', { method: 'POST', body: data }),
+  update: (id, data) => request(`/finding-templates/${id}`, { method: 'PUT', body: data }),
+  delete: (id) => request(`/finding-templates/${id}`, { method: 'DELETE' }),
+  import: (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request('/finding-templates/import', { method: 'POST', body: form });
+  },
+  export: async (id) => {
+    const res = await fetch(`${BASE}/finding-templates/${id}/export`);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Finding template export failed');
+    const blob = await res.blob();
+    const disposition = res.headers.get('content-disposition') || '';
+    const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'finding-template.json';
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    }, 1000);
+  },
+};
+
+export const evidenceNotebook = {
+  list: (engId) => request(`/engagements/${engId}/notebook`),
+  create: (engId, data) => request(`/engagements/${engId}/notebook`, { method: 'POST', body: data }),
+  update: (engId, noteId, data) => request(`/engagements/${engId}/notebook/${noteId}`, { method: 'PUT', body: data }),
+  promote: (engId, noteId, data) => request(`/engagements/${engId}/notebook/${noteId}/finding`, { method: 'POST', body: data }),
+  delete: (engId, noteId) => request(`/engagements/${engId}/notebook/${noteId}`, { method: 'DELETE' }),
+  upload: (engId, noteId, file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request(`/engagements/${engId}/notebook/${noteId}/attachments`, { method: 'POST', body: form });
+  },
+  deleteAttachment: (engId, noteId, attachmentId) =>
+    request(`/engagements/${engId}/notebook/${noteId}/attachments/${attachmentId}`, { method: 'DELETE' }),
+  objectUrl: async (url) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Unable to load notebook attachment');
+    return URL.createObjectURL(await res.blob());
   },
 };
 
@@ -329,6 +433,10 @@ export const jobs = {
     request('/jobs', { method: 'POST', body: { engagement_id: engId, tool, command } }),
   stop: (jobId) =>
     request(`/jobs/${jobId}/stop`, { method: 'POST' }),
+  saveToNotebook: (jobId, data = {}) =>
+    request(`/jobs/${jobId}/notebook`, { method: 'POST', body: data }),
+  addToScans: (jobId) =>
+    request(`/jobs/${jobId}/scan`, { method: 'POST' }),
   delete: (jobId) =>
     request(`/jobs/${jobId}`, { method: 'DELETE' }),
 };

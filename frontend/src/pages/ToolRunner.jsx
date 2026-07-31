@@ -4,7 +4,7 @@ import { Toast, Spinner, SeverityBadge } from '../components/UI';
 import {
   Play, Square, Trash2, Brain, Download, ChevronDown, ChevronRight,
   Terminal, Wifi, Globe, Link, Settings, AlertCircle, CheckCircle,
-  Clock, Loader
+  Clock, Loader, BookOpen, Upload
 } from 'lucide-react';
 
 const TABS = [
@@ -36,7 +36,7 @@ function PresetCard({ preset, selected, onClick }) {
   );
 }
 
-function JobCard({ job, onStop, onDelete, onAnalyze, onDownloaded, onRefresh }) {
+function JobCard({ job, onStop, onDelete, onAnalyze, onAddToScans, onSaveNotebook, onDownloaded, onRefresh }) {
   const [expanded, setExpanded] = useState(job.status === 'running');
   const outputRef = useRef(null);
   const statusInfo = STATUS_STYLES[job.status] || STATUS_STYLES.queued;
@@ -142,6 +142,18 @@ function JobCard({ job, onStop, onDelete, onAnalyze, onDownloaded, onRefresh }) 
               </>
             ) : (
               <>
+                {job.output && (
+                  <button onClick={onSaveNotebook} disabled={!!job.notebook_note_id}
+                    className="btn-ghost flex items-center gap-1.5 text-xs">
+                    <BookOpen size={12} /> {job.notebook_note_id ? 'Saved to Notebook' : 'Save to Notebook'}
+                  </button>
+                )}
+                {job.status === 'complete' && ['nmap', 'nuclei'].includes(job.tool) && (
+                  <button onClick={onAddToScans} disabled={!!job.scan_upload_id}
+                    className="btn-ghost flex items-center gap-1.5 text-xs">
+                    <Upload size={12} /> {job.scan_upload_id ? 'In Scans' : 'Add to Scans'}
+                  </button>
+                )}
                 {job.status === 'complete' && ['nmap', 'nikto', 'feroxbuster', 'nuclei'].includes(job.tool) && (
                   <button onClick={onAnalyze} disabled={job._analyzing}
                     className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded font-medium"
@@ -246,7 +258,7 @@ export default function ToolRunner() {
 
     let cmd = preset.cmd;
     cmd = cmd.replace('{target}', target || 'TARGET');
-    cmd = cmd.replace('{output_file}', 'output.txt');
+    cmd = cmd.replace('{output_file}', currentTool === 'nuclei' ? 'output.jsonl' : 'output.txt');
     cmd = cmd.replace('{output_dir}', '.');
     cmd = cmd.replace('{input_file}', 'input.txt');
 
@@ -313,17 +325,18 @@ export default function ToolRunner() {
   };
 
   const handleAnalyze = async (job) => {
-    if (!job.output) return;
     const engName = engagementList.find(e => e.id === selectedEng)?.name || 'engagement';
 
     // Mark as analyzing
     setJobList(prev => prev.map(j => j.id === job.id ? { ...j, _analyzing: true } : j));
 
-    const blob = new Blob([job.output], { type: 'text/plain' });
-    const file = new File([blob], `${job.tool}_output.txt`, { type: 'text/plain' });
-
     try {
-      await analysisApi.uploadScan(selectedEng, file, job.tool);
+      if (!job.scan_upload_id) {
+        const scan = await jobsApi.addToScans(job.id);
+        setJobList(previous => previous.map(item => item.id === job.id
+          ? { ...item, scan_upload_id: scan.id }
+          : item));
+      }
       const result = await analysisApi.run(selectedEng);
       const count = result?.drafts?.length || 0;
       setToast({
@@ -334,6 +347,30 @@ export default function ToolRunner() {
       setToast({ message: err.message, type: 'error' });
     } finally {
       setJobList(prev => prev.map(j => j.id === job.id ? { ...j, _analyzing: false } : j));
+    }
+  };
+
+  const handleAddToScans = async (job) => {
+    try {
+      const scan = await jobsApi.addToScans(job.id);
+      setJobList(previous => previous.map(item => item.id === job.id
+        ? { ...item, scan_upload_id: scan.id }
+        : item));
+      setToast({ message: `Added structured ${job.tool.toUpperCase()} output to Scans without using AI`, type: 'success' });
+    } catch (err) {
+      setToast({ message: err.message, type: 'error' });
+    }
+  };
+
+  const handleSaveToNotebook = async (job) => {
+    try {
+      const note = await jobsApi.saveToNotebook(job.id);
+      setJobList(previous => previous.map(item => item.id === job.id
+        ? { ...item, notebook_note_id: note.id }
+        : item));
+      setToast({ message: `Saved ${job.tool.toUpperCase()} output to the Evidence Notebook`, type: 'success' });
+    } catch (err) {
+      setToast({ message: err.message, type: 'error' });
     }
   };
 
@@ -353,7 +390,7 @@ export default function ToolRunner() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold themed-text-primary">Tool Runner</h1>
-          <p className="text-sm themed-text-muted mt-1">Execute security tools and pipe results into AI analysis</p>
+          <p className="text-sm themed-text-muted mt-1">Execute security tools and preserve results in the Evidence Notebook or review them with AI</p>
         </div>
       </div>
 
@@ -541,6 +578,8 @@ export default function ToolRunner() {
               onStop={() => handleStop(job.id)}
               onDelete={() => handleDelete(job.id)}
               onAnalyze={() => handleAnalyze(job)}
+              onAddToScans={() => handleAddToScans(job)}
+              onSaveNotebook={() => handleSaveToNotebook(job)}
               onDownloaded={(filename) => setToast({ message: `Downloaded: ${filename}`, type: 'success' })}
               onRefresh={refreshJobs}
             />

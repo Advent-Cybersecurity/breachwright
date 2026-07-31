@@ -12,6 +12,7 @@ from app.analysis.context import build_untrusted_analysis_message, chunk_scan_te
 from app.ai.context import (
     AIContextTooLarge,
     build_bounded_untrusted_context,
+    redact_sensitive_text,
 )
 
 
@@ -98,6 +99,32 @@ class AICompletionTests(unittest.IsolatedAsyncioTestCase):
                 label="Test data",
                 max_chars=20,
             )
+
+    def test_common_credentials_are_redacted_without_removing_security_context(self):
+        jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop"
+        source = (
+            "POST /admin?token=top-secret HTTP/1.1\n"
+            "Host: app.example.test\n"
+            "Authorization: Bearer top-secret\n"
+            "Cookie: session=top-secret\n"
+            'Body: {"password":"hunter2","note":"SQL injection evidence"}\n'
+            f"JWT: {jwt}\n"
+            "AWS: AKIAIOSFODNN7EXAMPLE"
+        )
+        redacted = redact_sensitive_text(source)
+        for secret in ("top-secret", "hunter2", jwt, "AKIAIOSFODNN7EXAMPLE"):
+            self.assertNotIn(secret, redacted)
+        self.assertIn("app.example.test", redacted)
+        self.assertIn("SQL injection evidence", redacted)
+        self.assertIn("[REDACTED_JWT]", redacted)
+
+        unchanged = build_bounded_untrusted_context(
+            "untrusted_test_data",
+            "Authorization: Bearer preserve-for-local-test",
+            label="Test data",
+            redact_sensitive=False,
+        )
+        self.assertIn("preserve-for-local-test", unchanged)
 
 
 if __name__ == "__main__":

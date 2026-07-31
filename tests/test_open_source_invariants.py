@@ -202,6 +202,9 @@ class OpenSourceReleaseTests(unittest.TestCase):
             ROOT / "backend" / "app" / "reports" / "template_router.py",
             ROOT / "backend" / "app" / "ad" / "router.py",
             ROOT / "backend" / "app" / "engagements" / "export_import.py",
+            ROOT / "backend" / "app" / "workflow" / "template_router.py",
+            ROOT / "backend" / "app" / "findings" / "template_router.py",
+            ROOT / "backend" / "app" / "findings" / "notebook_router.py",
         )
         for path in upload_routes:
             source = path.read_text(encoding="utf-8")

@@ -146,6 +146,9 @@ class ScanUpload(Base, TimestampMixin):
     filename: Mapped[str] = mapped_column(String(500), nullable=False)
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
     scan_type: Mapped[str] = mapped_column(String(50), default="nmap")
+    source_job_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
     uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
 
 
@@ -203,3 +206,65 @@ class AppSetting(Base):
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AssessmentTemplate(Base, TimestampMixin):
+    """User-created composition of built-in methodology checklists."""
+
+    __tablename__ = "assessment_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    key: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    methodologies: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+
+class FindingTemplate(Base, TimestampMixin):
+    """Reusable, engagement-neutral finding language stored locally."""
+
+    __tablename__ = "finding_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    severity: Mapped[Severity] = mapped_column(SAEnum(Severity), default=Severity.info)
+    cvss_score: Mapped[Optional[float]] = mapped_column(Numeric(3, 1), nullable=True)
+    remediation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+
+class EvidenceNote(Base, TimestampMixin):
+    """Pre-finding analyst note in an engagement evidence notebook."""
+
+    __tablename__ = "evidence_notes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    engagement_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    asset: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    tags: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    source_type: Mapped[str] = mapped_column(String(50), default="manual", nullable=False)
+    source_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+
+
+class EvidenceNoteAttachment(Base):
+    __tablename__ = "evidence_note_attachments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    note_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("evidence_notes.id", ondelete="CASCADE"), nullable=False
+    )
+    filename: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    file_size: Mapped[Optional[int]] = mapped_column(nullable=True)
+    uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -21,15 +21,28 @@ Third-party AI services may charge for API usage. Local model support does not r
 ## Features
 
 - Scan ingestion for nmap, Nessus, Burp Suite, and structured tool output
+- A latest-snapshot asset and service inventory with new, persistent,
+  regressed, and resolved observation context
+- Engagement-wide local search across findings, checklist items, assets,
+  evidence metadata, notebook notes, and exploitation chains
+- An Evidence Notebook for raw analyst notes and attachments before they are
+  ready to become findings
+- Explicit no-AI promotion of scanner observations and reviewed notebook notes
+  into findings with retained provenance
 - AI-assisted finding drafts with severity, CVSS, evidence, and remediation
 - Evidence-grounded AI review with source excerpts, confidence, create/update
   diffs, and accept, edit, reject, or bulk review controls
 - Versioned scan snapshots with deterministic retest comparison
-- Finding change history, retest scheduling, and report readiness checks
-- Built-in engagement templates with automatic methodology checklists
+- Finding change history, due and overdue retest work, recently remediated
+  review, and report readiness checks
+- Built-in and user-created versioned engagement templates with automatic
+  methodology checklists
+- Reusable versioned finding templates that exclude target-specific hosts and
+  evidence
 - Current OWASP Top 10:2025 coverage for web engagements
 - Dedicated OWASP API Security Top 10 (2023) checklist for API engagements
-- Nuclei JSONL and SARIF 2.1 interoperability
+- Nuclei JSONL, SARIF 2.1, and spreadsheet-safe CSV interoperability with
+  optional local redaction
 - Versioned engagement export and import that preserves checklist progress,
   finding history, and normalized scan comparison history
 - Exploitation chains and MITRE ATT&CK-aware attack narratives
@@ -37,8 +50,11 @@ Third-party AI services may charge for API usage. Local model support does not r
 - Markdown and DOCX report generation
 - Verified local backup and offline restore with secret exclusion
 - Built-in system diagnostics and version visibility
-- Evidence attachments, retest tracking, and engagement export/import
-- Tool Runner workflows for nmap, nikto, subfinder, feroxbuster, nuclei, and related tools
+- Validated image, PDF, HTTP, request, response, HAR, text, Markdown, CSV, and
+  JSON evidence attachments
+- Tool Runner workflows for nmap, nikto, subfinder, feroxbuster, nuclei, and
+  related tools, with completed output reusable in Scans or the Evidence
+  Notebook
 - PTES, OWASP, and NIST methodology checklists and gap analysis
 - Cross-engagement intelligence, client risk profiles, and recurring-finding analysis
 - Custom report templates and AI prompts
@@ -126,15 +142,23 @@ The application stores configuration in its platform-specific data directory:
 - Linux source or direct bundle: `${XDG_DATA_HOME:-~/.local/share}/breachwright/.env`
 - Linux installed package: `${XDG_DATA_HOME:-~/.local/share}/breachwright/data/.env`
 
-You can configure Anthropic, OpenAI, or a local model in the Settings page. Azure OpenAI and AWS Bedrock can be configured through the environment file. Start with [.env.example](.env.example).
+You can configure Anthropic, OpenAI, Azure OpenAI, AWS Bedrock, or a compatible
+local endpoint in the Settings page. Start with [.env.example](.env.example)
+when configuring through an environment file instead.
+
+Common credential patterns are redacted locally before AI context is sent by
+default. The setting is visible and can be changed by the operator. Redaction
+reduces accidental disclosure but is not a guarantee that every sensitive
+value will be detected, so review assessment data and provider terms before
+using an external model.
 
 AI configuration is optional for manual findings, evidence management, checklists, reporting from existing content, export/import, and other non-AI workflows.
 
 Engagement JSON exports are intended for sharing editable project records and
-normalized comparison history. They do not include raw scan files, binary
-evidence attachments, Active Directory datasets, pending AI proposals,
-generated reports, or Tool Runner output. Use a verified full backup when
-moving or preserving an entire local workspace.
+normalized comparison history. They do not include raw scan files, finding or
+notebook attachment files, notebook notes, Active Directory datasets, pending
+AI proposals, generated reports, or Tool Runner output. Use a verified full
+backup when moving or preserving an entire local workspace.
 
 AI output is treated as untrusted. Scan and Active Directory analysis create
 review proposals rather than accepted findings. Each supported proposal cites
@@ -144,9 +168,9 @@ accepts it. See [docs/AI_TRUST_AND_EVALUATION.md](docs/AI_TRUST_AND_EVALUATION.m
 ## Back up and restore data
 
 Create and download verified local backups from the Settings page. Backups
-include the SQLite database, evidence, uploads, reports, custom template
-assets, and Tool Runner output. API keys and environment configuration are
-excluded.
+include the SQLite database, finding and notebook attachments, uploads,
+reports, custom template assets, and Tool Runner output. API keys and
+environment configuration are excluded.
 
 Restores are offline by design and preserve displaced data in a recovery
 folder. See [docs/DATA_SAFETY.md](docs/DATA_SAFETY.md) for packaged and source

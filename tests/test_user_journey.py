@@ -1,6 +1,7 @@
 """End-to-end API test against a real Breachwright server and SQLite database."""
 
 import json
+import csv
 import os
 from pathlib import Path
 import socket
@@ -12,7 +13,7 @@ import time
 import unittest
 import uuid
 from contextlib import closing
-from io import BytesIO
+from io import BytesIO, StringIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import httpx
@@ -209,6 +210,17 @@ class UserJourneyTests(unittest.TestCase):
             json={"anthropic_model": "model\nOPENAI_API_KEY=injected"},
         )
         self.assertEqual(injected_provider.status_code, 422)
+        invalid_azure_endpoint = self.client.put(
+            "/api/settings/provider",
+            headers=headers,
+            json={"azure_openai_endpoint": "file:///not-a-model-endpoint"},
+        )
+        self.assertEqual(invalid_azure_endpoint.status_code, 422)
+        provider_settings = self.client.get("/api/settings/provider", headers=headers)
+        self.assertEqual(provider_settings.status_code, 200, provider_settings.text)
+        self.assertTrue(provider_settings.json()["ai_redact_sensitive_data"])
+        self.assertIn("bedrock_model_id", provider_settings.json())
+        self.assertIn("azure_openai_api_version", provider_settings.json())
 
         diagnostics = self.client.get("/api/system/diagnostics", headers=headers)
         self.assertEqual(diagnostics.status_code, 200, diagnostics.text)
@@ -389,6 +401,77 @@ class UserJourneyTests(unittest.TestCase):
             time.sleep(0.1)
         self.assertEqual(job_state["status"], "complete", job_state)
         self.assertIn("breachwright-job-ok", job_state["output"])
+        saved_job_note = self.client.post(
+            f"/api/jobs/{job_id}/notebook",
+            json={"title": "Command validation output", "tags": ["custom", "validation"]},
+        )
+        self.assertEqual(saved_job_note.status_code, 201, saved_job_note.text)
+        self.assertEqual(saved_job_note.json()["source_type"], "tool_runner_job")
+        self.assertEqual(saved_job_note.json()["source_id"], job_id)
+        self.assertIn("echo breachwright-job-ok", saved_job_note.json()["body"])
+        self.assertIn("breachwright-job-ok", saved_job_note.json()["body"])
+        job_with_note = self.client.get(f"/api/jobs/{job_id}", headers=headers)
+        self.assertEqual(
+            job_with_note.json()["notebook_note_id"],
+            saved_job_note.json()["id"],
+        )
+        duplicate_job_note = self.client.post(
+            f"/api/jobs/{job_id}/notebook",
+            json={},
+        )
+        self.assertEqual(duplicate_job_note.status_code, 409, duplicate_job_note.text)
+        scan_job = self.client.post(
+            "/api/jobs",
+            headers=headers,
+            json={
+                "engagement_id": engagement_id,
+                "tool": "nmap",
+                "command": "echo Nmap scan report for 192.0.2.10 > output.txt",
+            },
+        )
+        self.assertEqual(scan_job.status_code, 201, scan_job.text)
+        scan_job_id = scan_job.json()["id"]
+        scan_job_state = None
+        for _ in range(50):
+            scan_job_response = self.client.get(
+                f"/api/jobs/{scan_job_id}",
+                headers=headers,
+            )
+            self.assertEqual(scan_job_response.status_code, 200, scan_job_response.text)
+            scan_job_state = scan_job_response.json()
+            if scan_job_state["status"] in {"complete", "failed"}:
+                break
+            time.sleep(0.1)
+        self.assertEqual(scan_job_state["status"], "complete", scan_job_state)
+        self.assertIn("Nmap scan report for 192.0.2.10", scan_job_state["output"])
+        self.assertIsNotNone(scan_job_state["completed_at"])
+        job_scan = self.client.post(f"/api/jobs/{scan_job_id}/scan", headers=headers)
+        self.assertEqual(job_scan.status_code, 201, job_scan.text)
+        self.assertEqual(job_scan.json()["scan_type"], "nmap")
+        self.assertEqual(job_scan.json()["source_job_id"], scan_job_id)
+        linked_scan_job = self.client.get(f"/api/jobs/{scan_job_id}", headers=headers)
+        self.assertEqual(linked_scan_job.json()["scan_upload_id"], job_scan.json()["id"])
+        duplicate_job_scan = self.client.post(f"/api/jobs/{scan_job_id}/scan", headers=headers)
+        self.assertEqual(duplicate_job_scan.status_code, 409, duplicate_job_scan.text)
+        self.assertEqual(
+            self.client.delete(f"/api/jobs/{scan_job_id}", headers=headers).status_code,
+            204,
+        )
+        scans_after_job_delete = self.client.get(
+            f"/api/engagements/{engagement_id}/scans",
+            headers=headers,
+        )
+        self.assertIn(
+            job_scan.json()["id"],
+            {item["id"] for item in scans_after_job_delete.json()},
+        )
+        self.assertEqual(
+            self.client.delete(
+                f"/api/engagements/{engagement_id}/scans/{job_scan.json()['id']}",
+                headers=headers,
+            ).status_code,
+            204,
+        )
         saved_narrative = self.client.post(
             f"/api/engagements/{engagement_id}/narrative/full/save",
             headers=headers,
@@ -635,6 +718,34 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(
             downloaded_evidence.headers["x-content-type-options"],
             "nosniff",
+        )
+        self.assertEqual(
+            downloaded_evidence.headers["content-security-policy"],
+            "default-src 'none'; sandbox",
+        )
+        invalid_json_evidence = self.client.post(
+            f"/api/engagements/{engagement_id}/findings/{finding_id}/evidence",
+            headers=headers,
+            files={"file": ("capture.har", b"not-json", "application/octet-stream")},
+        )
+        self.assertEqual(invalid_json_evidence.status_code, 415, invalid_json_evidence.text)
+        har_bytes = json.dumps({"log": {"version": "1.2", "entries": []}}).encode("utf-8")
+        har_upload = self.client.post(
+            f"/api/engagements/{engagement_id}/findings/{finding_id}/evidence",
+            headers=headers,
+            files={"file": ("capture.har", har_bytes, "application/octet-stream")},
+        )
+        self.assertEqual(har_upload.status_code, 200, har_upload.text)
+        self.assertEqual(har_upload.json()["content_type"], "application/har+json")
+        har_download = self.client.get(har_upload.json()["url"], headers=headers)
+        self.assertEqual(har_download.content, har_bytes)
+        self.assertIn("attachment", har_download.headers["content-disposition"])
+        self.assertEqual(
+            self.client.delete(
+                f"/api/engagements/{engagement_id}/findings/{finding_id}/evidence/{har_upload.json()['id']}",
+                headers=headers,
+            ).status_code,
+            204,
         )
 
         bulk_cleanup_finding = self.client.post(
@@ -1180,6 +1291,10 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(checklist.status_code, 200, checklist.text)
         self.assertGreater(len(checklist.json()), 0)
         self.assertTrue(all(item["methodology"] == "owasp_top10" for item in checklist.json()))
+        empty_inventory = self.client.get(f"/api/engagements/{engagement_id}/assets")
+        self.assertEqual(empty_inventory.status_code, 200, empty_inventory.text)
+        self.assertIsNone(empty_inventory.json()["snapshot"])
+        self.assertEqual(empty_inventory.json()["summary"]["assets"], 0)
         completed_checklist_item = checklist.json()[0]
         checklist_update = self.client.put(
             f"/api/engagements/{engagement_id}/checklists/{completed_checklist_item['id']}",
@@ -1191,6 +1306,7 @@ class UserJourneyTests(unittest.TestCase):
             f"/api/engagements/{engagement_id}/findings",
             json={
                 "title": "Administrative endpoint exposed",
+                "description": "Authorization: Bearer top-secret\nAdministrative route exposed.",
                 "severity": "high",
                 "cvss_score": 0,
                 "affected_hosts": "https://app.example.test/admin",
@@ -1234,6 +1350,12 @@ class UserJourneyTests(unittest.TestCase):
             ).status_code,
             204,
         )
+        retest_overview = self.client.get(
+            f"/api/engagements/{engagement_id}/retest-overview"
+        )
+        self.assertEqual(retest_overview.status_code, 200, retest_overview.text)
+        self.assertEqual(retest_overview.json()["summary"]["overdue"], 1)
+        self.assertEqual(retest_overview.json()["overdue"][0]["id"], finding_id)
 
         readiness = self.client.get(f"/api/engagements/{engagement_id}/report-readiness")
         self.assertEqual(readiness.status_code, 200, readiness.text)
@@ -1253,6 +1375,7 @@ class UserJourneyTests(unittest.TestCase):
             f"/api/engagements/{engagement_id}/findings/{finding_id}",
             json={
                 "remediation": "Require authorization for the administrative route.",
+                "retest_status": "remediated",
             },
         )
         self.assertEqual(updated.status_code, 200, updated.text)
@@ -1262,6 +1385,17 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(history.status_code, 200, history.text)
         self.assertEqual([entry["action"] for entry in history.json()], ["updated", "created"])
         self.assertIn("remediation", history.json()[0]["changes"])
+        self.assertIn("retest_status", history.json()[0]["changes"])
+        retest_overview = self.client.get(
+            f"/api/engagements/{engagement_id}/retest-overview"
+        )
+        self.assertEqual(retest_overview.status_code, 200, retest_overview.text)
+        self.assertEqual(retest_overview.json()["summary"]["overdue"], 0)
+        self.assertEqual(retest_overview.json()["summary"]["recently_resolved"], 1)
+        self.assertEqual(
+            retest_overview.json()["recently_resolved"][0]["id"],
+            finding_id,
+        )
         readiness = self.client.get(f"/api/engagements/{engagement_id}/report-readiness")
         self.assertTrue(readiness.json()["ready"])
         self.assertGreater(readiness.json()["score"], 0)
@@ -1336,6 +1470,49 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(replay.status_code, 200, replay.text)
         self.assertEqual(replay.json()["counts"], snapshot3.json()["counts"])
+        inventory = self.client.get(f"/api/engagements/{engagement_id}/assets")
+        self.assertEqual(inventory.status_code, 200, inventory.text)
+        self.assertEqual(inventory.json()["snapshot"]["label"], "Retest 2")
+        self.assertEqual(inventory.json()["summary"]["assets"], 1)
+        self.assertEqual(inventory.json()["summary"]["vulnerabilities"], 2)
+        self.assertEqual(inventory.json()["summary"]["services"], 0)
+        self.assertEqual(inventory.json()["summary"]["linked_findings"], 1)
+        asset = inventory.json()["assets"][0]
+        self.assertEqual(asset["host"], "app.example.test")
+        self.assertEqual(asset["status"], "regressed")
+        self.assertEqual(asset["highest_severity"], "high")
+        self.assertEqual(asset["snapshot_count"], 3)
+        self.assertEqual(asset["findings"][0]["id"], finding_id)
+        self.assertEqual(asset["findings"][0]["evidence_attachment_count"], 1)
+        finding_search = self.client.get(
+            f"/api/engagements/{engagement_id}/search",
+            params={"q": "administrative endpoint"},
+        )
+        self.assertEqual(finding_search.status_code, 200, finding_search.text)
+        self.assertIn("finding", {item["type"] for item in finding_search.json()["results"]})
+        evidence_search = self.client.get(
+            f"/api/engagements/{engagement_id}/search",
+            params={"q": "admin-proof"},
+        )
+        self.assertEqual(evidence_search.status_code, 200, evidence_search.text)
+        self.assertEqual(evidence_search.json()["results"][0]["type"], "evidence")
+        asset_search = self.client.get(
+            f"/api/engagements/{engagement_id}/search",
+            params={"q": "app.example.test"},
+        )
+        self.assertEqual(asset_search.status_code, 200, asset_search.text)
+        self.assertIn("asset", {item["type"] for item in asset_search.json()["results"]})
+        short_search = self.client.get(
+            f"/api/engagements/{engagement_id}/search",
+            params={"q": "a"},
+        )
+        self.assertEqual(short_search.status_code, 422)
+        literal_wildcard_search = self.client.get(
+            f"/api/engagements/{engagement_id}/search",
+            params={"q": "%_"},
+        )
+        self.assertEqual(literal_wildcard_search.status_code, 200, literal_wildcard_search.text)
+        self.assertEqual(literal_wildcard_search.json()["count"], 0)
 
         sarif = self.client.get(f"/api/engagements/{engagement_id}/findings.sarif")
         self.assertEqual(sarif.status_code, 200, sarif.text)
@@ -1346,6 +1523,15 @@ class UserJourneyTests(unittest.TestCase):
             f"BW-{finding_id}",
         )
         self.assertIn("attachment", sarif.headers["content-disposition"])
+        self.assertIn("top-secret", sarif.text)
+        redacted_sarif = self.client.get(
+            f"/api/engagements/{engagement_id}/findings.sarif",
+            params={"redact_sensitive": "true"},
+        )
+        self.assertEqual(redacted_sarif.status_code, 200, redacted_sarif.text)
+        self.assertNotIn("top-secret", redacted_sarif.text)
+        self.assertIn("[REDACTED]", redacted_sarif.text)
+        self.assertIn("redacted", redacted_sarif.headers["content-disposition"])
         sarif_upload = self.client.post(
             f"/api/engagements/{engagement_id}/upload-scan?scan_type=sarif",
             files={"file": ("breachwright.sarif", sarif.content, "application/sarif+json")},
@@ -1536,6 +1722,83 @@ class UserJourneyTests(unittest.TestCase):
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM scan_snapshots WHERE engagement_id = ?", (engagement_id,)).fetchone()[0], 0)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM finding_history WHERE engagement_id = ?", (engagement_id,)).fetchone()[0], 0)
 
+    def test_asset_inventory_preserves_host_aliases_services_and_operating_system(self):
+        created = self.client.post(
+            "/api/engagements",
+            json={"name": "Asset Inventory", "client_name": "Local Test"},
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        engagement_id = created.json()["id"]
+        finding = self.client.post(
+            f"/api/engagements/{engagement_id}/findings",
+            json={
+                "title": "Administrative interface exposed",
+                "severity": "high",
+                "affected_hosts": "https://web01.example.test/admin",
+            },
+        )
+        self.assertEqual(finding.status_code, 201, finding.text)
+        nmap_xml = """<?xml version="1.0"?>
+<nmaprun><host><status state="up"/><address addr="192.0.2.10" addrtype="ipv4"/>
+<hostnames><hostname name="web01.example.test" type="PTR"/></hostnames>
+<ports><port protocol="tcp" portid="443"><state state="open"/>
+<service name="https" product="nginx" version="1.26"/>
+<script id="smb2-security-mode" output="Message signing enabled but not required"/></port></ports>
+<os><osmatch name="Linux 6.x" accuracy="96"/></os></host></nmaprun>"""
+        scan = self.client.post(
+            f"/api/engagements/{engagement_id}/upload-scan?scan_type=nmap",
+            files={"file": ("inventory.xml", nmap_xml.encode("utf-8"), "application/xml")},
+        )
+        self.assertEqual(scan.status_code, 200, scan.text)
+        snapshot = self.client.post(
+            f"/api/engagements/{engagement_id}/scan-snapshots",
+            json={"label": "Discovery baseline", "scan_ids": [scan.json()["id"]]},
+        )
+        self.assertEqual(snapshot.status_code, 201, snapshot.text)
+        self.assertEqual(snapshot.json()["snapshot"]["parser_version"], "structured-v2")
+        inventory = self.client.get(f"/api/engagements/{engagement_id}/assets")
+        self.assertEqual(inventory.status_code, 200, inventory.text)
+        self.assertEqual(inventory.json()["summary"]["services"], 1)
+        asset = inventory.json()["assets"][0]
+        self.assertEqual(asset["host"], "192.0.2.10")
+        self.assertEqual(asset["aliases"], ["web01.example.test"])
+        self.assertEqual(asset["operating_systems"], ["Linux 6.x"])
+        self.assertEqual(asset["findings"][0]["id"], finding.json()["id"])
+        self.assertEqual(asset["services"][0]["evidence_ref"]["product"], "nginx")
+        self.assertEqual(asset["vulnerability_count"], 1)
+        observation = asset["vulnerabilities"][0]
+        promoted = self.client.post(
+            f"/api/engagements/{engagement_id}/scan-snapshots/{snapshot.json()['snapshot']['id']}/observations/{observation['fingerprint']}/finding"
+        )
+        self.assertEqual(promoted.status_code, 201, promoted.text)
+        self.assertEqual(promoted.json()["source"], "scan_reviewed")
+        self.assertFalse(promoted.json()["ai_inference"])
+        self.assertEqual(
+            promoted.json()["evidence_refs"][0]["scan_observation_fingerprint"],
+            observation["fingerprint"],
+        )
+        duplicate = self.client.post(
+            f"/api/engagements/{engagement_id}/scan-snapshots/{snapshot.json()['snapshot']['id']}/observations/{observation['fingerprint']}/finding"
+        )
+        self.assertEqual(duplicate.status_code, 409, duplicate.text)
+        refreshed_inventory = self.client.get(f"/api/engagements/{engagement_id}/assets")
+        accepted_observation = refreshed_inventory.json()["assets"][0]["vulnerabilities"][0]
+        self.assertEqual(accepted_observation["finding_id"], promoted.json()["id"])
+        promoted_history = self.client.get(
+            f"/api/engagements/{engagement_id}/findings/{promoted.json()['id']}/history"
+        )
+        self.assertEqual(promoted_history.json()[0]["action"], "scan_observation_accepted")
+        alias_search = self.client.get(
+            f"/api/engagements/{engagement_id}/search",
+            params={"q": "web01.example.test"},
+        )
+        self.assertEqual(alias_search.status_code, 200, alias_search.text)
+        self.assertIn("asset", {item["type"] for item in alias_search.json()["results"]})
+        asset_result = next(item for item in alias_search.json()["results"] if item["type"] == "asset")
+        self.assertIn("web01.example.test", asset_result["snippet"])
+        self.assertNotIn('"hostnames"', asset_result["snippet"])
+        self.assertEqual(self.client.delete(f"/api/engagements/{engagement_id}").status_code, 204)
+
     def test_all_engagement_templates_create_their_methodology(self):
         expected = {
             "web": "owasp_top10",
@@ -1599,6 +1862,393 @@ class UserJourneyTests(unittest.TestCase):
                     self.client.delete(f"/api/engagements/{engagement_id}").status_code,
                     204,
                 )
+
+    def test_findings_csv_export_is_spreadsheet_safe_and_redacted_by_default(self):
+        engagement = self.client.post(
+            "/api/engagements",
+            json={"name": "CSV Review", "client_name": "Local Test"},
+        )
+        self.assertEqual(engagement.status_code, 201, engagement.text)
+        engagement_id = engagement.json()["id"]
+        finding = self.client.post(
+            f"/api/engagements/{engagement_id}/findings",
+            json={
+                "title": "=HYPERLINK(\"https://unsafe.example\")",
+                "description": "Authorization: Bearer csv-secret-token",
+                "severity": "high",
+                "cvss_score": 0,
+                "affected_hosts": "+example.test",
+                "evidence": "Cookie: session=private-value",
+                "remediation": "@apply policy",
+            },
+        )
+        self.assertEqual(finding.status_code, 201, finding.text)
+
+        redacted = self.client.get(f"/api/engagements/{engagement_id}/findings.csv")
+        self.assertEqual(redacted.status_code, 200, redacted.text)
+        self.assertIn("text/csv", redacted.headers["content-type"])
+        self.assertIn("CSV-Review-findings-redacted.csv", redacted.headers["content-disposition"])
+        rows = list(csv.DictReader(StringIO(redacted.text)))
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["title"].startswith("'="))
+        self.assertTrue(rows[0]["affected_hosts"].startswith("'+"))
+        self.assertTrue(rows[0]["remediation"].startswith("'@"))
+        self.assertEqual(rows[0]["cvss_score"], "0.0")
+        self.assertNotIn("csv-secret-token", rows[0]["description"])
+        self.assertNotIn("private-value", rows[0]["evidence"])
+        self.assertIn("[REDACTED]", rows[0]["description"])
+
+        raw = self.client.get(
+            f"/api/engagements/{engagement_id}/findings.csv?redact_sensitive=false"
+        )
+        self.assertEqual(raw.status_code, 200, raw.text)
+        raw_rows = list(csv.DictReader(StringIO(raw.text)))
+        self.assertIn("csv-secret-token", raw_rows[0]["description"])
+        self.assertNotIn("-redacted.csv", raw.headers["content-disposition"])
+        self.assertEqual(
+            self.client.delete(f"/api/engagements/{engagement_id}").status_code,
+            204,
+        )
+
+    def test_engagement_evidence_notebook_notes_and_attachments(self):
+        engagement = self.client.post(
+            "/api/engagements",
+            json={"name": "Evidence Notebook", "client_name": "Local Test"},
+        )
+        self.assertEqual(engagement.status_code, 201, engagement.text)
+        engagement_id = engagement.json()["id"]
+
+        invalid_tags = self.client.post(
+            f"/api/engagements/{engagement_id}/notebook",
+            json={"title": "Duplicate tags", "tags": ["HTTP", "http"]},
+        )
+        self.assertEqual(invalid_tags.status_code, 422, invalid_tags.text)
+
+        created = self.client.post(
+            f"/api/engagements/{engagement_id}/notebook",
+            json={
+                "title": "Administrative endpoint response",
+                "body": "GET /admin HTTP/1.1\nHost: app.example.test",
+                "asset": "app.example.test",
+                "tags": ["http", "authorization"],
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        note_id = created.json()["id"]
+        self.assertEqual(created.json()["attachments"], [])
+
+        attachment = self.client.post(
+            f"/api/engagements/{engagement_id}/notebook/{note_id}/attachments",
+            files={
+                "file": (
+                    "../../admin-response.http",
+                    b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n",
+                    "application/octet-stream",
+                )
+            },
+        )
+        self.assertEqual(attachment.status_code, 200, attachment.text)
+        attachment_id = attachment.json()["id"]
+        self.assertEqual(attachment.json()["filename"], "admin-response.http")
+        notebook_file = (
+            self.data_dir / "notebook" / engagement_id / note_id
+        )
+        self.assertEqual(len(list(notebook_file.iterdir())), 1)
+
+        listed = self.client.get(f"/api/engagements/{engagement_id}/notebook")
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertEqual(listed.json()["total"], 1)
+        self.assertFalse(listed.json()["truncated"])
+        self.assertEqual(
+            listed.json()["notes"][0]["attachments"][0]["id"],
+            attachment_id,
+        )
+        note_search = self.client.get(
+            f"/api/engagements/{engagement_id}/search?q=authorization"
+        )
+        self.assertEqual(note_search.status_code, 200, note_search.text)
+        self.assertEqual(note_search.json()["results"][0]["type"], "notebook note")
+        self.assertEqual(note_search.json()["results"][0]["tab"], "notebook")
+        attachment_search = self.client.get(
+            f"/api/engagements/{engagement_id}/search?q=admin-response"
+        )
+        self.assertEqual(attachment_search.status_code, 200, attachment_search.text)
+        self.assertEqual(
+            attachment_search.json()["results"][0]["type"],
+            "notebook attachment",
+        )
+
+        downloaded = self.client.get(attachment.json()["url"])
+        self.assertEqual(downloaded.status_code, 200, downloaded.text)
+        self.assertEqual(downloaded.content, b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+        self.assertEqual(downloaded.headers["x-content-type-options"], "nosniff")
+        self.assertIn("sandbox", downloaded.headers["content-security-policy"])
+
+        updated = self.client.put(
+            f"/api/engagements/{engagement_id}/notebook/{note_id}",
+            json={
+                "title": "Administrative endpoint access check",
+                "body": "Anonymous request returned 403.",
+                "asset": "app.example.test",
+                "tags": ["http", "validated"],
+            },
+        )
+        self.assertEqual(updated.status_code, 200, updated.text)
+        self.assertEqual(updated.json()["attachments"][0]["id"], attachment_id)
+        readiness_before_promotion = self.client.get(
+            f"/api/engagements/{engagement_id}/report-readiness"
+        )
+        self.assertIn(
+            "unreviewed_evidence_notes",
+            {warning["code"] for warning in readiness_before_promotion.json()["warnings"]},
+        )
+        self.assertEqual(
+            readiness_before_promotion.json()["summary"]["unreviewed_evidence_notes"],
+            1,
+        )
+
+        promoted = self.client.post(
+            f"/api/engagements/{engagement_id}/notebook/{note_id}/finding",
+            json={
+                "title": "Administrative endpoint behavior",
+                "description": "The administrative endpoint was validated.",
+                "severity": "medium",
+                "affected_hosts": "app.example.test",
+                "evidence": "Anonymous request returned 403.",
+                "remediation": "Continue to enforce authorization on the endpoint.",
+            },
+        )
+        self.assertEqual(promoted.status_code, 201, promoted.text)
+        finding_id = promoted.json()["id"]
+        self.assertEqual(promoted.json()["source"], "notebook_reviewed")
+        self.assertFalse(promoted.json()["ai_inference"])
+        evidence_ref = promoted.json()["evidence_refs"][0]
+        self.assertEqual(evidence_ref["evidence_note_id"], note_id)
+        self.assertEqual(evidence_ref["attachment_ids"], [attachment_id])
+        self.assertEqual(evidence_ref["attachment_filenames"], ["admin-response.http"])
+        history = self.client.get(
+            f"/api/engagements/{engagement_id}/findings/{finding_id}/history"
+        )
+        self.assertEqual(history.status_code, 200, history.text)
+        self.assertEqual(history.json()[0]["action"], "notebook_note_accepted")
+        self.assertEqual(history.json()[0]["source"], "notebook_reviewed")
+        duplicate = self.client.post(
+            f"/api/engagements/{engagement_id}/notebook/{note_id}/finding",
+            json={"title": "Duplicate", "severity": "info"},
+        )
+        self.assertEqual(duplicate.status_code, 409, duplicate.text)
+        linked = self.client.get(f"/api/engagements/{engagement_id}/notebook")
+        self.assertEqual(linked.json()["notes"][0]["finding_id"], finding_id)
+        readiness_after_promotion = self.client.get(
+            f"/api/engagements/{engagement_id}/report-readiness"
+        )
+        self.assertNotIn(
+            "unreviewed_evidence_notes",
+            {warning["code"] for warning in readiness_after_promotion.json()["warnings"]},
+        )
+        self.assertEqual(
+            readiness_after_promotion.json()["summary"]["unreviewed_evidence_notes"],
+            0,
+        )
+        locked_update = self.client.put(
+            f"/api/engagements/{engagement_id}/notebook/{note_id}",
+            json={"title": "Changed after promotion"},
+        )
+        self.assertEqual(locked_update.status_code, 409, locked_update.text)
+        locked_attachment_delete = self.client.delete(
+            f"/api/engagements/{engagement_id}/notebook/{note_id}/attachments/{attachment_id}"
+        )
+        self.assertEqual(locked_attachment_delete.status_code, 409, locked_attachment_delete.text)
+        self.assertEqual(
+            self.client.delete(f"/api/engagements/{engagement_id}/findings/{finding_id}").status_code,
+            204,
+        )
+
+        self.assertEqual(
+            self.client.delete(
+                f"/api/engagements/{engagement_id}/notebook/{note_id}/attachments/{attachment_id}"
+            ).status_code,
+            204,
+        )
+        self.assertFalse(any(notebook_file.iterdir()))
+        self.assertEqual(
+            self.client.delete(
+                f"/api/engagements/{engagement_id}/notebook/{note_id}"
+            ).status_code,
+            204,
+        )
+        self.assertFalse(notebook_file.exists())
+        self.assertEqual(
+            self.client.delete(f"/api/engagements/{engagement_id}").status_code,
+            204,
+        )
+
+    def test_finding_template_crud_and_versioned_interchange(self):
+        empty = self.client.get("/api/finding-templates")
+        self.assertEqual(empty.status_code, 200, empty.text)
+        self.assertEqual(empty.json(), [])
+
+        rejected = self.client.post(
+            "/api/finding-templates",
+            json={
+                "name": "Invalid score",
+                "title": "Invalid",
+                "severity": "high",
+                "cvss_score": 10.1,
+            },
+        )
+        self.assertEqual(rejected.status_code, 422, rejected.text)
+
+        created = self.client.post(
+            "/api/finding-templates",
+            json={
+                "name": "SMB signing",
+                "category": "Network",
+                "title": "SMB signing is not required",
+                "description": "The service permits unsigned SMB sessions.",
+                "severity": "medium",
+                "cvss_score": 5.3,
+                "remediation": "Require SMB signing through policy.",
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        template_id = created.json()["id"]
+        self.assertEqual(created.json()["schema_version"], 1)
+
+        updated = self.client.put(
+            f"/api/finding-templates/{template_id}",
+            json={
+                "name": "SMB signing baseline",
+                "category": "Windows",
+                "title": "SMB signing is not required",
+                "description": "The service permits unsigned SMB sessions.",
+                "severity": "high",
+                "cvss_score": 7.1,
+                "remediation": "Require SMB signing through policy.",
+            },
+        )
+        self.assertEqual(updated.status_code, 200, updated.text)
+        self.assertEqual(updated.json()["severity"], "high")
+
+        exported = self.client.get(f"/api/finding-templates/{template_id}/export")
+        self.assertEqual(exported.status_code, 200, exported.text)
+        self.assertEqual(exported.json()["kind"], "breachwright-finding-template")
+        self.assertEqual(exported.json()["version"], "1.0")
+        self.assertNotIn("affected_hosts", exported.json()["template"])
+        self.assertNotIn("evidence", exported.json()["template"])
+        self.assertIn("attachment", exported.headers["content-disposition"])
+
+        imported = self.client.post(
+            "/api/finding-templates/import",
+            files={
+                "file": (
+                    "smb.breachwright-finding.json",
+                    exported.content,
+                    "application/json",
+                )
+            },
+        )
+        self.assertEqual(imported.status_code, 201, imported.text)
+        imported_id = imported.json()["id"]
+        self.assertNotEqual(imported_id, template_id)
+        self.assertEqual(imported.json()["title"], updated.json()["title"])
+
+        unsafe_document = exported.json()
+        unsafe_document["template"]["affected_hosts"] = "target-specific.example"
+        rejected_import = self.client.post(
+            "/api/finding-templates/import",
+            files={
+                "file": (
+                    "unsafe.json",
+                    json.dumps(unsafe_document).encode("utf-8"),
+                    "application/json",
+                )
+            },
+        )
+        self.assertEqual(rejected_import.status_code, 422, rejected_import.text)
+
+        listed = self.client.get("/api/finding-templates")
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertEqual(len(listed.json()), 2)
+        self.assertEqual(
+            self.client.delete(f"/api/finding-templates/{template_id}").status_code,
+            204,
+        )
+        self.assertEqual(
+            self.client.delete(f"/api/finding-templates/{imported_id}").status_code,
+            204,
+        )
+        self.assertEqual(
+            self.client.get(f"/api/finding-templates/{template_id}/export").status_code,
+            404,
+        )
+
+    def test_custom_assessment_template_crud_interchange_and_engagement_creation(self):
+        templates = self.client.get("/api/assessment-templates")
+        self.assertEqual(templates.status_code, 200, templates.text)
+        self.assertEqual(len([item for item in templates.json() if item["built_in"]]), 6)
+        methodologies = self.client.get("/api/assessment-templates/methodologies")
+        self.assertEqual(methodologies.status_code, 200, methodologies.text)
+        self.assertIn("network_pentest", methodologies.json())
+        duplicate_methodologies = self.client.post(
+            "/api/assessment-templates",
+            json={"name": "Invalid duplicate", "methodologies": ["ptes", "ptes"]},
+        )
+        self.assertEqual(duplicate_methodologies.status_code, 422)
+        created = self.client.post(
+            "/api/assessment-templates",
+            json={
+                "name": "Internal and API Review",
+                "description": "Reusable combined assessment start.",
+                "methodologies": ["network_pentest", "owasp_api_top10"],
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        template_key = created.json()["key"]
+        self.assertTrue(template_key.startswith("user-"))
+        self.assertFalse(created.json()["built_in"])
+        updated = self.client.put(
+            f"/api/assessment-templates/{template_key}",
+            json={
+                "name": "Internal and API Assessment",
+                "description": "Updated reusable start.",
+                "methodologies": ["network_pentest", "owasp_api_top10"],
+            },
+        )
+        self.assertEqual(updated.status_code, 200, updated.text)
+        self.assertEqual(updated.json()["name"], "Internal and API Assessment")
+        self.assertEqual(self.client.delete("/api/assessment-templates/web").status_code, 409)
+        unknown_template = self.client.post(
+            "/api/engagements",
+            json={"name": "Unknown template", "client_name": "Local Test", "template_key": "user-missing"},
+        )
+        self.assertEqual(unknown_template.status_code, 422, unknown_template.text)
+        engagement = self.client.post(
+            "/api/engagements",
+            json={"name": "Custom Template Engagement", "client_name": "Local Test", "template_key": template_key},
+        )
+        self.assertEqual(engagement.status_code, 201, engagement.text)
+        checklist = self.client.get(f"/api/engagements/{engagement.json()['id']}/checklists")
+        self.assertEqual(
+            {item["methodology"] for item in checklist.json()},
+            {"network_pentest", "owasp_api_top10"},
+        )
+        exported = self.client.get(f"/api/assessment-templates/{template_key}/export")
+        self.assertEqual(exported.status_code, 200, exported.text)
+        self.assertEqual(exported.json()["version"], "1.0")
+        self.assertIn("attachment", exported.headers["content-disposition"])
+        imported = self.client.post(
+            "/api/assessment-templates/import",
+            files={"file": ("combined.breachwright-template.json", exported.content, "application/json")},
+        )
+        self.assertEqual(imported.status_code, 201, imported.text)
+        self.assertNotEqual(imported.json()["key"], template_key)
+        self.assertEqual(imported.json()["methodologies"], created.json()["methodologies"])
+        self.assertEqual(self.client.delete(f"/api/assessment-templates/{template_key}").status_code, 204)
+        checklist_after_delete = self.client.get(f"/api/engagements/{engagement.json()['id']}/checklists")
+        self.assertEqual(len(checklist_after_delete.json()), len(checklist.json()))
+        self.assertEqual(self.client.delete(f"/api/assessment-templates/{imported.json()['key']}").status_code, 204)
+        self.assertEqual(self.client.delete(f"/api/engagements/{engagement.json()['id']}").status_code, 204)
 
 
 if __name__ == "__main__":

@@ -186,8 +186,45 @@ def main() -> int:
                 raise RuntimeError(
                     f"Packaged snapshot comparison was unexpected: {snapshot.json().get('counts')}"
                 )
-            if snapshot.json().get("snapshot", {}).get("parser_version") != "structured-v1":
+            if snapshot.json().get("snapshot", {}).get("parser_version") != "structured-v2":
                 raise RuntimeError("Packaged snapshot parser version was not recorded")
+            inventory = client.get(
+                f"/api/engagements/{engagement_id}/assets",
+                headers=headers,
+            )
+            inventory.raise_for_status()
+            if (
+                inventory.json().get("summary", {}).get("assets") != 1
+                or inventory.json().get("summary", {}).get("vulnerabilities") != 1
+                or inventory.json().get("assets", [{}])[0].get("host")
+                != "example.test"
+            ):
+                raise RuntimeError(
+                    f"Packaged asset inventory was unexpected: {inventory.json()}"
+                )
+            search = client.get(
+                f"/api/engagements/{engagement_id}/search",
+                headers=headers,
+                params={"q": "example.test"},
+            )
+            search.raise_for_status()
+            if "asset" not in {
+                item.get("type") for item in search.json().get("results", [])
+            }:
+                raise RuntimeError("Packaged workspace search did not find the asset")
+            findings_csv = client.get(
+                f"/api/engagements/{engagement_id}/findings.csv",
+                headers=headers,
+            )
+            findings_csv.raise_for_status()
+            if (
+                "text/csv" not in findings_csv.headers.get("content-type", "")
+                or "-redacted.csv" not in findings_csv.headers.get(
+                    "content-disposition", ""
+                )
+                or "Packaged finding" not in findings_csv.text
+            ):
+                raise RuntimeError("Packaged redacted findings CSV was invalid")
 
             sarif = client.get(
                 f"/api/engagements/{engagement_id}/findings.sarif",
@@ -211,6 +248,86 @@ def main() -> int:
                 },
             )
             sarif_upload.raise_for_status()
+
+            tool_job = client.post(
+                "/api/jobs",
+                headers=headers,
+                json={
+                    "engagement_id": engagement_id,
+                    "tool": "nmap",
+                    "command": "echo Nmap scan report for 192.0.2.55 > output.txt",
+                },
+            )
+            tool_job.raise_for_status()
+            tool_job_id = tool_job.json()["id"]
+            tool_deadline = time.monotonic() + 20
+            tool_state = tool_job.json()
+            while time.monotonic() < tool_deadline:
+                tool_response = client.get(
+                    f"/api/jobs/{tool_job_id}",
+                    headers=headers,
+                )
+                tool_response.raise_for_status()
+                tool_state = tool_response.json()
+                if tool_state.get("status") in {
+                    "complete",
+                    "failed",
+                    "stopped",
+                    "interrupted",
+                }:
+                    break
+                time.sleep(0.1)
+            if (
+                tool_state.get("status") != "complete"
+                or "Nmap scan report for 192.0.2.55"
+                not in (tool_state.get("output") or "")
+                or not tool_state.get("completed_at")
+            ):
+                raise RuntimeError(
+                    f"Packaged Tool Runner result was incomplete: {tool_state}"
+                )
+            job_scan = client.post(
+                f"/api/jobs/{tool_job_id}/scan",
+                headers=headers,
+            )
+            job_scan.raise_for_status()
+            job_scan_id = job_scan.json()["id"]
+            job_note = client.post(
+                f"/api/jobs/{tool_job_id}/notebook",
+                headers=headers,
+                json={"tags": ["nmap", "packaged-smoke"]},
+            )
+            job_note.raise_for_status()
+            if job_note.json().get("source_id") != tool_job_id:
+                raise RuntimeError("Packaged Tool Runner notebook provenance was lost")
+            deleted_job = client.delete(
+                f"/api/jobs/{tool_job_id}",
+                headers=headers,
+            )
+            if deleted_job.status_code != 204:
+                raise RuntimeError("Packaged Tool Runner job could not be deleted")
+            scans_after_job_delete = client.get(
+                f"/api/engagements/{engagement_id}/scans",
+                headers=headers,
+            )
+            scans_after_job_delete.raise_for_status()
+            if job_scan_id not in {
+                item.get("id") for item in scans_after_job_delete.json()
+            }:
+                raise RuntimeError(
+                    "Packaged scan was removed with its originating Tool Runner job"
+                )
+            notebook = client.get(
+                f"/api/engagements/{engagement_id}/notebook",
+                headers=headers,
+            )
+            notebook.raise_for_status()
+            if job_note.json()["id"] not in {
+                item.get("id") for item in notebook.json().get("notes", [])
+            }:
+                raise RuntimeError(
+                    "Packaged Tool Runner notebook record did not persist"
+                )
             report = client.post(
                 f"/api/engagements/{engagement_id}/reports",
                 headers=headers,

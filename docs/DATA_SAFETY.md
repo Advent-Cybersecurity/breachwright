@@ -8,7 +8,8 @@ before upgrades, workstation changes, or major imports.
 A Breachwright backup is a validated ZIP archive containing:
 
 - A consistent SQLite database snapshot
-- Evidence attachments
+- Finding evidence attachments
+- Evidence Notebook attachments
 - Uploaded scan files
 - Generated reports
 - Custom report-template assets
@@ -85,7 +86,7 @@ python -m app.system.backup_cli restore /path/to/breachwright-backup.zip --confi
 
 Before replacing the database or data folders, Breachwright validates the
 entire archive and runs SQLite integrity checks. The displaced database,
-evidence, uploads, reports, custom template assets, and Tool Runner output are
-moved into a timestamped
+finding evidence, notebook attachments, uploads, reports, custom template
+assets, and Tool Runner output are moved into a timestamped
 `restore-safety-*` folder. Keep that folder until you confirm the restored
 installation works.
