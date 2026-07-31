@@ -20,7 +20,7 @@ browser, redirect, denial-of-service, and server-rendering advisories. React
 Router 8.3.0 clears the remaining advisory, but its published package requires
 React 19.2.7 or newer and Node.js 22.22.0 or newer. Moving to that release is a
 coordinated runtime migration, not a safe patch-level dependency change for the
-current React 18 and Node 18 source-install baseline.
+current React 18 and Node 20 source-install baseline.
 
 The CI audit allows only the RSC advisory above and fails if any other
 production npm advisory appears. Remove the exception during the planned React

@@ -66,6 +66,19 @@ class OpenSourceReleaseTests(unittest.TestCase):
         )
         self.assertIn('headers={"Host": "rebind.attacker.example"}', packaged_smoke)
 
+    def test_source_builds_enforce_the_frontend_node_runtime(self):
+        builder = (ROOT / "build.py").read_text(encoding="utf-8")
+        installer = (ROOT / "install.sh").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        dependency_review = (
+            ROOT / "docs" / "DEPENDENCY_SECURITY.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("MINIMUM_NODE_MAJOR = 20", builder)
+        self.assertIn("validate_node_version", builder)
+        self.assertIn('[ "$NODE_MAJOR" -ge 20 ]', installer)
+        self.assertIn("Node.js 20 or newer", readme)
+        self.assertIn("Node 20 source-install baseline", dependency_review)
+
     def test_local_workspace_has_no_account_or_token_surface(self):
         reports_router = (
             ROOT / "backend" / "app" / "reports" / "router.py"
