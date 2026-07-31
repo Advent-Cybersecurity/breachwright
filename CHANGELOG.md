@@ -7,6 +7,10 @@
 - Added an engagement Overview with current finding, asset, retest,
   methodology, scan-snapshot, notebook, readiness, and recent local activity
   summaries.
+- The Overview can be refreshed during long assessments and preserves healthy
+  sections when one local data source is temporarily unavailable.
+- Engagements now open on the Overview, and Ctrl+K or Command+K focuses the
+  local workspace search from any engagement tab.
 - Added a latest-snapshot asset and service inventory with aliases, operating
   system details, linked findings, evidence, retests, and deterministic change
   states.
@@ -20,6 +24,8 @@
   finding and retest filters, and risk-first deterministic ordering.
 - Scanner observations can be explicitly reviewed into findings without an AI
   provider. Duplicate promotion is prevented and provenance is retained.
+- Manual finding entry now warns about exact-title duplicates and highlights
+  overlapping affected hosts without blocking legitimate separate records.
 
 ### Reuse, interoperability, and privacy
 
@@ -47,6 +53,9 @@
   linked-finding details are explicitly bounded for interface responsiveness.
 - Settings now shows whether no verified backup exists, whether the newest
   backup is aging, or whether a verified backup was created today.
+- System diagnostics now checks up to 10,000 database-backed scan, evidence,
+  notebook, and report files and distinguishes missing files from database
+  integrity failures. Users can rerun the check from Settings after repairs.
 - AI scanner analysis now rejects more than 50 files or 250 MB of combined
   input before provider initialization and uses bounded reads for every file.
 - AI scanner analysis now includes a provider-free input preflight showing
@@ -55,9 +64,15 @@
 - Users can explicitly choose the uploaded scans included in each AI analysis,
   keeping unrelated evidence intact while controlling disclosure and provider
   usage.
+- Scan management now shows stored size and Tool Runner origin, includes quick
+  AI and snapshot selection controls, and prevents either selection from
+  exceeding its 50-file processing limit.
 - Added migration, API, backup and restore, bounded-output, redaction,
   provenance, duplicate-prevention, and complete local user-journey coverage
   for the new workflows.
+- Packaged Windows and Linux user journeys now cover scan metadata, provider-free
+  AI preflight, recent workspace activity, Tool Runner reuse, reports, backup,
+  and restore in addition to core assessment workflows.
 
 ## v2.2.0 (2026-07-31)
 

@@ -71,6 +71,11 @@ export const findings = {
     }),
   history: (engId, findingId) =>
     request(`/engagements/${engId}/findings/${findingId}/history`),
+  duplicateCheck: (engId, title, affectedHosts = '') =>
+    request(`/engagements/${engId}/findings/duplicate-check`, {
+      method: 'POST',
+      body: { title, affected_hosts: affectedHosts || null },
+    }),
 };
 
 // Analysis

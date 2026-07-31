@@ -209,10 +209,27 @@ async def list_scans(
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(ScanUpload).where(ScanUpload.engagement_id == engagement_id)
+        select(ScanUpload)
+        .where(ScanUpload.engagement_id == engagement_id)
+        .order_by(ScanUpload.created_at, ScanUpload.id)
     )
     scans = result.scalars().all()
-    return [{"id": s.id, "filename": s.filename, "scan_type": s.scan_type} for s in scans]
+    response = []
+    for scan in scans:
+        try:
+            size_bytes = os.path.getsize(scan.file_path)
+        except OSError:
+            size_bytes = None
+        response.append({
+            "id": scan.id,
+            "filename": scan.filename,
+            "scan_type": scan.scan_type,
+            "size_bytes": size_bytes,
+            "created_at": scan.created_at,
+            "source_job_id": scan.source_job_id,
+            "stored_file_available": size_bytes is not None,
+        })
+    return response
 
 
 @router.get("/analysis-preview")

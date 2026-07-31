@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, BookOpen, ClipboardList, FileCheck2, FileText, RotateCcw, Server, ShieldCheck, Target, Upload } from 'lucide-react';
+import { Activity, AlertTriangle, BookOpen, ClipboardList, FileCheck2, FileText, RefreshCw, RotateCcw, Server, ShieldCheck, Target, Upload } from 'lucide-react';
 
 import { checklists as checklistApi, evidenceNotebook as notebookApi, workflow as workflowApi } from '../api';
 import { SeverityBadge, Spinner } from './UI';
@@ -27,24 +27,40 @@ function MetricCard({ label, value, detail, icon: Icon, onClick, tone = 'themed-
 export default function WorkspaceOverviewTab({ engId, findings, toast, onOpenTab }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [readiness, retests, assets, checklistProgress, snapshots, notebook, activity] = await Promise.all([
-      workflowApi.readiness(engId),
-      workflowApi.retestOverview(engId),
-      workflowApi.assets(engId),
-      checklistApi.progress(engId),
-      workflowApi.listSnapshots(engId),
-      notebookApi.list(engId),
+    const labels = ['readiness', 'retests', 'assets', 'checklists', 'snapshots', 'notebook', 'activity'];
+    const results = await Promise.allSettled([
+      workflowApi.readiness(engId), workflowApi.retestOverview(engId),
+      workflowApi.assets(engId), checklistApi.progress(engId),
+      workflowApi.listSnapshots(engId), notebookApi.list(engId),
       workflowApi.activity(engId),
     ]);
-    setData({ readiness, retests, assets, checklistProgress, snapshots, notebook, activity });
-  }, [engId]);
+    const failed = results.flatMap((result, index) => result.status === 'rejected' ? [labels[index]] : []);
+    setData(previous => ({
+      readiness: results[0].status === 'fulfilled' ? results[0].value : previous?.readiness || {
+        score: 0, ready: false,
+        blockers: [{ code: 'overview_readiness_unavailable', message: 'Report readiness could not be loaded.' }],
+        warnings: [], summary: { unreviewed_evidence_notes: 0 },
+      },
+      retests: results[1].status === 'fulfilled' ? results[1].value : previous?.retests || {
+        summary: { overdue: 0, due_soon: 0, unscheduled: 0, scheduled: 0 },
+        overdue: [], due_soon: [],
+      },
+      assets: results[2].status === 'fulfilled' ? results[2].value : previous?.assets || { summary: { assets: 0, services: 0 } },
+      checklistProgress: results[3].status === 'fulfilled' ? results[3].value : previous?.checklistProgress || {},
+      snapshots: results[4].status === 'fulfilled' ? results[4].value : previous?.snapshots || [],
+      notebook: results[5].status === 'fulfilled' ? results[5].value : previous?.notebook || { total: 0, notes: [] },
+      activity: results[6].status === 'fulfilled' ? results[6].value : previous?.activity || { count: 0, events: [] },
+    }));
+    if (failed.length) {
+      toast({ message: `Overview loaded with unavailable sections: ${failed.join(', ')}`, type: 'error' });
+    }
+  }, [engId, toast]);
 
   useEffect(() => {
-    load()
-      .catch(err => toast({ message: `Workspace overview could not be loaded: ${err.message}`, type: 'error' }))
-      .finally(() => setLoading(false));
+    load().finally(() => setLoading(false));
   }, [load, toast]);
 
   const checklist = useMemo(() => {
@@ -68,7 +84,15 @@ export default function WorkspaceOverviewTab({ engId, findings, toast, onOpenTab
           <h2 className="text-lg font-semibold themed-text-primary">Workspace Overview</h2>
           <p className="text-sm themed-text-muted">Current local assessment state and the work most likely to need attention.</p>
         </div>
-        <button className="btn-secondary text-sm" onClick={() => onOpenTab('reports')}>Open Report Readiness</button>
+        <div className="flex gap-2">
+          <button className="btn-secondary text-sm flex items-center gap-2" disabled={refreshing} onClick={async () => {
+            setRefreshing(true);
+            try { await load(); } finally { setRefreshing(false); }
+          }}>
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} /> Refresh
+          </button>
+          <button className="btn-secondary text-sm" onClick={() => onOpenTab('reports')}>Open Report Readiness</button>
+        </div>
       </div>
 
       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">

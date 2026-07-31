@@ -10,15 +10,25 @@ import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user, require_admin
 from app.auth.models import User
 from app.config import settings
+from app.db.session import get_db
+from app.engagements.models import (
+    EvidenceAttachment,
+    EvidenceNoteAttachment,
+    Report,
+    ScanUpload,
+)
 from app.system.backup import create_backup, sqlite_database_path, validate_backup
 from app.version import APP_VERSION
 
 
 router = APIRouter(prefix="/api/system", tags=["system"])
+MAX_DIAGNOSTIC_FILE_RECORDS = 10000
 
 
 def _sqlite_quick_check(database_path: Path) -> str:
@@ -39,8 +49,52 @@ def _backup_metadata(path: Path) -> dict:
     }
 
 
+async def _stored_file_diagnostics(db: AsyncSession) -> dict:
+    models = (ScanUpload, EvidenceAttachment, EvidenceNoteAttachment, Report)
+    total_records = 0
+    checked = 0
+    checked_paths = []
+    remaining = MAX_DIAGNOSTIC_FILE_RECORDS
+    for model in models:
+        count_result = await db.execute(
+            select(func.count(model.id)).where(model.file_path.is_not(None))
+        )
+        total_records += int(count_result.scalar_one())
+        if remaining <= 0:
+            continue
+        paths = (await db.execute(
+            select(model.file_path)
+            .where(model.file_path.is_not(None))
+            .order_by(model.id)
+            .limit(remaining)
+        )).scalars().all()
+        checked += len(paths)
+        checked_paths.extend(paths)
+        remaining -= len(paths)
+    missing = await asyncio.to_thread(
+        lambda: sum(1 for path in checked_paths if not os.path.isfile(path))
+    )
+    return {
+        "records": total_records,
+        "checked": checked,
+        "missing": missing,
+        "complete": checked == total_records,
+        "limit": MAX_DIAGNOSTIC_FILE_RECORDS,
+        "status": (
+            "missing_files"
+            if missing
+            else "ok"
+            if checked == total_records
+            else "partial"
+        ),
+    }
+
+
 @router.get("/diagnostics")
-async def diagnostics(current_user: User = Depends(get_current_user)):
+async def diagnostics(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     data_path = Path(settings.data_dir).resolve()
     usage = shutil.disk_usage(data_path)
     database_type = (
@@ -76,6 +130,7 @@ async def diagnostics(current_user: User = Depends(get_current_user)):
         "database_exists": database_exists,
         "database_size": database_size,
         "database_integrity": database_integrity,
+        "stored_files": await _stored_file_diagnostics(db),
         "free_space": usage.free,
         "backup_count": len(list(backup_dir.glob("breachwright-backup-*.zip"))),
     }

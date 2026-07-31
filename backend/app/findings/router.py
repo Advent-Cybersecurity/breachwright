@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Annotated, Optional
-from sqlalchemy import case, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -20,6 +20,54 @@ async def _get_engagement(engagement_id: str, db: AsyncSession) -> Engagement:
     if not eng:
         raise HTTPException(status_code=404, detail="Engagement not found")
     return eng
+
+
+class DuplicateCheck(BaseModel):
+    title: str = Field(min_length=2, max_length=500)
+    affected_hosts: Optional[str] = Field(default=None, max_length=50000)
+
+    model_config = {"str_strip_whitespace": True}
+
+
+def _host_tokens(value: str | None) -> set[str]:
+    return {
+        token.strip().lower()
+        for token in str(value or "").replace("\r", "\n").replace(",", "\n").split("\n")
+        if token.strip()
+    }
+
+
+@router.post("/duplicate-check")
+async def duplicate_check(
+    engagement_id: str,
+    body: DuplicateCheck,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Warn about exact normalized titles without preventing valid repeats."""
+    await _get_engagement(engagement_id, db)
+    normalized_title = body.title.strip().lower()
+    result = await db.execute(
+        select(Finding)
+        .where(
+            Finding.engagement_id == engagement_id,
+            func.lower(func.trim(Finding.title)) == normalized_title,
+        )
+        .order_by(Finding.created_at, Finding.id)
+        .limit(20)
+    )
+    requested_hosts = _host_tokens(body.affected_hosts)
+    matches = []
+    for finding in result.scalars().all():
+        existing_hosts = _host_tokens(finding.affected_hosts)
+        matches.append({
+            "id": finding.id,
+            "title": finding.title,
+            "severity": finding.severity,
+            "affected_hosts": finding.affected_hosts,
+            "host_overlap": bool(requested_hosts & existing_hosts),
+        })
+    return {"count": len(matches), "matches": matches}
 
 
 @router.get("", response_model=list[FindingResponse])

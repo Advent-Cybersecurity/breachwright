@@ -109,6 +109,20 @@ def main() -> int:
             )
             finding.raise_for_status()
             finding_id = finding.json()["id"]
+            duplicate_check = client.post(
+                f"/api/engagements/{engagement_id}/findings/duplicate-check",
+                headers=headers,
+                json={
+                    "title": finding.json()["title"].upper(),
+                    "affected_hosts": finding.json().get("affected_hosts"),
+                },
+            )
+            duplicate_check.raise_for_status()
+            if (
+                duplicate_check.json().get("count") != 1
+                or duplicate_check.json()["matches"][0].get("id") != finding_id
+            ):
+                raise RuntimeError("Packaged duplicate-finding warning was unavailable")
             evidence = client.post(
                 f"/api/engagements/{engagement_id}/findings/{finding_id}/evidence",
                 headers=headers,
@@ -171,6 +185,39 @@ def main() -> int:
                 },
             )
             upload.raise_for_status()
+            listed_scans = client.get(
+                f"/api/engagements/{engagement_id}/scans",
+                headers=headers,
+            )
+            listed_scans.raise_for_status()
+            listed_upload = next(
+                (
+                    item
+                    for item in listed_scans.json()
+                    if item.get("id") == upload.json()["id"]
+                ),
+                None,
+            )
+            if (
+                not listed_upload
+                or not listed_upload.get("stored_file_available")
+                or listed_upload.get("size_bytes") != len(nuclei_record.encode("utf-8"))
+            ):
+                raise RuntimeError("Packaged scan metadata was incomplete")
+            analysis_preview = client.post(
+                f"/api/engagements/{engagement_id}/analysis-preview",
+                headers=headers,
+                json={"scan_ids": [upload.json()["id"]]},
+            )
+            analysis_preview.raise_for_status()
+            if (
+                not analysis_preview.json().get("ready")
+                or analysis_preview.json().get("scan_count") != 1
+                or not analysis_preview.json().get("redaction_enabled")
+            ):
+                raise RuntimeError(
+                    f"Packaged AI input preflight failed: {analysis_preview.json()}"
+                )
             snapshot = client.post(
                 f"/api/engagements/{engagement_id}/scan-snapshots",
                 headers=headers,
@@ -341,6 +388,23 @@ def main() -> int:
             report_file.raise_for_status()
             if not report_file.content.startswith(b"PK"):
                 raise RuntimeError("Packaged DOCX report was not a valid ZIP container")
+            activity = client.get(
+                f"/api/engagements/{engagement_id}/activity?limit=20",
+                headers=headers,
+            )
+            activity.raise_for_status()
+            activity_kinds = {item.get("kind") for item in activity.json().get("events", [])}
+            if not {"finding", "scan", "snapshot", "report"}.issubset(activity_kinds):
+                raise RuntimeError(
+                    f"Packaged workspace activity was incomplete: {activity_kinds}"
+                )
+            diagnostics = client.get("/api/system/diagnostics", headers=headers)
+            diagnostics.raise_for_status()
+            stored_files = diagnostics.json().get("stored_files", {})
+            if stored_files.get("status") != "ok" or stored_files.get("missing") != 0:
+                raise RuntimeError(
+                    f"Packaged stored-file diagnostics failed: {stored_files}"
+                )
         finally:
             client.close()
             if process.poll() is None:
