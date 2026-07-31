@@ -71,7 +71,7 @@ async def create_template(
 
     # Handle logo upload
     if logo and logo.filename:
-        content = await logo.read()
+        content = await logo.read(MAX_LOGO_SIZE + 1)
         ext, _ = _validated_logo(logo, content)
         logo_dir = os.path.join(settings.data_dir, "templates", template.id)
         os.makedirs(logo_dir, exist_ok=True)
@@ -117,7 +117,7 @@ async def update_template(
     template.footer_text = footer_text or None
 
     if logo and logo.filename:
-        content = await logo.read()
+        content = await logo.read(MAX_LOGO_SIZE + 1)
         ext, _ = _validated_logo(logo, content)
         logo_dir = os.path.join(settings.data_dir, "templates", template.id)
         os.makedirs(logo_dir, exist_ok=True)

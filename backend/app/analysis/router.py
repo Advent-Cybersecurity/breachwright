@@ -89,7 +89,7 @@ async def upload_scan(
     display_name = _safe_upload_name(file.filename, "scan.txt")
     extension = os.path.splitext(display_name)[1][:20]
     file_path = os.path.join(upload_dir, f"{uuid.uuid4().hex}{extension}")
-    content = await file.read()
+    content = await file.read(MAX_SCAN_SIZE + 1)
     if len(content) > MAX_SCAN_SIZE:
         raise HTTPException(status_code=413, detail="Scan file too large (max 50MB)")
     with open(file_path, "wb") as f:

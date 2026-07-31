@@ -91,6 +91,19 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertNotIn("./data/uploads:/app/data/uploads", compose)
         self.assertNotIn("./data/reports:/app/data/reports", compose)
 
+    def test_upload_routes_do_not_read_unbounded_requests(self):
+        upload_routes = (
+            ROOT / "backend" / "app" / "analysis" / "router.py",
+            ROOT / "backend" / "app" / "findings" / "evidence.py",
+            ROOT / "backend" / "app" / "reports" / "template_router.py",
+            ROOT / "backend" / "app" / "ad" / "router.py",
+            ROOT / "backend" / "app" / "engagements" / "export_import.py",
+        )
+        for path in upload_routes:
+            source = path.read_text(encoding="utf-8")
+            self.assertNotIn("await file.read()", source, path)
+            self.assertNotIn("await logo.read()", source, path)
+
 
 if __name__ == "__main__":
     unittest.main()

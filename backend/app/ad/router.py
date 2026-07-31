@@ -55,10 +55,10 @@ async def import_sharphound(
     )
     if not engagement_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Engagement not found")
-    if not file.filename.endswith(".zip"):
+    if not (file.filename or "").lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Expected a ZIP file (SharpHound/BloodHound output)")
 
-    content = await file.read()
+    content = await file.read(100 * 1024 * 1024 + 1)
     if len(content) > 100 * 1024 * 1024:  # 100MB limit
         raise HTTPException(status_code=413, detail="File too large (max 100MB)")
 

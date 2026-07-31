@@ -106,7 +106,7 @@ async def upload_evidence(
             detail="Unsupported evidence type. Use PNG, JPEG, GIF, WebP, or PDF.",
         )
 
-    content = await file.read()
+    content = await file.read(MAX_SIZE + 1)
     if len(content) > MAX_SIZE:
         raise HTTPException(status_code=413, detail="File too large (max 10MB)")
     if not _matches_declared_type(file.content_type, content):
