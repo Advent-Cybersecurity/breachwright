@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<issues burpVersion="community">
+  <issue>
+    <serialNumber>1</serialNumber>
+    <type>2097936</type>
+    <name>Reflected cross-site scripting</name>
+    <host ip="10.20.30.30">app.lab.local</host>
+    <port>443</port>
+    <severity>High</severity>
+    <issueDetail>The value of the search parameter is copied into the HTML response without encoding.</issueDetail>
+    <remediationDetail>Apply context-sensitive output encoding and validate input.</remediationDetail>
+  </issue>
+</issues>

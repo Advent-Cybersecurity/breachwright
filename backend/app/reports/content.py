@@ -20,6 +20,27 @@ def _severity(finding) -> str:
     return severity.value if hasattr(severity, "value") else str(severity)
 
 
+def _provenance_lines(finding) -> list[str]:
+    lines = []
+    for ref in getattr(finding, "evidence_refs", None) or []:
+        details = [str(ref.get("id", "unknown"))]
+        if ref.get("filename"):
+            details.append(str(ref["filename"]))
+        elif ref.get("scan_type"):
+            details.append(str(ref["scan_type"]))
+        if ref.get("host"):
+            asset = str(ref["host"])
+            if ref.get("port") is not None:
+                asset += f":{ref['port']}"
+            details.append(asset)
+        if ref.get("cve"):
+            details.append(str(ref["cve"]))
+        if ref.get("plugin_id"):
+            details.append(f"plugin {ref['plugin_id']}")
+        lines.append(f"- {' | '.join(details)}")
+    return lines
+
+
 def build_report_content(engagement, findings, attack_paths) -> str:
     """Build a complete, portable Markdown report from stored engagement data."""
     counts = Counter(_severity(finding) for finding in findings)
@@ -70,6 +91,7 @@ def build_report_content(engagement, findings, attack_paths) -> str:
         )
     else:
         for index, finding in enumerate(findings, start=1):
+            provenance = _provenance_lines(finding)
             sections.extend(
                 [
                     f"### {index}. {_value(finding.title)}",
@@ -78,6 +100,7 @@ def build_report_content(engagement, findings, attack_paths) -> str:
                     f"- **CVSS score:** {_value(finding.cvss_score, 'Not scored')}",
                     f"- **Affected assets:** {_value(finding.affected_hosts, 'Not specified')}",
                     f"- **Retest status:** {_value(finding.retest_status, 'Not retested')}",
+                    f"- **Analysis source:** {'AI-assisted, analyst reviewed' if getattr(finding, 'ai_inference', False) else 'Manual or imported'}",
                     "",
                     "#### Description",
                     "",
@@ -86,6 +109,10 @@ def build_report_content(engagement, findings, attack_paths) -> str:
                     "#### Evidence",
                     "",
                     _value(finding.evidence),
+                    "",
+                    "#### Evidence Provenance",
+                    "",
+                    *(provenance or ["No scanner provenance was recorded."]),
                     "",
                     "#### Remediation",
                     "",

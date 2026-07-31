@@ -13,6 +13,7 @@ from app.engagements.models import Engagement, Finding, AttackPath, Report
 from app.engagements.schemas import ReportResponse
 from app.ai.provider import get_provider
 from app.ai.prompts.loader import get_prompt
+from app.ai.prompts.templates import REPORT_GROUNDING_RULES
 from app.config import settings
 from app.reports.content import build_report_content
 
@@ -56,13 +57,43 @@ async def generate_report(
     report_content = build_report_content(engagement, findings, attack_paths)
     if use_ai:
         provider = get_provider()
-        system_prompt = await get_prompt(db, "prompt_reports")
+        system_prompt = await get_prompt(db, "prompt_reports") + REPORT_GROUNDING_RULES
+        required_evidence_ids = {
+            str(ref.get("id"))
+            for finding in findings
+            for ref in (finding.evidence_refs or [])
+            if ref.get("id")
+        }
+        required_finding_titles = {finding.title for finding in findings}
         try:
-            report_content = await provider.complete(
+            generated_content = await provider.complete(
                 system_prompt=system_prompt,
-                user_message=report_content,
+                user_message=(
+                    "<untrusted_report_data>\n"
+                    f"{report_content}\n"
+                    "</untrusted_report_data>"
+                ),
                 max_tokens=8192,
             )
+            missing_ids = sorted(
+                evidence_id
+                for evidence_id in required_evidence_ids
+                if evidence_id not in generated_content
+            )
+            if missing_ids:
+                raise ValueError(
+                    "AI report omitted required evidence IDs: "
+                    + ", ".join(missing_ids[:10])
+                )
+            missing_titles = sorted(
+                title for title in required_finding_titles if title not in generated_content
+            )
+            if missing_titles:
+                raise ValueError(
+                    "AI report omitted required findings: "
+                    + ", ".join(missing_titles[:10])
+                )
+            report_content = generated_content
         except Exception as e:
             logger.error("AI provider error: %s", e)
             raise HTTPException(status_code=502, detail=f"AI provider error: {e}")

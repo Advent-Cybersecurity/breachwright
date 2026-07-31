@@ -320,10 +320,10 @@ export default function ToolRunner() {
 
     try {
       await analysisApi.uploadScan(selectedEng, file, job.tool);
-      const findings = await analysisApi.run(selectedEng);
-      const count = Array.isArray(findings) ? findings.length : 0;
+      const result = await analysisApi.run(selectedEng);
+      const count = result?.drafts?.length || 0;
       setToast({
-        message: `${count} finding${count !== 1 ? 's' : ''} created in "${engName}" > Findings tab`,
+        message: `${count} AI proposal${count !== 1 ? 's' : ''} ready for review in "${engName}" > Scans`,
         type: 'success',
       });
     } catch (err) {

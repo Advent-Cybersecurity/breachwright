@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<nmaprun scanner="nmap">
+  <host>
+    <status state="up" />
+    <address addr="10.20.30.10" addrtype="ipv4" />
+    <hostnames><hostname name="fileserver.lab.local" /></hostnames>
+    <ports>
+      <port protocol="tcp" portid="445">
+        <state state="open" />
+        <service name="microsoft-ds" product="Windows Server" />
+        <script id="smb2-security-mode" output="Message signing enabled but not required" />
+      </port>
+    </ports>
+  </host>
+</nmaprun>

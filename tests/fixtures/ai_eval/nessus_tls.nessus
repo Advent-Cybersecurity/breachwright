@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<NessusClientData_v2>
+  <Report name="Sanitized lab">
+    <ReportHost name="web.lab.local">
+      <HostProperties>
+        <tag name="host-ip">10.20.30.20</tag>
+        <tag name="host-fqdn">web.lab.local</tag>
+      </HostProperties>
+      <ReportItem port="443" svc_name="https" protocol="tcp" severity="2" pluginID="104743" pluginName="TLS Version 1.0 Protocol Detection">
+        <description>The remote service accepts connections encrypted using TLS 1.0.</description>
+        <solution>Disable TLS 1.0 and require TLS 1.2 or later.</solution>
+        <cvss3_base_score>6.5</cvss3_base_score>
+      </ReportItem>
+    </ReportHost>
+  </Report>
+</NessusClientData_v2>

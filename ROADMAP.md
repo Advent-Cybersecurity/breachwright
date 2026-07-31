@@ -30,9 +30,9 @@ long-running Windows and Linux installations:
 - native Windows and Linux archives from one source tree
 - verified backup and offline restore for SQLite installations
 - deterministic Markdown and DOCX reports without an AI provider
-- administrator account management and read-only viewers
-- password changes, session revocation, and login-failure throttling
+- immediate access to a single local owner workspace without accounts or login
 - bounded uploads, imports, job output, logs, and AI-generated records
+- evidence-grounded AI proposals with explicit local review
 - system diagnostics and explicit version reporting
 - upgrade validation using data created by the public 2.0 release
 
@@ -58,11 +58,13 @@ long-running Windows and Linux installations:
 
 ### 3. Better local analysis
 
-- expand deterministic scan correlation before any optional model request
-- add parser fixtures for more nmap, Nessus, Burp Suite, and nuclei variants
-- surface correlation confidence and source provenance on generated drafts
-- let operators approve, edit, or reject every generated finding before it is
-  added to an engagement
+- expand sanitized parser fixtures for more nmap, Nessus, Burp Suite, nuclei,
+  and Active Directory variants
+- grow the quality corpus with community-contributed expected findings and
+  deliberate non-findings
+- add optional local-model comparison reports without enabling paid CI calls
+- improve evidence retrieval for very large assessments while preserving
+  explicit context limits
 
 ### 4. Community extension points
 
@@ -71,14 +73,13 @@ long-running Windows and Linux installations:
 - add contributor examples for a parser, report section, and methodology
 - publish a compatibility policy before accepting third-party extensions
 
-### 5. Larger-team accountability
+### 5. Local accountability
 
-- add an append-only audit log for account, finding, evidence, report, backup,
+- add an append-only audit log for finding, evidence, report, backup,
   restore, and Tool Runner actions
-- add finding ownership and review state without limiting user counts
-- add conflict-safe editing for shared self-hosted deployments
-- keep every collaboration capability available in the open-source
-  distribution
+- add review history for manual and AI-assisted finding changes
+- keep the default product focused on one local operator and avoid hidden
+  network-service assumptions
 
 ## Platform policy
 

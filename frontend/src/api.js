@@ -87,6 +87,20 @@ export const analysis = {
     request(`/engagements/${engId}/scans/${scanId}`, { method: 'DELETE' }),
   run: (engId) =>
     request(`/engagements/${engId}/analyze`, { method: 'POST' }),
+  listDrafts: (engId, status = 'pending') =>
+    request(`/engagements/${engId}/ai-drafts?status=${encodeURIComponent(status)}`),
+  acceptDraft: (engId, draftId, edits = null) =>
+    request(`/engagements/${engId}/ai-drafts/${draftId}/accept`, {
+      method: 'POST',
+      ...(edits ? { body: edits } : {}),
+    }),
+  rejectDraft: (engId, draftId) =>
+    request(`/engagements/${engId}/ai-drafts/${draftId}/reject`, { method: 'POST' }),
+  reviewDrafts: (engId, draftIds, action) =>
+    request(`/engagements/${engId}/ai-drafts/bulk`, {
+      method: 'POST',
+      body: { draft_ids: draftIds, action },
+    }),
   correlate: (engId) =>
     request(`/engagements/${engId}/correlate`, { method: 'POST' }),
 };

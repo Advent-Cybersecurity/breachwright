@@ -19,8 +19,16 @@ usage limits.
 - System diagnostics, version visibility, and bounded application logs
 - Safer evidence, scan, logo, Active Directory, and engagement-import handling
 - Validation and size limits for AI-generated findings and attack paths
+- Evidence-grounded AI proposals with stable scanner references and confidence
+- An analyst review workbench for editing, accepting, rejecting, and bulk
+  reviewing AI proposals before they become findings
+- Bounded AI context, strict structured-output validation, limited retries,
+  prompt-injection defenses, and citation checks across AI workflows
+- A zero-cost evaluation baseline using sanitized Nmap, Nessus, Burp Suite,
+  and Active Directory fixtures
 - Bounded Tool Runner output and cleanup of deleted engagement data
 - Browser interface accessibility and error-recovery improvements
+- Reliable direct links and page refreshes for engagement routes
 - Anthropic, OpenAI, Azure OpenAI, AWS Bedrock, and local compatible model
   support
 

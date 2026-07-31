@@ -7,6 +7,7 @@ import sqlite3
 import sys
 import unittest
 import uuid
+from unittest.mock import patch
 from zipfile import ZipFile
 
 
@@ -15,7 +16,12 @@ BACKEND = ROOT / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from app.system.backup import create_backup, restore_backup, validate_backup
+from app.system.backup import (
+    _copy_data_folder,
+    create_backup,
+    restore_backup,
+    validate_backup,
+)
 
 
 class BackupTests(unittest.TestCase):
@@ -62,6 +68,29 @@ class BackupTests(unittest.TestCase):
             self.assertIn("data/jobs/job-1/output.txt", members)
             self.assertNotIn(".env", members)
             self.assertNotIn(".secret_key", members)
+
+    def test_backup_skips_a_runtime_file_that_vanishes_during_copy(self):
+        source = self.data_dir / "reports"
+        destination = self.root / "snapshot" / "reports"
+        source.mkdir()
+        stable = source / "stable.docx"
+        volatile = source / "volatile.tmp"
+        stable.write_bytes(b"stable")
+        volatile.write_bytes(b"temporary")
+        original_copy = shutil.copy2
+
+        def copy_with_rotation(source_file, destination_file):
+            if Path(source_file).name == volatile.name:
+                volatile.unlink()
+                raise FileNotFoundError(volatile)
+            return original_copy(source_file, destination_file)
+
+        with patch("app.system.backup.shutil.copy2", side_effect=copy_with_rotation):
+            copied = _copy_data_folder(source, destination)
+
+        self.assertEqual([destination / stable.name], copied)
+        self.assertEqual(b"stable", (destination / stable.name).read_bytes())
+        self.assertFalse((destination / volatile.name).exists())
 
     def test_restore_recovers_database_and_files_and_preserves_displaced_data(self):
         backup = create_backup(

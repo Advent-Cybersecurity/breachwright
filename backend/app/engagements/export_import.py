@@ -32,6 +32,24 @@ VALID_RETEST_STATUSES = {
     "retest_needed",
     "accepted_risk",
 }
+MAX_EVIDENCE_REFS = 100
+MAX_EVIDENCE_REFS_SIZE = 500_000
+
+
+def _validate_evidence_refs(value: object, finding_index: int) -> list[dict] | None:
+    if value is None:
+        return None
+    if (
+        not isinstance(value, list)
+        or len(value) > MAX_EVIDENCE_REFS
+        or any(not isinstance(item, dict) for item in value)
+        or len(json.dumps(value).encode("utf-8")) > MAX_EVIDENCE_REFS_SIZE
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Finding {finding_index} has invalid evidence references",
+        )
+    return value
 
 
 def _serialize(obj):
@@ -81,6 +99,11 @@ async def export_engagement(
                 "evidence": f.evidence,
                 "remediation": f.remediation,
                 "source": f.source,
+                "evidence_refs": f.evidence_refs,
+                "ai_confidence": float(f.ai_confidence)
+                if f.ai_confidence is not None
+                else None,
+                "ai_inference": f.ai_inference,
                 "retest_status": f.retest_status,
             }
             for f in findings
@@ -222,6 +245,14 @@ async def import_engagement(
             evidence=validated_finding.evidence,
             remediation=validated_finding.remediation,
             source="imported",
+            evidence_refs=_validate_evidence_refs(fd.get("evidence_refs"), index + 1),
+            ai_confidence=(
+                float(fd["ai_confidence"])
+                if isinstance(fd.get("ai_confidence"), (int, float))
+                and 0 <= float(fd["ai_confidence"]) <= 1
+                else None
+            ),
+            ai_inference=fd.get("ai_inference") is True,
             retest_status=fd.get("retest_status"),
             created_by=current_user.id,
         )

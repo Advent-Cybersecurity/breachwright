@@ -137,7 +137,7 @@ function Tab({ active, label, icon: Icon, count, onClick }) {
 }
 
 // Finding editor form (shared between Add and Edit)
-function FindingForm({ form, setForm, onSubmit, saving, submitLabel }) {
+function FindingForm({ form, setForm, onSubmit, saving, submitLabel, showRetest = true }) {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
@@ -145,8 +145,8 @@ function FindingForm({ form, setForm, onSubmit, saving, submitLabel }) {
         <input id="finding-title" className="input-field text-sm" value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })} required autoFocus />
       </div>
-      <div className="grid grid-cols-3 gap-3">
-        <div>
+      <div className={`grid ${showRetest ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
+        {showRetest && <div>
           <label htmlFor="finding-severity" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Severity</label>
           <select id="finding-severity" className="input-field text-sm" value={form.severity}
             onChange={(e) => setForm({ ...form, severity: e.target.value })}>
@@ -156,7 +156,7 @@ function FindingForm({ form, setForm, onSubmit, saving, submitLabel }) {
             <option value="low">Low</option>
             <option value="info">Info</option>
           </select>
-        </div>
+        </div>}
         <div>
           <label htmlFor="finding-cvss" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">CVSS Score</label>
           <input id="finding-cvss" type="number" step="0.1" min="0" max="10" className="input-field text-sm"
@@ -494,8 +494,8 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
           <RetestBadge status={finding.retest_status} />
         </td>
         <td className="py-3 px-4">
-          <span className={`text-xs font-mono ${finding.source === 'ai_generated' ? 'text-cyan-400' : 'themed-text-muted'}`}>
-            {finding.source === 'ai_generated' ? 'AI' : 'Manual'}
+          <span className={`text-xs font-mono ${finding.ai_inference ? 'text-cyan-400' : 'themed-text-muted'}`}>
+            {finding.ai_inference ? `AI reviewed${finding.ai_confidence != null ? ` ${Math.round(finding.ai_confidence * 100)}%` : ''}` : finding.source === 'imported' ? 'Imported' : 'Manual'}
           </span>
         </td>
         <td className="py-3 px-4">
@@ -513,7 +513,7 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
       </tr>
       {expanded && (
         <tr style={{ backgroundColor: 'color-mix(in srgb, var(--bg-700) 30%, transparent)' }}>
-          <td colSpan={7} className="px-4 py-4">
+          <td colSpan={8} className="px-4 py-4">
             <div className="grid grid-cols-1 gap-4 text-sm max-w-3xl ml-8">
               {finding.description && (
                 <div>
@@ -528,6 +528,25 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
                     style={{ backgroundColor: 'var(--bg-800)' }}>
                     {finding.evidence}
                   </pre>
+                </div>
+              )}
+              {finding.evidence_refs?.length > 0 && (
+                <div>
+                  <span className="text-xs font-mono themed-text-muted uppercase tracking-wider block mb-2">Evidence Provenance</span>
+                  <div className="space-y-2">
+                    {finding.evidence_refs.map(ref => (
+                      <div key={ref.id} className="text-xs rounded p-2" style={{ backgroundColor: 'var(--bg-800)' }}>
+                        <div className="flex flex-wrap gap-2 font-mono">
+                          <span className="text-cyan-400">{ref.id}</span>
+                          <span className="themed-text-muted">{ref.filename || ref.scan_type || ref.tool}</span>
+                          {ref.host && <span className="themed-text-secondary">{ref.host}{ref.port != null ? `:${ref.port}` : ''}</span>}
+                          {ref.cve && <span className="themed-text-secondary">{ref.cve}</span>}
+                          {ref.plugin_id && <span className="themed-text-secondary">Plugin {ref.plugin_id}</span>}
+                        </div>
+                        {ref.excerpt && <p className="themed-text-muted mt-1 whitespace-pre-wrap break-words">{ref.excerpt}</p>}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               {finding.remediation && (
@@ -588,19 +607,229 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
   );
 }
 
+function AIDraftWorkbench({ engId, drafts, setDrafts, toast, onFindingsChanged }) {
+  const [selected, setSelected] = useState(new Set());
+  const [reviewing, setReviewing] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(null);
+
+  useEffect(() => {
+    setSelected(prev => new Set([...prev].filter(id => drafts.some(d => d.id === id))));
+  }, [drafts]);
+
+  const beginEdit = (draft) => {
+    setEditing(draft);
+    setForm({
+      title: draft.title || '',
+      description: draft.description || '',
+      severity: draft.severity || 'info',
+      cvss_score: draft.cvss_score != null ? String(draft.cvss_score) : '',
+      affected_hosts: draft.affected_hosts || '',
+      evidence: draft.evidence || '',
+      remediation: draft.remediation || '',
+      retest_status: null,
+    });
+  };
+
+  const accept = async (draftId, edits = null) => {
+    setReviewing(true);
+    try {
+      await analysisApi.acceptDraft(engId, draftId, edits);
+      setDrafts(prev => prev.filter(draft => draft.id !== draftId));
+      setEditing(null);
+      await onFindingsChanged();
+      toast({ message: 'AI proposal accepted and saved as a reviewed finding', type: 'success' });
+    } catch (err) {
+      toast({ message: err.message, type: 'error' });
+    } finally {
+      setReviewing(false);
+    }
+  };
+
+  const reject = async (draftId) => {
+    setReviewing(true);
+    try {
+      await analysisApi.rejectDraft(engId, draftId);
+      setDrafts(prev => prev.filter(draft => draft.id !== draftId));
+      toast({ message: 'AI proposal rejected', type: 'success' });
+    } catch (err) {
+      toast({ message: err.message, type: 'error' });
+    } finally {
+      setReviewing(false);
+    }
+  };
+
+  const reviewSelected = async (action) => {
+    if (selected.size === 0) return;
+    setReviewing(true);
+    try {
+      await analysisApi.reviewDrafts(engId, [...selected], action);
+      setDrafts(prev => prev.filter(draft => !selected.has(draft.id)));
+      if (action === 'accept') await onFindingsChanged();
+      toast({
+        message: `${selected.size} AI proposal${selected.size === 1 ? '' : 's'} ${action === 'accept' ? 'accepted' : 'rejected'}`,
+        type: 'success',
+      });
+      setSelected(new Set());
+    } catch (err) {
+      toast({ message: err.message, type: 'error' });
+    } finally {
+      setReviewing(false);
+    }
+  };
+
+  if (drafts.length === 0) return null;
+
+  return (
+    <div className="card p-6 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <Shield size={16} className="text-cyan-400" />
+            <h3 className="text-sm font-semibold themed-text-primary">AI Review Workbench</h3>
+            <span className="badge border bg-cyan-500/15 text-cyan-400 border-cyan-500/30">
+              {drafts.length} pending
+            </span>
+          </div>
+          <p className="text-xs themed-text-muted">
+            Nothing is added to Findings until you accept it. Evidence IDs link each proposal to scanner observations.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button disabled={reviewing || selected.size === 0} onClick={() => reviewSelected('reject')}
+            className="btn-ghost text-sm text-red-400">Reject selected</button>
+          <button disabled={reviewing || selected.size === 0} onClick={() => reviewSelected('accept')}
+            className="btn-primary text-sm">Accept selected</button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {drafts.map(draft => {
+          const confidence = draft.confidence == null ? null : Math.round(draft.confidence * 100);
+          const current = draft.target_finding;
+          const changedFields = current ? [
+            ['Title', current.title, draft.title],
+            ['Severity', current.severity, draft.severity],
+            ['CVSS', current.cvss_score ?? 'Not scored', draft.cvss_score ?? 'Not scored'],
+            ['Hosts', current.affected_hosts || 'Not specified', draft.affected_hosts || 'Not specified'],
+          ].filter(([, before, after]) => String(before) !== String(after)) : [];
+          return (
+            <div key={draft.id} className="rounded border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-700)' }}>
+              <div className="flex items-start gap-3">
+                <input type="checkbox" className="mt-1" checked={selected.has(draft.id)}
+                  aria-label={`Select ${draft.title}`}
+                  onChange={() => setSelected(prev => {
+                    const next = new Set(prev);
+                    if (next.has(draft.id)) next.delete(draft.id); else next.add(draft.id);
+                    return next;
+                  })} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SeverityBadge severity={draft.severity} />
+                    <h4 className="font-medium themed-text-primary">{draft.title}</h4>
+                    <span className="badge" style={{ backgroundColor: 'var(--bg-600)', color: 'var(--text-muted)' }}>
+                      {draft.operation === 'update' ? 'Proposed update' : 'New proposal'}
+                    </span>
+                    {confidence != null && (
+                      <span className="text-xs font-mono themed-text-muted">Evidence confidence: {confidence}%</span>
+                    )}
+                  </div>
+                  <p className="text-sm themed-text-secondary mt-2 whitespace-pre-wrap">{draft.description || 'No description provided.'}</p>
+                  <div className="grid sm:grid-cols-2 gap-3 mt-3 text-xs">
+                    <div><span className="themed-text-muted">Hosts:</span> <span className="font-mono themed-text-secondary">{draft.affected_hosts || 'Not specified'}</span></div>
+                    <div><span className="themed-text-muted">CVSS:</span> <span className="font-mono themed-text-secondary">{draft.cvss_score ?? 'Not scored'}</span></div>
+                  </div>
+
+                  {changedFields.length > 0 && (
+                    <div className="mt-3 p-3 rounded" style={{ backgroundColor: 'var(--bg-800)' }}>
+                      <div className="text-xs font-mono themed-text-muted uppercase tracking-wider mb-2">Create versus update diff</div>
+                      {changedFields.map(([label, before, after]) => (
+                        <div key={label} className="text-xs grid grid-cols-[80px_1fr_20px_1fr] gap-2 py-1">
+                          <span className="themed-text-muted">{label}</span>
+                          <span className="text-red-300 break-words">{String(before)}</span>
+                          <span className="themed-text-muted">to</span>
+                          <span className="text-green-300 break-words">{String(after)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-3">
+                    <div className="text-xs font-mono themed-text-muted uppercase tracking-wider mb-2">Evidence provenance</div>
+                    <div className="space-y-2">
+                      {(draft.evidence_refs || []).map(ref => (
+                        <div key={ref.id} className="text-xs rounded p-2" style={{ backgroundColor: 'var(--bg-800)' }}>
+                          <div className="flex flex-wrap gap-2 font-mono">
+                            <span className="text-cyan-400">{ref.id}</span>
+                            <span className="themed-text-muted">{ref.filename || ref.scan_type || ref.tool}</span>
+                            {ref.host && <span className="themed-text-secondary">{ref.host}{ref.port != null ? `:${ref.port}` : ''}</span>}
+                            {ref.cve && <span className="themed-text-secondary">{ref.cve}</span>}
+                            {ref.plugin_id && <span className="themed-text-secondary">Plugin {ref.plugin_id}</span>}
+                          </div>
+                          {ref.excerpt && <p className="themed-text-muted mt-1 whitespace-pre-wrap break-words">{ref.excerpt}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 shrink-0">
+                  <button disabled={reviewing} onClick={() => accept(draft.id)} className="btn-primary text-xs flex items-center gap-1">
+                    <Check size={13} /> Accept
+                  </button>
+                  <button disabled={reviewing} onClick={() => beginEdit(draft)} className="btn-secondary text-xs flex items-center gap-1">
+                    <Edit3 size={13} /> Edit
+                  </button>
+                  <button disabled={reviewing} onClick={() => reject(draft.id)} className="btn-ghost text-xs text-red-400">
+                    Reject
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <Modal open={!!editing} onClose={() => setEditing(null)} title="Edit and accept AI proposal" wide>
+        {form && <FindingForm
+          form={form}
+          setForm={setForm}
+          saving={reviewing}
+          submitLabel="Accept reviewed finding"
+          showRetest={false}
+          onSubmit={(event) => {
+            event.preventDefault();
+            const { retest_status, ...edits } = form;
+            accept(editing.id, {
+              ...edits,
+              cvss_score: edits.cvss_score ? parseFloat(edits.cvss_score) : null,
+            });
+          }}
+        />}
+      </Modal>
+    </div>
+  );
+}
+
 // Scans tab
-function ScansTab({ engId, toast, onAnalysisComplete }) {
+function ScansTab({ engId, toast, onFindingsChanged }) {
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [scans, setScans] = useState([]);
   const [scanType, setScanType] = useState('nmap');
   const [loadingScans, setLoadingScans] = useState(true);
+  const [drafts, setDrafts] = useState([]);
 
   useEffect(() => {
     analysisApi.listScans(engId)
       .then(setScans)
       .catch(() => {})
       .finally(() => setLoadingScans(false));
+  }, [engId]);
+
+  useEffect(() => {
+    analysisApi.listDrafts(engId)
+      .then(setDrafts)
+      .catch(() => {});
   }, [engId]);
 
   const handleUpload = async (e) => {
@@ -622,9 +851,14 @@ function ScansTab({ engId, toast, onAnalysisComplete }) {
   const handleAnalyze = async () => {
     setAnalyzing(true);
     try {
-      const results = await analysisApi.run(engId);
-      toast({ message: `Analysis generated ${results.length} findings`, type: 'success' });
-      onAnalysisComplete(results);
+      const result = await analysisApi.run(engId);
+      const pending = await analysisApi.listDrafts(engId);
+      setDrafts(pending);
+      const discarded = result.summary?.unsupported_discarded || 0;
+      toast({
+        message: `Analysis prepared ${pending.length} review proposal${pending.length === 1 ? '' : 's'}${discarded ? ` and discarded ${discarded} ungrounded result${discarded === 1 ? '' : 's'}` : ''}`,
+        type: 'success',
+      });
     } catch (err) {
       toast({ message: err.message, type: 'error' });
     } finally {
@@ -634,6 +868,13 @@ function ScansTab({ engId, toast, onAnalysisComplete }) {
 
   return (
     <div className="space-y-6">
+      <AIDraftWorkbench
+        engId={engId}
+        drafts={drafts}
+        setDrafts={setDrafts}
+        toast={toast}
+        onFindingsChanged={onFindingsChanged}
+      />
       <div className="card p-6" style={{ borderStyle: 'dashed' }}>
         <div className="flex flex-col sm:flex-row items-center gap-4">
           <div className="flex-1">
@@ -1354,9 +1595,11 @@ function ADTab({ engId, toast, onFindingsCreated }) {
     setAnalyzing(true);
     try {
       const result = await adApi.analyze(engId);
-      setPaths(result);
-      toast({ message: `Identified ${result.length} AD attack paths (findings added to Findings tab)`, type: 'success' });
-      if (onFindingsCreated) await onFindingsCreated();
+      setPaths(result.paths || []);
+      toast({
+        message: `Identified ${result.paths?.length || 0} grounded AD attack path${result.paths?.length === 1 ? '' : 's'} and prepared ${result.drafts_created || 0} finding proposal${result.drafts_created === 1 ? '' : 's'} for review in Scans`,
+        type: 'success',
+      });
     } catch (err) {
       toast({ message: err.message, type: 'error' });
     } finally {
@@ -1621,9 +1864,9 @@ export default function EngagementDetail() {
     })();
   }, [id, toast]);
 
-  const handleAnalysisComplete = (newFindings) => {
-    setFindingsList(prev => [...prev, ...newFindings]);
-    setActiveTab('findings');
+  const handleFindingsChanged = async () => {
+    const updated = await findingsApi.list(id);
+    setFindingsList(updated);
   };
 
   if (loading) {
@@ -1762,7 +2005,7 @@ export default function EngagementDetail() {
         <ChecklistsTab engId={id} toast={toast} />
       )}
       {activeTab === 'scans' && (
-        <ScansTab engId={id} toast={toast} onAnalysisComplete={handleAnalysisComplete} />
+        <ScansTab engId={id} toast={toast} onFindingsChanged={handleFindingsChanged} />
       )}
       {activeTab === 'attack_paths' && (
         <AttackPathsTab engId={id} toast={toast} fullNarrative={fullNarrative} setFullNarrative={setFullNarrative} />

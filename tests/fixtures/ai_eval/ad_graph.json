@@ -1,0 +1,11 @@
+{
+  "domain": "LAB.LOCAL",
+  "objects": [
+    {"object_id": "S-1-5-21-1001", "name": "SVC-SQL@LAB.LOCAL", "object_type": "user"},
+    {"object_id": "S-1-5-21-512", "name": "DOMAIN ADMINS@LAB.LOCAL", "object_type": "group"}
+  ],
+  "relationships": [
+    {"source_id": "S-1-5-21-1001", "target_id": "S-1-5-21-512", "relationship_type": "GenericAll"}
+  ],
+  "expected_evidence_ids": ["ADOBJ-00001", "ADOBJ-00002", "ADREL-00001"]
+}

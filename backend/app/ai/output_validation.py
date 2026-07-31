@@ -17,10 +17,32 @@ MAX_AI_RECORDS = 1000
 MAX_ATTACK_PATH_STEPS_SIZE = 500_000
 
 
+class AIFindingCandidate(FindingCreate):
+    evidence_refs: list[
+        Annotated[str, Field(min_length=1, max_length=100)]
+    ] = Field(default_factory=list, max_length=100)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+    @field_validator("evidence_refs")
+    @classmethod
+    def evidence_refs_are_unique(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(value))
+
+
+class AttackPathStepCandidate(BaseModel):
+    order: int = Field(ge=1, le=1000)
+    title: str = Field(min_length=1, max_length=500)
+    description: str = Field(default="", max_length=20_000)
+    finding_id: str | None = Field(default=None, max_length=36)
+    finding_title: str | None = Field(default=None, max_length=500)
+
+    model_config = {"str_strip_whitespace": True}
+
+
 class AttackPathCandidate(BaseModel):
     name: str = Field(default="Unnamed Path", min_length=1, max_length=500)
     description: str | None = Field(default=None, max_length=200_000)
-    steps: list = Field(default_factory=list, max_length=1000)
+    steps: list[AttackPathStepCandidate] = Field(default_factory=list, max_length=1000)
     risk_level: Literal["critical", "high", "medium", "low"] | None = None
     target_hosts: str | None = Field(default=None, max_length=50_000)
 
@@ -28,8 +50,11 @@ class AttackPathCandidate(BaseModel):
 
     @field_validator("steps")
     @classmethod
-    def steps_fit_storage_limit(cls, value: list) -> list:
-        if len(json.dumps(value).encode("utf-8")) > MAX_ATTACK_PATH_STEPS_SIZE:
+    def steps_fit_storage_limit(
+        cls, value: list[AttackPathStepCandidate]
+    ) -> list[AttackPathStepCandidate]:
+        serialized = [step.model_dump(mode="json") for step in value]
+        if len(json.dumps(serialized).encode("utf-8")) > MAX_ATTACK_PATH_STEPS_SIZE:
             raise ValueError("steps exceed the 500 KB storage limit")
         return value
 
@@ -48,6 +73,9 @@ class ADAttackPathCandidate(BaseModel):
     risk_level: Literal["critical", "high", "medium", "low"] = "medium"
     path_nodes: list[ADPathNodeCandidate] = Field(default_factory=list, max_length=1000)
     remediation: str | None = Field(default=None, max_length=200_000)
+    evidence_refs: list[
+        Annotated[str, Field(min_length=1, max_length=200)]
+    ] = Field(default_factory=list, max_length=1000)
 
     model_config = {"str_strip_whitespace": True}
 
@@ -71,6 +99,9 @@ class GapCandidate(BaseModel):
     reason: str = Field(min_length=1, max_length=20_000)
     recommendation: str = Field(min_length=1, max_length=20_000)
     methodology_ref: str = Field(default="", max_length=2000)
+    supporting_refs: list[
+        Annotated[str, Field(min_length=1, max_length=200)]
+    ] = Field(default_factory=list, max_length=100)
 
     model_config = {"str_strip_whitespace": True}
 
@@ -79,6 +110,9 @@ class OutOfScopeCandidate(BaseModel):
     category: str = Field(min_length=1, max_length=500)
     item: str = Field(min_length=1, max_length=1000)
     reason: str = Field(min_length=1, max_length=20_000)
+    supporting_refs: list[
+        Annotated[str, Field(min_length=1, max_length=200)]
+    ] = Field(default_factory=list, max_length=100)
 
     model_config = {"str_strip_whitespace": True}
 
@@ -95,6 +129,41 @@ class GapAnalysisCandidate(BaseModel):
     )
     coverage_score: float = Field(ge=0, le=100)
     summary: str = Field(default="", max_length=20_000)
+
+    model_config = {"str_strip_whitespace": True}
+
+
+class MITRETechniqueCandidate(BaseModel):
+    technique_id: str = Field(min_length=1, max_length=50)
+    technique_name: str = Field(min_length=1, max_length=500)
+    step: int | None = Field(default=None, ge=1, le=1000)
+
+
+class PathNarrativeCandidate(BaseModel):
+    narrative: str = Field(min_length=1, max_length=500_000)
+    executive_summary: str = Field(default="", max_length=50_000)
+    mitre_techniques: list[MITRETechniqueCandidate] = Field(default_factory=list, max_length=1000)
+    impact_rating: Literal["critical", "high", "medium", "low"]
+    estimated_time: str = Field(default="", max_length=5000)
+    prerequisites: str = Field(default="", max_length=20_000)
+    citations: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
+        default_factory=list, max_length=1000
+    )
+
+    model_config = {"str_strip_whitespace": True}
+
+
+class FullNarrativeCandidate(BaseModel):
+    full_narrative: str = Field(min_length=1, max_length=1_000_000)
+    executive_summary: str = Field(default="", max_length=50_000)
+    key_risks: list[Annotated[str, Field(min_length=1, max_length=20_000)]] = Field(
+        default_factory=list, max_length=1000
+    )
+    mitre_techniques: list[MITRETechniqueCandidate] = Field(default_factory=list, max_length=1000)
+    overall_risk: Literal["critical", "high", "medium", "low"]
+    citations: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
+        default_factory=list, max_length=5000
+    )
 
     model_config = {"str_strip_whitespace": True}
 
@@ -119,8 +188,8 @@ def _validate_list(raw: object, model: type[BaseModel], label: str) -> list[Base
     return validated
 
 
-def validate_ai_findings(raw: object) -> list[FindingCreate]:
-    return _validate_list(raw, FindingCreate, "finding")
+def validate_ai_findings(raw: object) -> list[AIFindingCandidate]:
+    return _validate_list(raw, AIFindingCandidate, "finding")
 
 
 def validate_ai_attack_paths(raw: object) -> list[AttackPathCandidate]:
@@ -139,3 +208,25 @@ def validate_gap_analysis(raw: object) -> GapAnalysisCandidate:
     except ValidationError as exc:
         message = exc.errors()[0]["msg"]
         raise ValueError(f"AI returned invalid gap analysis: {message}") from exc
+
+
+def validate_path_narrative(raw: object) -> PathNarrativeCandidate:
+    if not isinstance(raw, dict):
+        raise ValueError("AI returned path narrative in an invalid format")
+    try:
+        return PathNarrativeCandidate.model_validate(raw)
+    except ValidationError as exc:
+        raise ValueError(
+            f"AI returned invalid path narrative: {exc.errors()[0]['msg']}"
+        ) from exc
+
+
+def validate_full_narrative(raw: object) -> FullNarrativeCandidate:
+    if not isinstance(raw, dict):
+        raise ValueError("AI returned engagement narrative in an invalid format")
+    try:
+        return FullNarrativeCandidate.model_validate(raw)
+    except ValidationError as exc:
+        raise ValueError(
+            f"AI returned invalid engagement narrative: {exc.errors()[0]['msg']}"
+        ) from exc

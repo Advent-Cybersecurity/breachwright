@@ -13,7 +13,7 @@ All application capabilities are part of the open-source distribution. There is 
 | API composition | `backend/app/main.py` | Starts the service, runs migrations, registers routers, exposes health and update checks, and serves the built frontend |
 | Local ownership | `backend/app/auth` | Maintains one internal owner record so existing database relationships remain compatible; no login or account API is exposed |
 | Engagement data | `backend/app/engagements` | Engagements, findings, attack paths, reports, scans, settings, export, and import |
-| Scan analysis | `backend/app/analysis` | Uploads scan data, parses supported formats, calls the configured AI provider, deduplicates findings, and updates knowledge data |
+| Scan analysis | `backend/app/analysis` | Uploads scan data, creates bounded evidence context, calls the configured AI provider, and stores grounded review drafts |
 | Correlation | `backend/app/correlation` | Normalizes structured output from several tools and correlates hosts and findings |
 | Active Directory | `backend/app/ad` | Parses SharpHound and BloodHound ZIP exports and creates attack-path data |
 | Attack paths | `backend/app/attack_paths` | Generates exploitation chains from engagement findings |
@@ -23,7 +23,7 @@ All application capabilities are part of the open-source distribution. There is 
 | Tool Runner | `backend/app/jobs` | Launches operator-supplied local commands, captures output, tracks status, and persists job records |
 | Methodologies | `backend/app/checklists` and `backend/app/gap_detection` | Tracks manual coverage and performs AI-assisted gap analysis |
 | Knowledge | `backend/app/knowledge` | Indexes recurring findings and provides cross-engagement trends, profiles, and recommendations |
-| AI abstraction | `backend/app/ai` | Provides a common completion interface for external and local model providers |
+| AI abstraction | `backend/app/ai` | Provides provider-neutral completion, bounded repair, structured validation, and deterministic quality metrics |
 | Web interface | `frontend/src` | Implements engagement, evidence, analysis, reporting, tool, knowledge, and settings workflows |
 | Desktop entry | `run.py` | Starts the backend and opens the bundled web interface through pywebview |
 
@@ -35,17 +35,20 @@ All application capabilities are part of the open-source distribution. There is 
 2. A format-specific parser extracts a normalized representation.
 3. The correlation engine combines evidence from supported tools.
 4. The configured AI provider drafts structured findings.
-5. Deduplication updates matching findings and creates new records.
-6. The knowledge service indexes the resulting findings.
-7. The operator reviews and edits every result.
+5. Unsupported evidence references cause a proposal to be discarded.
+6. Deduplication marks each grounded proposal as a create or update draft.
+7. The operator accepts, edits, or rejects every draft.
+8. Only accepted drafts become findings and enter the knowledge index.
 
 ### Active Directory analysis
 
 1. The user uploads a SharpHound or BloodHound ZIP export.
 2. The parser extracts directory objects and relationships.
 3. The backend stores an import summary and graph records.
-4. AI-assisted analysis proposes attack paths.
-5. The operator can create findings from reviewed paths.
+4. AI-assisted analysis proposes paths using exact directory object and
+   relationship evidence IDs.
+5. Unsupported nodes and evidence references are rejected.
+6. Finding suggestions enter the same review workbench used by scan analysis.
 
 The strings `Enterprise Admins` and `Enterprise Key Admins` in the parser are Microsoft Active Directory group names. They are not Breachwright product editions.
 
@@ -59,6 +62,11 @@ The strings `Enterprise Admins` and `Enterprise Key Admins` in the parser are Mi
 ## Trust boundaries
 
 - AI providers receive the prompt and assessment context needed for the requested operation. Users must evaluate provider data-handling terms before sending client information.
+- Uploaded scanner, finding, directory, and report content is delimited as
+  untrusted data. Model output remains untrusted until schema, size, and
+  citation validation completes.
+- AI analysis uses explicit context and chunk limits. Tests use fake providers
+  and sanitized fixtures and never contact paid models.
 - Local model endpoints keep model traffic within infrastructure controlled by the operator, subject to that endpoint's configuration.
 - Tool Runner commands execute on the Breachwright host with the permissions of the Breachwright process.
 - Evidence and report files are stored outside the source tree in the platform application data directory.

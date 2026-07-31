@@ -91,7 +91,12 @@ def _copy_data_folder(source: Path, destination: Path) -> list[Path]:
             if _is_link_like(source_file) or not source_file.is_file():
                 continue
             destination_file = target_root / file_name
-            shutil.copy2(source_file, destination_file)
+            try:
+                shutil.copy2(source_file, destination_file)
+            except FileNotFoundError:
+                # Runtime output can be rotated or removed after os.walk sees
+                # it. Exclude only that vanished file from this snapshot.
+                continue
             copied.append(destination_file)
     return copied
 

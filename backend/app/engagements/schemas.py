@@ -83,6 +83,9 @@ class FindingResponse(BaseModel):
     evidence: Optional[str]
     remediation: Optional[str]
     source: str
+    evidence_refs: Optional[list[dict]] = None
+    ai_confidence: Optional[float] = None
+    ai_inference: bool = False
     retest_status: Optional[str] = None
 
     model_config = {"from_attributes": True}

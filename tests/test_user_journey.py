@@ -865,6 +865,96 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(narrative_count, 0)
         self.assertFalse((self.data_dir / "jobs" / job_id).exists())
 
+    def test_reviewed_ai_draft_preserves_provenance(self):
+        created_engagement = self.client.post(
+            "/api/engagements",
+            json={
+                "name": "AI Review Workflow",
+                "client_name": "Local Test",
+                "scope": "10.20.30.0/24",
+            },
+        )
+        self.assertEqual(created_engagement.status_code, 201, created_engagement.text)
+        engagement_id = created_engagement.json()["id"]
+        draft_id = str(uuid.uuid4())
+        evidence_refs = [
+            {
+                "id": "CF-0001-E01",
+                "scan_id": "scan-1",
+                "filename": "sanitized.nessus",
+                "scan_type": "nessus",
+                "tool": "nessus",
+                "host": "10.20.30.10",
+                "port": 445,
+                "cve": None,
+                "plugin_id": "57608",
+                "excerpt": "SMB signing is not required.",
+                "correlation_confidence": 0.8,
+            }
+        ]
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            owner_id = connection.execute(
+                "SELECT id FROM users ORDER BY created_at, id LIMIT 1"
+            ).fetchone()[0]
+            connection.execute(
+                "INSERT INTO ai_finding_drafts ("
+                "id, engagement_id, target_finding_id, operation, status, title, "
+                "description, severity, cvss_score, affected_hosts, evidence, "
+                "remediation, evidence_refs, confidence, provider, prompt_version, "
+                "created_by) VALUES (?, ?, NULL, 'create', 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    draft_id,
+                    engagement_id,
+                    "SMB Signing Not Required",
+                    "The service permits unsigned SMB traffic.",
+                    "medium",
+                    5.3,
+                    "10.20.30.10",
+                    "SMB signing is not required.",
+                    "Require SMB signing.",
+                    json.dumps(evidence_refs),
+                    0.8,
+                    "Fake (offline)",
+                    "analysis-v2-evidence-grounded",
+                    owner_id,
+                ),
+            )
+            connection.commit()
+
+        listed = self.client.get(
+            f"/api/engagements/{engagement_id}/ai-drafts"
+        )
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertEqual(listed.json()[0]["evidence_refs"][0]["id"], "CF-0001-E01")
+
+        accepted = self.client.post(
+            f"/api/engagements/{engagement_id}/ai-drafts/{draft_id}/accept",
+            json={"severity": "high", "cvss_score": 8.1},
+        )
+        self.assertEqual(accepted.status_code, 200, accepted.text)
+        self.assertEqual(accepted.json()["severity"], "high")
+        self.assertTrue(accepted.json()["ai_inference"])
+        self.assertEqual(accepted.json()["source"], "ai_reviewed")
+        self.assertEqual(
+            accepted.json()["evidence_refs"][0]["filename"],
+            "sanitized.nessus",
+        )
+        self.assertEqual(
+            self.client.post(
+                f"/api/engagements/{engagement_id}/ai-drafts/{draft_id}/accept"
+            ).status_code,
+            409,
+        )
+
+        exported = self.client.get(f"/api/engagements/{engagement_id}/export")
+        self.assertEqual(exported.status_code, 200, exported.text)
+        exported_finding = exported.json()["findings"][0]
+        self.assertTrue(exported_finding["ai_inference"])
+        self.assertEqual(exported_finding["evidence_refs"][0]["id"], "CF-0001-E01")
+
+        deleted = self.client.delete(f"/api/engagements/{engagement_id}")
+        self.assertEqual(deleted.status_code, 204, deleted.text)
+
 
 if __name__ == "__main__":
     unittest.main()

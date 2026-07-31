@@ -123,6 +123,13 @@ class OpenSourceReleaseTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertNotIn("dangerouslySetInnerHTML", assistant)
 
+    def test_frontend_assets_use_server_root_for_deep_links(self):
+        vite_config = (ROOT / "frontend" / "vite.config.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("base: '/'", vite_config)
+        self.assertNotIn("base: './'", vite_config)
+
     def test_docker_application_data_is_persistent(self):
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         self.assertIn("- DATA_DIR=/app/data", compose)

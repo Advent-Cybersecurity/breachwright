@@ -1,18 +1,19 @@
-import json
 import logging
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.ad.models import ADImport, ADObject, ADRelationship, ADAttackPath
-from app.engagements.models import Engagement
+from app.engagements.models import AIFindingDraft, Engagement, Finding
 from app.ad.parser import parse_sharphound_zip, build_ad_summary
 from app.ad.prompts import AD_ANALYSIS_PROMPT
 from app.ai.provider import get_provider
 from app.ai.output_validation import validate_ai_ad_paths
+from app.ai.completion import complete_validated_json
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +230,7 @@ async def list_ad_attack_paths(
             "description": p.description,
             "risk_level": p.risk_level,
             "path_nodes": p.path_nodes,
+            "evidence_refs": p.evidence_refs or [],
             "remediation": p.remediation,
         }
         for p in paths
@@ -241,8 +243,7 @@ async def analyze_ad_paths(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_editor),
 ):
-    """AI-powered analysis of AD data to find critical attack paths."""
-    # Get latest import
+    """Produce grounded AD paths and reviewable finding proposals."""
     result = await db.execute(
         select(ADImport)
         .where(ADImport.engagement_id == engagement_id)
@@ -251,163 +252,215 @@ async def analyze_ad_paths(
     )
     latest = result.scalar_one_or_none()
     if not latest:
-        raise HTTPException(status_code=400, detail="No SharpHound data imported. Upload a ZIP first.")
+        raise HTTPException(
+            status_code=400,
+            detail="No SharpHound data imported. Upload a ZIP first.",
+        )
 
-    # Load objects and relationships
-    obj_result = await db.execute(
-        select(ADObject).where(ADObject.import_id == latest.id)
-    )
-    objects = obj_result.scalars().all()
+    objects = (
+        await db.execute(select(ADObject).where(ADObject.import_id == latest.id))
+    ).scalars().all()
+    relationships = (
+        await db.execute(
+            select(ADRelationship).where(ADRelationship.import_id == latest.id)
+        )
+    ).scalars().all()
 
-    rel_result = await db.execute(
-        select(ADRelationship).where(ADRelationship.import_id == latest.id)
-    )
-    relationships = rel_result.scalars().all()
-
-    # Build summary for AI
     from app.ad.parser import ParseResult
-    pr = ParseResult()
-    pr.domain = latest.domain
-    pr.objects = [
+
+    parsed = ParseResult()
+    parsed.domain = latest.domain
+    parsed.objects = [
         {
-            "object_id": o.object_id,
-            "name": o.name,
-            "object_type": o.object_type,
-            "domain": o.domain,
-            "enabled": o.enabled,
-            "properties": o.properties or {},
+            "object_id": item.object_id,
+            "name": item.name,
+            "object_type": item.object_type,
+            "domain": item.domain,
+            "enabled": item.enabled,
+            "properties": item.properties or {},
         }
-        for o in objects
+        for item in objects
     ]
-    pr.relationships = [
+    parsed.relationships = [
         {
-            "source_id": r.source_id,
-            "target_id": r.target_id,
-            "relationship_type": r.relationship_type,
-            "is_inherited": r.is_inherited,
+            "source_id": item.source_id,
+            "target_id": item.target_id,
+            "relationship_type": item.relationship_type,
+            "is_inherited": item.is_inherited,
         }
-        for r in relationships
+        for item in relationships
     ]
 
-    summary = build_ad_summary(pr)
+    names_by_id = {item.object_id: item.name for item in objects}
+    object_names = {item.name for item in objects}
+    evidence_catalog: dict[str, dict] = {}
+    evidence_lines = ["", "=== EVIDENCE IDS ==="]
+    for index, item in enumerate(objects, 1):
+        evidence_id = f"ADOBJ-{index:05d}"
+        ref = {
+            "id": evidence_id,
+            "import_id": latest.id,
+            "filename": latest.filename,
+            "type": "ad_object",
+            "object_id": item.object_id,
+            "name": item.name,
+            "object_type": item.object_type,
+            "excerpt": f"{item.object_type}: {item.name} ({item.object_id})",
+        }
+        evidence_catalog[evidence_id] = ref
+        evidence_lines.append(f"[{evidence_id}] {ref['excerpt']}")
+    for index, item in enumerate(relationships, 1):
+        evidence_id = f"ADREL-{index:05d}"
+        source_name = names_by_id.get(item.source_id, item.source_id)
+        target_name = names_by_id.get(item.target_id, item.target_id)
+        ref = {
+            "id": evidence_id,
+            "import_id": latest.id,
+            "filename": latest.filename,
+            "type": "ad_relationship",
+            "source": source_name,
+            "target": target_name,
+            "relationship_type": item.relationship_type,
+            "excerpt": f"{source_name} --{item.relationship_type}--> {target_name}",
+        }
+        evidence_catalog[evidence_id] = ref
+        evidence_lines.append(f"[{evidence_id}] {ref['excerpt']}")
 
-    # Delete existing paths for this import
-    await db.execute(delete(ADAttackPath).where(ADAttackPath.import_id == latest.id))
-
-    # AI analysis
     provider = get_provider()
     try:
-        response = await provider.complete(
+        validated_paths, metadata = await complete_validated_json(
+            provider,
             system_prompt=AD_ANALYSIS_PROMPT,
-            user_message=summary,
+            user_message=(
+                "<untrusted_ad_data>\n"
+                + build_ad_summary(parsed)
+                + "\n"
+                + "\n".join(evidence_lines)
+                + "\n"
+                + "</untrusted_ad_data>"
+            ),
+            validator=validate_ai_ad_paths,
             max_tokens=8192,
             temperature=0.2,
         )
-    except Exception as e:
-        logger.error("AI provider error during AD analysis: %s", e)
-        raise HTTPException(status_code=502, detail=f"AI provider error: {e}")
+    except Exception as exc:
+        logger.error("AI provider error during AD analysis: %s", exc)
+        raise HTTPException(status_code=502, detail=f"AI provider error: {exc}") from exc
 
-    # Parse response — handle common LLM output quirks
-    try:
-        cleaned = response.strip()
-        # Strip markdown code fences
-        if "```" in cleaned:
-            # Find content between first ``` and last ```
-            start = cleaned.find("```")
-            end = cleaned.rfind("```")
-            if start != end:
-                inner = cleaned[start:end]
-                # Remove the opening fence line (```json or ```)
-                inner = inner.split("\n", 1)[1] if "\n" in inner else inner[3:]
-                cleaned = inner.strip()
-            else:
-                cleaned = cleaned.replace("```json", "").replace("```", "").strip()
-        # Try to find JSON array in the response
-        if not cleaned.startswith("["):
-            bracket_start = cleaned.find("[")
-            if bracket_start != -1:
-                # Find the matching closing bracket
-                depth = 0
-                for i in range(bracket_start, len(cleaned)):
-                    if cleaned[i] == "[":
-                        depth += 1
-                    elif cleaned[i] == "]":
-                        depth -= 1
-                        if depth == 0:
-                            cleaned = cleaned[bracket_start:i+1]
-                            break
-        paths_data = json.loads(cleaned)
-    except json.JSONDecodeError:
-        logger.error("Failed to parse AD analysis response: %s", response[:500])
-        raise HTTPException(status_code=502, detail="AI returned invalid JSON")
+    grounded_paths = [
+        path
+        for path in validated_paths
+        if path.evidence_refs
+        and all(ref_id in evidence_catalog for ref_id in path.evidence_refs)
+        and path.path_nodes
+        and all(node.name in object_names for node in path.path_nodes)
+    ]
+    if validated_paths and not grounded_paths:
+        raise HTTPException(
+            status_code=502,
+            detail="AI returned Active Directory paths without valid evidence citations",
+        )
 
-    try:
-        validated_paths = validate_ai_ad_paths(paths_data)
-    except ValueError as exc:
-        logger.warning("Rejected invalid AI Active Directory output: %s", exc)
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    await db.execute(delete(ADAttackPath).where(ADAttackPath.import_id == latest.id))
+    await db.execute(
+        update(AIFindingDraft)
+        .where(
+            AIFindingDraft.engagement_id == engagement_id,
+            AIFindingDraft.status == "pending",
+            AIFindingDraft.prompt_version == "ad-analysis-v2",
+        )
+        .values(status="superseded", reviewed_at=datetime.now(timezone.utc))
+    )
 
-    # Store paths and create findings
-    created = []
-    findings_created = 0
-    for validated in validated_paths:
-        path_nodes = [
-            node.model_dump(mode="json") for node in validated.path_nodes
-        ]
+    existing_findings_result = await db.execute(
+        select(Finding).where(Finding.engagement_id == engagement_id)
+    )
+    existing_findings = [
+        {
+            "id": item.id,
+            "title": item.title,
+            "affected_hosts": item.affected_hosts,
+        }
+        for item in existing_findings_result.scalars().all()
+    ]
+    from app.findings.dedup import find_duplicate
+
+    created_paths = []
+    draft_count = 0
+    for candidate in grounded_paths:
+        refs = [evidence_catalog[ref_id] for ref_id in candidate.evidence_refs]
+        path_nodes = [node.model_dump(mode="json") for node in candidate.path_nodes]
         path = ADAttackPath(
             import_id=latest.id,
-            name=validated.name,
-            description=validated.description,
-            risk_level=validated.risk_level,
+            name=candidate.name,
+            description=candidate.description,
+            risk_level=candidate.risk_level,
             path_nodes=path_nodes,
-            remediation=validated.remediation,
+            evidence_refs=refs,
+            remediation=candidate.remediation,
         )
         db.add(path)
         await db.flush()
-        created.append({
-            "id": path.id,
-            "name": path.name,
-            "description": path.description,
-            "risk_level": path.risk_level,
-            "path_nodes": path.path_nodes,
-            "remediation": path.remediation,
-        })
+        created_paths.append(
+            {
+                "id": path.id,
+                "name": path.name,
+                "description": path.description,
+                "risk_level": path.risk_level,
+                "path_nodes": path.path_nodes,
+                "evidence_refs": path.evidence_refs,
+                "remediation": path.remediation,
+            }
+        )
 
-        # Create a finding for each attack path
-        from app.engagements.models import Finding
-        risk_to_severity = {"critical": "critical", "high": "high", "medium": "medium", "low": "low"}
-        risk_to_cvss = {"critical": 9.8, "high": 8.5, "medium": 6.5, "low": 3.5}
-        sev = risk_to_severity[validated.risk_level]
-        cvss = risk_to_cvss[validated.risk_level]
-
-        # Build evidence from path nodes
-        evidence_lines = ["Attack Path Chain:"]
-        for i, node in enumerate(path_nodes):
-            evidence_lines.append(f"  {i+1}. [{node.get('type', '?').upper()}] {node.get('name', '?')} -- {node.get('technique', '')}")
-
-        # Build affected hosts from computer nodes
-        hosts = [
-            node["name"]
-            for node in path_nodes
-            if node["type"] in ("computer", "domain")
-        ]
-
-        finding = Finding(
+        hosts = sorted(
+            {
+                node["name"]
+                for node in path_nodes
+                if node["type"] in ("computer", "domain")
+            }
+        )
+        evidence_text = "Attack Path Chain:\n" + "\n".join(
+            f"  {index}. [{node['type'].upper()}] {node['name']} -- {node['technique']}"
+            for index, node in enumerate(path_nodes, 1)
+        )
+        title = f"AD: {candidate.name}"
+        affected_hosts = ", ".join(hosts) if hosts else latest.domain
+        duplicate = find_duplicate(title, affected_hosts or "", existing_findings)
+        confidence = 0.8 if any(ref["type"] == "ad_relationship" for ref in refs) else 0.65
+        draft = AIFindingDraft(
             engagement_id=engagement_id,
-            title=f"AD: {validated.name}",
-            description=validated.description,
-            severity=sev,
-            cvss_score=cvss,
-            affected_hosts=", ".join(hosts) if hosts else latest.domain,
-            evidence="\n".join(evidence_lines),
-            remediation=validated.remediation,
-            source="ai_generated",
+            target_finding_id=duplicate["id"] if duplicate else None,
+            operation="update" if duplicate else "create",
+            status="pending",
+            title=title,
+            description=candidate.description,
+            severity=candidate.risk_level,
+            cvss_score={"critical": 9.8, "high": 8.5, "medium": 6.5, "low": 3.5}[
+                candidate.risk_level
+            ],
+            affected_hosts=affected_hosts,
+            evidence=evidence_text,
+            remediation=candidate.remediation,
+            evidence_refs=refs,
+            confidence=confidence,
+            provider=provider.name(),
+            prompt_version="ad-analysis-v2",
             created_by=current_user.id,
         )
-        db.add(finding)
-        findings_created += 1
+        db.add(draft)
+        draft_count += 1
 
     await db.flush()
-
-    logger.info("AD analysis: %d paths, %d findings for domain %s", len(created), findings_created, latest.domain)
-    return created
+    logger.info(
+        "AD analysis created %d grounded paths and %d review drafts in %d ms",
+        len(created_paths),
+        draft_count,
+        metadata.latency_ms,
+    )
+    return {
+        "paths": created_paths,
+        "drafts_created": draft_count,
+        "provider": metadata.provider,
+        "latency_ms": metadata.latency_ms,
+    }

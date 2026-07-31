@@ -1,4 +1,3 @@
-import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, delete
@@ -11,7 +10,9 @@ from app.engagements.models import Engagement, Finding, AttackPath
 from app.engagements.schemas import AttackPathResponse
 from app.ai.provider import get_provider
 from app.ai.output_validation import validate_ai_attack_paths
+from app.ai.completion import complete_validated_json
 from app.ai.prompts.loader import get_prompt
+from app.ai.prompts.templates import ATTACK_PATH_GROUNDING_RULES
 
 logger = logging.getLogger(__name__)
 
@@ -52,57 +53,70 @@ async def generate_attack_paths(
     if len(findings) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 findings to generate attack paths")
 
-    # Delete existing attack paths for this engagement (replace mode)
-    await db.execute(
-        delete(AttackPath).where(AttackPath.engagement_id == engagement_id)
-    )
-    logger.info("Cleared existing attack paths for engagement %s", engagement_id)
-
     # Build findings summary for AI
     findings_text = "\n".join(
-        f"- [{f.severity.upper()}] {f.title} (CVSS: {f.cvss_score or 'N/A'}) "
+        f"- finding_id={f.id} [{f.severity.upper()}] {f.title} (CVSS: {f.cvss_score or 'N/A'}) "
         f"Hosts: {f.affected_hosts or 'N/A'}\n  Description: {f.description or 'N/A'}"
         for f in findings
     )
 
     user_message = (
+        "<untrusted_finding_data>\n"
         f"Engagement: {engagement.name}\n"
         f"Client: {engagement.client_name}\n"
         f"Scope: {engagement.scope or 'Not specified'}\n\n"
-        f"Findings:\n{findings_text}"
+        f"Findings:\n{findings_text}\n"
+        "</untrusted_finding_data>"
     )
 
     provider = get_provider()
-    system_prompt = await get_prompt(db, "prompt_attack_paths")
+    system_prompt = await get_prompt(db, "prompt_attack_paths") + ATTACK_PATH_GROUNDING_RULES
     try:
-        response_text = await provider.complete(
+        validated_paths, metadata = await complete_validated_json(
+            provider,
             system_prompt=system_prompt,
             user_message=user_message,
+            validator=validate_ai_attack_paths,
         )
     except Exception as e:
         logger.error("AI provider error: %s", e)
-        raise HTTPException(status_code=502, detail=f"AI provider error: {e}")
+        raise HTTPException(status_code=502, detail=f"AI provider error: {e}") from e
 
-    try:
-        cleaned = response_text.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("\n", 1)[1]
-            cleaned = cleaned.rsplit("```", 1)[0]
-        paths_data = json.loads(cleaned)
-    except json.JSONDecodeError:
-        logger.error("Failed to parse AI response as JSON")
-        raise HTTPException(status_code=502, detail="AI returned invalid JSON response")
+    findings_by_id = {finding.id: finding for finding in findings}
+    grounded_paths = []
+    for validated in validated_paths:
+        if len(validated.steps) < 2:
+            continue
+        if any(
+            not step.finding_id or step.finding_id not in findings_by_id
+            for step in validated.steps
+        ):
+            continue
+        grounded_paths.append(validated)
 
-    try:
-        validated_paths = validate_ai_attack_paths(paths_data)
-    except ValueError as exc:
-        logger.warning("Rejected invalid AI attack-path output: %s", exc)
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if validated_paths and not grounded_paths:
+        raise HTTPException(
+            status_code=502,
+            detail="AI returned exploitation chains without valid finding citations",
+        )
+
+    # Replacement is atomic from the user's perspective: existing chains are
+    # removed only after a complete, grounded replacement has been validated.
+    await db.execute(delete(AttackPath).where(AttackPath.engagement_id == engagement_id))
 
     created = []
-    for validated in validated_paths:
-        # Build description with target hosts prepended
-        target_hosts = validated.target_hosts or ""
+    for validated in grounded_paths:
+        referenced_findings = [findings_by_id[step.finding_id] for step in validated.steps]
+        target_hosts = ", ".join(
+            sorted(
+                {
+                    host.strip()
+                    for finding in referenced_findings
+                    for host in (finding.affected_hosts or "").split(",")
+                    if host.strip()
+                }
+            )
+        )
         description = validated.description or ""
         if target_hosts:
             description = f"[Targets: {target_hosts}]\n\n{description}"
@@ -111,14 +125,19 @@ async def generate_attack_paths(
             engagement_id=engagement_id,
             name=validated.name,
             description=description,
-            steps=validated.steps,
+            steps=[step.model_dump(mode="json") for step in validated.steps],
             risk_level=validated.risk_level,
         )
         db.add(attack_path)
         await db.flush()
         created.append(AttackPathResponse.model_validate(attack_path))
 
-    logger.info("Generated %d attack paths for engagement %s (replaced previous)", len(created), engagement_id)
+    logger.info(
+        "Generated %d grounded attack paths for engagement %s in %d ms",
+        len(created),
+        engagement_id,
+        metadata.latency_ms,
+    )
     return created
 
 

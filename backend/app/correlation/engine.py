@@ -90,6 +90,19 @@ def correlate(host_records_by_tool: dict[str, list[dict]]) -> dict:
     sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
     findings.sort(key=lambda f: (sev_order.get(f["severity"], 4), -f["confidence"]))
 
+    # Stable evidence identifiers let model output refer back to exact scanner
+    # facts without copying or inventing provenance.
+    for finding_index, finding in enumerate(findings, 1):
+        finding["evidence_id"] = f"CF-{finding_index:04d}"
+        for evidence_index, evidence in enumerate(finding["evidence_refs"], 1):
+            evidence["id"] = f"CF-{finding_index:04d}-E{evidence_index:02d}"
+    for host_index, host in enumerate(merged_hosts.values(), 1):
+        for port_index, port in enumerate(host["ports"], 1):
+            for evidence_index, evidence in enumerate(port.get("evidence_refs", []), 1):
+                evidence["id"] = (
+                    f"HP-{host_index:04d}-P{port_index:04d}-E{evidence_index:02d}"
+                )
+
     # Stats
     total_raw = sum(
         len(v["vulns"])
@@ -158,8 +171,27 @@ def _merge_hosts(by_tool: dict[str, list[dict]]) -> dict:
             existing_ports = {(p["port"], p["protocol"]) for p in h["ports"]}
             for port in rec.get("ports", []):
                 port_key = (port["port"], port["protocol"])
+                port_evidence = {
+                    "id": "",
+                    "scan_id": rec.get("_scan_id"),
+                    "filename": rec.get("_scan_filename"),
+                    "scan_type": rec.get("_scan_type", tool),
+                    "tool": tool,
+                    "host": rec["host"],
+                    "port": port.get("port"),
+                    "protocol": port.get("protocol"),
+                    "cve": None,
+                    "plugin_id": None,
+                    "excerpt": (
+                        f"{port.get('port')}/{port.get('protocol', 'tcp')} "
+                        f"{port.get('state', 'unknown')} {port.get('service', 'unknown')} "
+                        f"{port.get('product', '')} {port.get('version', '')}"
+                    ).strip()[:2000],
+                }
                 if port_key not in existing_ports:
-                    h["ports"].append(port)
+                    stored_port = dict(port)
+                    stored_port["evidence_refs"] = [port_evidence]
+                    h["ports"].append(stored_port)
                     existing_ports.add(port_key)
                 else:
                     # Update existing port with richer info
@@ -171,6 +203,7 @@ def _merge_hosts(by_tool: dict[str, list[dict]]) -> dict:
                                 ep["version"] = port["version"]
                             if port.get("scripts"):
                                 ep.setdefault("scripts", {}).update(port["scripts"])
+                            ep.setdefault("evidence_refs", []).append(port_evidence)
                             break
 
     # Sort ports
@@ -272,6 +305,23 @@ def _new_finding(vuln: dict) -> dict:
         "descriptions": {source: vuln.get("description", "")},
         "solutions": {source: vuln.get("solution", "")} if vuln.get("solution") else {},
         "plugin_ids": {source: vuln.get("plugin_id", "")} if vuln.get("plugin_id") else {},
+        "evidence_refs": [_evidence_ref(vuln)],
+    }
+
+
+def _evidence_ref(vuln: dict) -> dict:
+    """Create a bounded, serializable pointer to a scanner observation."""
+    return {
+        "id": "",
+        "scan_id": vuln.get("_scan_id"),
+        "filename": vuln.get("_scan_filename"),
+        "scan_type": vuln.get("_scan_type"),
+        "tool": vuln.get("source", "unknown"),
+        "host": vuln.get("_host"),
+        "port": vuln.get("port"),
+        "cve": vuln.get("cve"),
+        "plugin_id": vuln.get("plugin_id"),
+        "excerpt": (vuln.get("description") or vuln.get("title") or "")[:2000],
     }
 
 
@@ -307,6 +357,7 @@ def _merge_into(finding: dict, vuln: dict):
         finding["solutions"][source] = vuln["solution"]
     if vuln.get("plugin_id"):
         finding["plugin_ids"][source] = vuln["plugin_id"]
+    finding["evidence_refs"].append(_evidence_ref(vuln))
 
 
 def _compute_confidence(finding: dict, total_tools: int) -> float:
@@ -378,7 +429,11 @@ def to_ai_prompt(correlated: dict) -> str:
                 if p.get("version"):
                     svc += f" {p['version']}"
                 svc += ")"
-            lines.append(f"  {p['port']}/{p['protocol']} {p['state']} {svc}")
+            evidence_ids = ", ".join(
+                ref["id"] for ref in p.get("evidence_refs", []) if ref.get("id")
+            )
+            suffix = f" [Evidence IDs: {evidence_ids}]" if evidence_ids else ""
+            lines.append(f"  {p['port']}/{p['protocol']} {p['state']} {svc}{suffix}")
 
     lines.append("")
 
@@ -386,7 +441,7 @@ def to_ai_prompt(correlated: dict) -> str:
     lines.append("=== CORRELATED FINDINGS ===")
     for i, f in enumerate(correlated["findings"], 1):
         conf_label = "HIGH" if f["confidence"] >= 0.7 else "MEDIUM" if f["confidence"] >= 0.5 else "LOW"
-        lines.append(f"\n--- Finding {i}: {f['title']} ---")
+        lines.append(f"\n--- Finding {i}: {f['title']} [{f['evidence_id']}] ---")
         cvss_str = f" | CVSS: {f['cvss']}" if f.get('cvss') else ""
         cve_str = f" | CVE: {f['cve']}" if f.get('cve') else ""
         lines.append(f"  Severity: {f['severity'].upper()}{cvss_str}{cve_str}")
@@ -396,9 +451,22 @@ def to_ai_prompt(correlated: dict) -> str:
             lines.append(f"  Port: {f['port']}")
 
         # Include descriptions from each source
-        for src, desc in f["descriptions"].items():
-            if desc:
-                lines.append(f"  Evidence ({src}): {desc[:300]}")
+        for ref in f["evidence_refs"]:
+            details = [ref["tool"]]
+            if ref.get("filename"):
+                details.append(ref["filename"])
+            if ref.get("host"):
+                details.append(str(ref["host"]))
+            if ref.get("port") is not None:
+                details.append(f"port {ref['port']}")
+            if ref.get("cve"):
+                details.append(ref["cve"])
+            if ref.get("plugin_id"):
+                details.append(f"plugin {ref['plugin_id']}")
+            lines.append(
+                f"  Evidence ID {ref['id']} ({', '.join(details)}): "
+                f"{ref['excerpt'][:500]}"
+            )
 
         # Include solutions
         for src, sol in f["solutions"].items():

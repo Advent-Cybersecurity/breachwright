@@ -82,6 +82,22 @@ function ChatMessage({ msg }) {
             ))}
           </div>
         )}
+        {msg.citations && msg.citations.length > 0 && (
+          <details className="mt-2 text-left">
+            <summary className="text-[10px] font-mono themed-text-muted cursor-pointer">
+              Evidence sources ({msg.citations.length})
+            </summary>
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {msg.citations.map(citation => (
+                <span key={citation.id} className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                  title={citation.id}
+                  style={{ backgroundColor: 'var(--bg-700)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+                  [{citation.id}] {citation.label}
+                </span>
+              ))}
+            </div>
+          </details>
+        )}
       </div>
     </div>
   );
@@ -122,6 +138,7 @@ export default function Assistant() {
         role: 'assistant',
         content: result.response,
         context_used: result.context_used,
+        citations: result.citations,
       }]);
     } catch (err) {
       setMessages(prev => [...prev, {

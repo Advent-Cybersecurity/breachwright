@@ -22,6 +22,8 @@ Third-party AI services may charge for API usage. Local model support does not r
 
 - Scan ingestion for nmap, Nessus, Burp Suite, and structured tool output
 - AI-assisted finding drafts with severity, CVSS, evidence, and remediation
+- Evidence-grounded AI review with source excerpts, confidence, create/update
+  diffs, and accept, edit, reject, or bulk review controls
 - Exploitation chains and MITRE ATT&CK-aware attack narratives
 - SharpHound and BloodHound ZIP import with Active Directory attack-path analysis
 - Markdown and DOCX report generation
@@ -115,6 +117,11 @@ The application stores configuration in its platform-specific data directory:
 You can configure Anthropic, OpenAI, or a local model in the Settings page. Azure OpenAI and AWS Bedrock can be configured through the environment file. Start with [.env.example](.env.example).
 
 AI configuration is optional for manual findings, evidence management, checklists, reporting from existing content, export/import, and other non-AI workflows.
+
+AI output is treated as untrusted. Scan and Active Directory analysis create
+review proposals rather than accepted findings. Each supported proposal cites
+stored evidence, and nothing enters the Findings list until the local operator
+accepts it. See [docs/AI_TRUST_AND_EVALUATION.md](docs/AI_TRUST_AND_EVALUATION.md).
 
 ## Back up and restore data
 

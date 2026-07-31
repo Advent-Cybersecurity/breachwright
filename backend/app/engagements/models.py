@@ -2,7 +2,7 @@ import uuid
 import enum
 from datetime import date, datetime
 from typing import Optional
-from sqlalchemy import String, Text, Date, DateTime, ForeignKey, Numeric, Integer, Enum as SAEnum, JSON, func
+from sqlalchemy import Boolean, String, Text, Date, DateTime, ForeignKey, Numeric, Integer, Enum as SAEnum, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 
@@ -53,11 +53,43 @@ class Finding(Base, TimestampMixin):
     affected_hosts: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     evidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     remediation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    source: Mapped[str] = mapped_column(String(50), default="manual")  # ai_generated or manual
+    source: Mapped[str] = mapped_column(String(50), default="manual")
+    evidence_refs: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    ai_confidence: Mapped[Optional[float]] = mapped_column(Numeric(4, 3), nullable=True)
+    ai_inference: Mapped[bool] = mapped_column(Boolean, default=False)
     retest_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # open, remediated, retest_needed, accepted_risk
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
 
     engagement: Mapped["Engagement"] = relationship(back_populates="findings")
+
+
+class AIFindingDraft(Base, TimestampMixin):
+    """Evidence-grounded AI proposal that requires an explicit local review."""
+
+    __tablename__ = "ai_finding_drafts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    engagement_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False
+    )
+    target_finding_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("findings.id", ondelete="SET NULL"), nullable=True
+    )
+    operation: Mapped[str] = mapped_column(String(20), default="create", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    severity: Mapped[Severity] = mapped_column(SAEnum(Severity), default=Severity.info)
+    cvss_score: Mapped[Optional[float]] = mapped_column(Numeric(3, 1), nullable=True)
+    affected_hosts: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    evidence: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    remediation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    evidence_refs: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    confidence: Mapped[Optional[float]] = mapped_column(Numeric(4, 3), nullable=True)
+    provider: Mapped[str] = mapped_column(String(100), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AttackPath(Base, TimestampMixin):

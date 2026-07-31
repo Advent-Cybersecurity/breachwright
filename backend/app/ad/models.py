@@ -52,5 +52,6 @@ class ADAttackPath(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     risk_level: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     path_nodes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    evidence_refs: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     remediation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
