@@ -39,17 +39,18 @@ As of 2026-07-30:
 - [x] Windows packaged backup and offline restore pass after the final local changes
 - [x] Windows desktop window smoke test passes
 - [x] Windows native install, version, uninstall, and data preservation pass
+- [x] Packaged AWS Bedrock provider initializes without making a model request
 - [x] A database created by the v2.0.0 source upgrades with its account, engagement, and finding intact
 - [x] Browser setup, login, engagement, finding, DOCX report, diagnostics, and backup flows passed
 - [x] Docker Compose configuration and persistent application data mapping pass
 - [x] GitHub-hosted Linux packaged journey, desktop window, native install, and archive gates pass
 - [x] The public v2.0.0 source release remains unchanged
 
-Remote evidence for application candidate `8e24f05`:
+Remote evidence for application candidate `0a49dda`:
 
-- [CI and dependency audits](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30605036784)
-- [CodeQL](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30605036779)
-- [Windows and Linux candidate build](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30605036781)
+- [CI and dependency audits](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30606345888)
+- [CodeQL](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30606345897)
+- [Windows and Linux candidate build](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30606345894)
 
 Only deliberate review of the final release archives and checksums remains
 before publication.
