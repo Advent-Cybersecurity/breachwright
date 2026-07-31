@@ -153,6 +153,12 @@ class UserJourneyTests(unittest.TestCase):
             "frame-ancestors 'none'",
             health.headers["content-security-policy"],
         )
+        missing_api_route = self.client.get("/api/does-not-exist")
+        self.assertEqual(missing_api_route.status_code, 404)
+        self.assertEqual(
+            missing_api_route.json()["detail"],
+            "API route not found",
+        )
         traversal = self.client.get("/..%2FREADME.md")
         if (ROOT / "frontend" / "dist" / "index.html").is_file():
             self.assertEqual(traversal.status_code, 200)

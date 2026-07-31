@@ -195,9 +195,9 @@ if os.path.isdir(FRONTEND_DIR):
     # Catch-all: serve index.html for SPA routing
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        # Don't intercept /api routes
-        if full_path.startswith("api"):
-            return
+        # Unknown API routes must not look like successful empty responses.
+        if full_path == "api" or full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API route not found")
         frontend_root = os.path.realpath(FRONTEND_DIR)
         file_path = os.path.realpath(os.path.join(frontend_root, full_path))
         try:
