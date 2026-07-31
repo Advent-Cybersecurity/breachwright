@@ -84,6 +84,8 @@
 - Replaced the machine-specific legacy bundle checker with a portable,
   argument-driven Windows/Linux verifier that uses console-safe output and
   rejects bundled runtime databases, logs, or `.env` files.
+- Packaged Windows and Linux CLIs can validate a backup and print its version,
+  creation time, and manifest file count without modifying local data.
 
 ## v2.2.0 (2026-07-31)
 

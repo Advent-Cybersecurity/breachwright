@@ -142,6 +142,11 @@ def main():
         help="Restore a verified backup while Breachwright is stopped",
     )
     parser.add_argument(
+        "--validate-backup",
+        metavar="PATH",
+        help="Validate a Breachwright backup without changing local data",
+    )
+    parser.add_argument(
         "--confirm-restore",
         action="store_true",
         help="Confirm an offline restore and preserve current data in a safety folder",
@@ -177,6 +182,22 @@ def main():
             APP_VERSION,
         )
         print(f"Backup created: {path}")
+        return
+
+    if args.validate_backup:
+        from pathlib import Path
+        from app.system.backup import validate_backup
+
+        try:
+            manifest = validate_backup(Path(args.validate_backup))
+        except ValueError as exc:
+            parser.exit(1, f"Backup validation failed: {exc}\n")
+        print(
+            "Backup valid: "
+            f"version {manifest['app_version']}, "
+            f"created {manifest['created_at']}, "
+            f"{len(manifest['files'])} files"
+        )
         return
 
     if args.restore_backup:
