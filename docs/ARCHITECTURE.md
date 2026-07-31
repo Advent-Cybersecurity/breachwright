@@ -13,8 +13,8 @@ All application capabilities are part of the open-source distribution. There is 
 | API composition | `backend/app/main.py` | Starts the service, runs migrations, registers routers, exposes health and update checks, and serves the built frontend |
 | Local ownership | `backend/app/auth` | Maintains one internal owner record so existing database relationships remain compatible; no login or account API is exposed |
 | Engagement data | `backend/app/engagements` | Engagements, findings, attack paths, reports, scans, settings, export, and import |
-| Assessment workflow | `backend/app/workflow` | Scan snapshots, asset and service inventory, retest work, readiness, local search, deterministic exports, and assessment templates |
-| Scan analysis | `backend/app/analysis` | Uploads scan data, creates bounded evidence context, calls the configured AI provider, and stores grounded review drafts |
+| Assessment workflow | `backend/app/workflow` | Scan snapshots, asset and service inventory, retest work, readiness, recent activity, local search, deterministic exports, and assessment templates |
+| Scan analysis | `backend/app/analysis` | Uploads scan data, previews bounded selected input without provider use, calls the configured AI provider, and stores grounded review drafts |
 | Correlation | `backend/app/correlation` | Normalizes structured output from several tools and correlates hosts and findings |
 | Active Directory | `backend/app/ad` | Parses SharpHound and BloodHound ZIP exports and creates attack-path data |
 | Attack paths | `backend/app/attack_paths` | Generates exploitation chains from engagement findings |
@@ -25,6 +25,7 @@ All application capabilities are part of the open-source distribution. There is 
 | Methodologies | `backend/app/checklists` and `backend/app/gap_detection` | Tracks manual coverage and performs AI-assisted gap analysis |
 | Knowledge | `backend/app/knowledge` | Indexes recurring findings and provides cross-engagement trends, profiles, and recommendations |
 | AI abstraction | `backend/app/ai` | Provides provider-neutral completion, bounded repair, structured validation, and deterministic quality metrics |
+| Data safety | `backend/app/system` | Verifies backups, restores SQLite workspaces, and reports database plus bounded stored-file integrity checks |
 | Web interface | `frontend/src` | Implements engagement, evidence, analysis, reporting, tool, knowledge, and settings workflows |
 | Desktop entry | `run.py` | Starts the backend and opens the bundled web interface through pywebview |
 
