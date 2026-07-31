@@ -327,6 +327,10 @@ class UserJourneyTests(unittest.TestCase):
             headers=headers,
         )
         self.assertEqual(missing_checklist.status_code, 404)
+        self.assertEqual(
+            self.client.get("/api/engagements/missing/reports").status_code,
+            404,
+        )
         missing_job = self.client.post(
             "/api/jobs",
             headers=headers,
@@ -747,12 +751,37 @@ class UserJourneyTests(unittest.TestCase):
         self.assertIn("created by Advent Cybersecurity", report_text)
         self.assertIn("Outdated service", report_text)
 
+        missing_template_report = self.client.post(
+            f"/api/engagements/{engagement_id}/reports",
+            headers=headers,
+            params={"format": "docx", "template_id": str(uuid.uuid4())},
+        )
+        self.assertEqual(missing_template_report.status_code, 404)
+
+        report_template = self.client.post(
+            "/api/report-templates",
+            headers=headers,
+            data={
+                "name": "Client delivery template",
+                "company_name": "Example Client",
+                "is_default": "false",
+            },
+        )
+        self.assertEqual(report_template.status_code, 201, report_template.text)
+
         docx_report = self.client.post(
             f"/api/engagements/{engagement_id}/reports",
             headers=headers,
-            params={"format": "docx"},
+            params={
+                "format": "docx",
+                "template_id": report_template.json()["id"],
+            },
         )
         self.assertEqual(docx_report.status_code, 201, docx_report.text)
+        self.assertEqual(
+            docx_report.json()["template_used"],
+            "Client delivery template",
+        )
         docx_download = self.client.get(
             f"/api/reports/{docx_report.json()['id']}/download",
             headers=headers,
@@ -1546,6 +1575,26 @@ class UserJourneyTests(unittest.TestCase):
                         },
                         {f"API{index}" for index in range(1, 11)},
                     )
+                if template_key == "web":
+                    self.assertEqual(
+                        {item["category"] for item in checklist.json()},
+                        {
+                            "A01:2025 Broken Access Control",
+                            "A02:2025 Security Misconfiguration",
+                            "A03:2025 Software Supply Chain Failures",
+                            "A04:2025 Cryptographic Failures",
+                            "A05:2025 Injection",
+                            "A06:2025 Insecure Design",
+                            "A07:2025 Authentication Failures",
+                            "A08:2025 Software or Data Integrity Failures",
+                            "A09:2025 Security Logging and Alerting Failures",
+                            "A10:2025 Mishandling of Exceptional Conditions",
+                        },
+                    )
+                    self.assertTrue(all(
+                        "/Top10/2025/" in item["reference_url"]
+                        for item in checklist.json()
+                    ))
                 self.assertEqual(
                     self.client.delete(f"/api/engagements/{engagement_id}").status_code,
                     204,

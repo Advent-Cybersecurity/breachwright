@@ -157,7 +157,13 @@ async def index_finding(
             entry.default_severity = finding_sev
 
         # Upgrade CVSS if higher
-        if finding.cvss_score and (not entry.default_cvss or finding.cvss_score > entry.default_cvss):
+        if (
+            finding.cvss_score is not None
+            and (
+                entry.default_cvss is None
+                or finding.cvss_score > entry.default_cvss
+            )
+        ):
             entry.default_cvss = float(finding.cvss_score)
 
         # Update description/remediation if longer (likely more detailed)
@@ -176,7 +182,11 @@ async def index_finding(
             description=finding.description,
             remediation=finding.remediation,
             default_severity=finding_sev,
-            default_cvss=float(finding.cvss_score) if finding.cvss_score else None,
+            default_cvss=(
+                float(finding.cvss_score)
+                if finding.cvss_score is not None
+                else None
+            ),
             occurrence_count=1,
             first_seen_at=now,
             last_seen_at=now,

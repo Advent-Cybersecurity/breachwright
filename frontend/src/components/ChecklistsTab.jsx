@@ -167,7 +167,9 @@ export default function ChecklistsTab({ engId, toast }) {
           if (!seen.has(i.methodology)) { cats.add(key); seen.add(i.methodology); }
         });
         setExpandedCategories(cats);
-      } catch (e) {}
+      } catch (e) {
+        toast({ message: `Could not load checklists: ${e.message}`, type: 'error' });
+      }
       finally { setLoading(false); }
     })();
   }, [engId]);
@@ -202,11 +204,14 @@ export default function ChecklistsTab({ engId, toast }) {
   };
 
   const handleUpdateItem = async (itemId, status, notes) => {
-    await checklistsApi.update(engId, itemId, status, notes);
-    setItems(prev => prev.map(i => i.id === itemId ? { ...i, status, notes } : i));
-    // Refresh progress
-    const prog = await checklistsApi.progress(engId);
-    setProgress(prog);
+    try {
+      await checklistsApi.update(engId, itemId, status, notes);
+      setItems(prev => prev.map(i => i.id === itemId ? { ...i, status, notes } : i));
+      const prog = await checklistsApi.progress(engId);
+      setProgress(prog);
+    } catch (err) {
+      toast({ message: `Could not update checklist: ${err.message}`, type: 'error' });
+    }
   };
 
   const toggleCategory = (key) => {

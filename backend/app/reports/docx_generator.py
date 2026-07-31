@@ -223,7 +223,7 @@ def generate_docx_report(
             row.cells[0].text = str(idx)
             row.cells[1].text = f.title or ""
             row.cells[2].text = sev.upper()
-            row.cells[3].text = str(f.cvss_score) if f.cvss_score else "N/A"
+            row.cells[3].text = str(f.cvss_score) if f.cvss_score is not None else "N/A"
             row.cells[4].text = (f.affected_hosts or "N/A")[:50]
 
             # Color the severity cell
@@ -243,51 +243,30 @@ def generate_docx_report(
     doc.add_page_break()
 
     # ---- AI-GENERATED CONTENT (markdown to docx) ----
-    _markdown_to_docx(doc, ai_content)
-
-    # ---- ATTACK PATHS (if any) ----
-    if attack_paths:
-        doc.add_page_break()
-        doc.add_heading("Attack Path Analysis", level=1)
-
-        for ap in attack_paths:
-            risk = ap.risk_level or "unknown"
-            doc.add_heading(f"{ap.name} [{risk.upper()}]", level=2)
-
-            # Use narrative if available (richer, report-ready content)
-            if hasattr(ap, 'narrative') and ap.narrative:
-                _markdown_to_docx(doc, ap.narrative)
-
-                # Add MITRE ATT&CK techniques table if available
-                if hasattr(ap, 'mitre_techniques') and ap.mitre_techniques:
-                    doc.add_paragraph()
-                    p = doc.add_paragraph()
-                    run = p.add_run("MITRE ATT&CK Techniques:")
-                    run.bold = True
-                    run.font.size = Pt(10)
-                    for tech in ap.mitre_techniques:
-                        tid = tech.get("technique_id", "")
-                        tname = tech.get("technique_name", "")
-                        doc.add_paragraph(f"{tid}: {tname}", style="List Bullet")
-            else:
-                # Fallback to structured steps
-                if ap.description:
-                    doc.add_paragraph(ap.description)
-
-                if ap.steps and isinstance(ap.steps, list):
-                    for i, step in enumerate(ap.steps, 1):
-                        title = step.get("title", f"Step {i}")
-                        desc = step.get("description", "")
-                        p = doc.add_paragraph()
-                        run = p.add_run(f"Step {i}: {title}")
-                        run.bold = True
-                        run.font.size = Pt(11)
-                        if desc:
-                            doc.add_paragraph(desc)
+    _markdown_to_docx(doc, _docx_body_markdown(ai_content))
 
     # Save
     doc.save(output_path)
     return output_path
+
+
+def _docx_body_markdown(markdown: str) -> str:
+    """Remove sections already represented by the DOCX cover and summary."""
+    parts = re.split(r"(?m)(?=^## )", markdown)
+    if len(parts) == 1:
+        return markdown
+
+    body = []
+    preamble = parts[0].strip()
+    if preamble and not preamble.startswith("# "):
+        body.append(preamble)
+    skipped = {"engagement overview", "findings summary"}
+    for part in parts[1:]:
+        heading = part.splitlines()[0][3:].strip().lower()
+        if heading in skipped:
+            continue
+        body.append(part.strip())
+    return "\n\n".join(body)
 
 
 def _markdown_to_docx(doc, md_text):

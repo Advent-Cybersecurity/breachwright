@@ -5,7 +5,6 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import shutil
 import sys
-import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -15,11 +14,9 @@ BACKEND = ROOT / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-legacy_test_root = ROOT / ".breachwright-config-test"
-if legacy_test_root.is_dir():
-    shutil.rmtree(legacy_test_root)
-
-config_test_root = Path(tempfile.mkdtemp(prefix="breachwright-config-test-"))
+config_test_root = ROOT / ".breachwright-config-test"
+if config_test_root.is_dir():
+    shutil.rmtree(config_test_root)
 os.environ.setdefault("DATA_DIR", str(config_test_root))
 
 from app.config import get_data_dir

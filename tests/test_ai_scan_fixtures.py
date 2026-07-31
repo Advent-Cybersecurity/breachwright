@@ -8,6 +8,7 @@ if str(BACKEND) not in sys.path:
 
 from app.correlation.engine import correlate, to_ai_prompt
 from app.correlation.structured_parsers import parse_structured
+from app.findings.dedup import should_update_finding
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "ai_eval"
@@ -55,6 +56,32 @@ class AIScanFixtureTests(unittest.TestCase):
         for ref in all_refs:
             self.assertIn(ref["id"], prompt)
             self.assertIn(ref["filename"], prompt)
+
+    def test_zero_cvss_survives_correlation_prompt_and_deduplication(self):
+        correlated = correlate({
+            "example": [{
+                "host": "example.test",
+                "hostnames": [],
+                "ports": [],
+                "vulns": [{
+                    "title": "Informational observation",
+                    "severity": "info",
+                    "cvss": 0.0,
+                    "description": "A valid zero-score observation.",
+                    "source": "example",
+                }],
+            }],
+        })
+        finding = correlated["findings"][0]
+        self.assertEqual(finding["cvss"], 0.0)
+        self.assertIn("CVSS: 0.0", to_ai_prompt(correlated))
+        self.assertEqual(
+            should_update_finding(
+                {"cvss_score": None},
+                {"cvss_score": 0.0},
+            )["cvss_score"],
+            0.0,
+        )
 
 
 if __name__ == "__main__":

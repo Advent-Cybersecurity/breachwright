@@ -126,16 +126,25 @@ def build_report_content(engagement, findings, attack_paths) -> str:
         sections.extend(["No attack paths were recorded.", ""])
     else:
         for index, attack_path in enumerate(attack_paths, start=1):
+            narrative = getattr(attack_path, "narrative", None)
+            techniques = getattr(attack_path, "mitre_techniques", None) or []
             sections.extend(
                 [
                     f"### {index}. {_value(attack_path.name)}",
                     "",
                     f"- **Risk level:** {_value(attack_path.risk_level, 'Not specified')}",
                     "",
-                    _value(attack_path.description),
+                    _value(narrative or attack_path.description),
                     "",
                 ]
             )
+            if techniques:
+                sections.extend(["#### MITRE ATT&CK Techniques", ""])
+                for technique in techniques:
+                    technique_id = _value(technique.get("technique_id"), "Unmapped")
+                    technique_name = _value(technique.get("technique_name"), "Unnamed")
+                    sections.append(f"- {technique_id}: {technique_name}")
+                sections.append("")
 
     sections.extend(
         [

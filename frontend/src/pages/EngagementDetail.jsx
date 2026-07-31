@@ -435,8 +435,24 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
     setLoadingEvidence(true);
     try {
       const data = await evidenceApi.list(engId, finding.id);
-      setAttachments(await Promise.all(data.map(withObjectUrl)));
-    } catch (e) {}
+      const hydrated = await Promise.all(data.map(async (attachment) => {
+        try {
+          return await withObjectUrl(attachment);
+        } catch {
+          return { ...attachment, objectUrl: null, loadError: true };
+        }
+      }));
+      setAttachments(hydrated);
+      const unavailable = hydrated.filter(attachment => attachment.loadError).length;
+      if (unavailable > 0) {
+        toast({
+          message: `${unavailable} evidence file${unavailable === 1 ? ' is' : 's are'} unavailable. The record can still be removed.`,
+          type: 'error',
+        });
+      }
+    } catch (e) {
+      toast({ message: `Could not load evidence: ${e.message}`, type: 'error' });
+    }
     finally { setLoadingEvidence(false); }
   };
 
@@ -449,7 +465,7 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
         setLoadingHistory(true);
         findingsApi.history(engId, finding.id)
           .then(setHistory)
-          .catch(() => {})
+          .catch((e) => toast({ message: `Could not load finding history: ${e.message}`, type: 'error' }))
           .finally(() => setLoadingHistory(false));
       }
     }
@@ -503,7 +519,7 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
             {finding.title}
           </div>
         </td>
-        <td className="py-3 px-4 font-mono themed-text-secondary">{finding.cvss_score || '-'}</td>
+        <td className="py-3 px-4 font-mono themed-text-secondary">{finding.cvss_score ?? '-'}</td>
         <td className="py-3 px-4 themed-text-secondary text-xs font-mono truncate max-w-[200px]">
           {finding.affected_hosts || '-'}
         </td>
@@ -605,16 +621,20 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
                     {attachments.map(att => (
                       <div key={att.id} className="relative group rounded overflow-hidden"
                         style={{ backgroundColor: 'var(--bg-800)', border: '1px solid var(--border)' }}>
-                        {att.content_type?.startsWith('image/') ? (
+                        {att.objectUrl && att.content_type?.startsWith('image/') ? (
                           <a href={att.objectUrl} target="_blank" rel="noopener noreferrer">
                             <img src={att.objectUrl} alt={att.filename}
                               className="w-full h-32 object-cover cursor-pointer hover:opacity-80 transition-opacity" />
                           </a>
-                        ) : (
+                        ) : att.objectUrl ? (
                           <a href={att.objectUrl} target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-2 p-3 text-xs themed-text-secondary hover:themed-text-primary">
                             <FileText size={14} /> {att.filename}
                           </a>
+                        ) : (
+                          <div className="flex items-center gap-2 p-3 text-xs text-red-400">
+                            <FileText size={14} /> File unavailable
+                          </div>
                         )}
                         <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); handleDeleteEvidence(att.id); }}
@@ -1418,7 +1438,9 @@ function ReportsTab({ engId, toast }) {
         setReadiness(readinessResult);
         const def = tmpls.find(t => t.is_default);
         if (def) setSelectedTemplate(def.id);
-      } catch (e) {}
+      } catch (e) {
+        toast({ message: `Could not load reports: ${e.message}`, type: 'error' });
+      }
       finally { setLoading(false); }
     })();
   }, [engId]);
@@ -1430,7 +1452,11 @@ function ReportsTab({ engId, toast }) {
       const report = await reportsApi.generate(engId, reportFormat, templateId, useAI);
       setReportList(prev => [report, ...prev]);
       const tName = templates.find(t => t.id === selectedTemplate)?.name;
-      toast({ message: `${reportFormat.toUpperCase()} report generated${useAI ? ' with AI enhancement' : ' locally'}${tName ? ` with "${tName}" template` : ''}`, type: 'success' });
+      const fellBack = report.format !== reportFormat;
+      toast({
+        message: `${report.format.toUpperCase()} report generated${useAI ? ' with AI enhancement' : ' locally'}${report.template_used && tName ? ` with "${tName}" template` : ''}${fellBack ? ' (Word generation was unavailable)' : ''}`,
+        type: fellBack ? 'info' : 'success',
+      });
     } catch (err) {
       toast({ message: err.message, type: 'error' });
     } finally {
@@ -1649,6 +1675,7 @@ function ReportsTab({ engId, toast }) {
                 <p className="text-sm font-medium themed-text-primary truncate">{report.title}</p>
                 <p className="text-xs themed-text-muted font-mono">
                   {report.format.toUpperCase()}
+                  {report.template_used && ` // ${report.template_used}`}
                   {report.created_at && ` // ${new Date(report.created_at).toLocaleString()}`}
                 </p>
               </div>
@@ -1717,7 +1744,9 @@ function ADTab({ engId, toast, onFindingsCreated }) {
         setImports(imp);
         setSummary(sum);
         setPaths(p);
-      } catch (e) {}
+      } catch (e) {
+        toast({ message: `Could not load Active Directory data: ${e.message}`, type: 'error' });
+      }
       finally { setLoading(false); }
     })();
   }, [engId]);

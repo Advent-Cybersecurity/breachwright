@@ -35,25 +35,34 @@ export default function Settings() {
 
   useEffect(() => {
     (async () => {
+      const failures = [];
       try {
         setHealth(await system.health());
-      } catch (e) {}
+      } catch (e) { failures.push('health'); }
       try {
         setDiagnostics(await system.diagnostics());
-      } catch (e) {}
+      } catch (e) { failures.push('diagnostics'); }
       try {
         setBackups(await system.listBackups());
-      } catch (e) {}
+      } catch (e) { failures.push('backups'); }
       try {
         const p = await appSettings.getPrompts();
         setPrompts(p);
-      } catch (e) {}
+      } catch (e) { failures.push('prompts'); }
       try {
         const prov = await appSettings.getProvider();
         setProvider(prov);
         setProviderForm(prov);
-      } catch (e) {}
-      finally { setLoading(false); }
+      } catch (e) { failures.push('AI provider settings'); }
+      finally {
+        if (failures.length > 0) {
+          setToast({
+            message: `Could not load: ${failures.join(', ')}`,
+            type: 'error',
+          });
+        }
+        setLoading(false);
+      }
     })();
   }, []);
 

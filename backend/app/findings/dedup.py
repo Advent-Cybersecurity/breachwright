@@ -90,7 +90,9 @@ def should_update_finding(existing: dict, new_data: dict) -> dict:
     # Update CVSS if new is higher
     new_cvss = new_data.get("cvss_score")
     existing_cvss = existing.get("cvss_score")
-    if new_cvss and (not existing_cvss or float(new_cvss) > float(existing_cvss)):
+    if new_cvss is not None and (
+        existing_cvss is None or float(new_cvss) > float(existing_cvss)
+    ):
         updates["cvss_score"] = new_cvss
     
     # Update description if new is longer/better

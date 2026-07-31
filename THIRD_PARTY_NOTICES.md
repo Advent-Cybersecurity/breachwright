@@ -2,7 +2,7 @@
 
 Breachwright depends on third-party open-source software. Those projects remain
 under their own licenses. This notice summarizes the direct runtime dependencies
-pinned for Breachwright 2.1.0. The package lockfile and Python requirements file
+pinned for Breachwright 2.2.0. The package lockfile and Python requirements file
 are the source of truth for exact versions and transitive dependencies.
 
 ## Python runtime

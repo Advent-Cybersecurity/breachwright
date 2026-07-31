@@ -103,7 +103,7 @@ export function Toast({ message, type = 'info', onDismiss }) {
   };
   useEffect(() => { const t = setTimeout(onDismiss, 5000); return () => clearTimeout(t); }, [onDismiss]);
   return (
-    <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg border font-mono text-sm animate-fade-in ${colors[type]}`}>
+    <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg border font-mono text-sm animate-fade-in ${colors[type] || colors.info}`}>
       {message}
     </div>
   );

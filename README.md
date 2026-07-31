@@ -27,6 +27,7 @@ Third-party AI services may charge for API usage. Local model support does not r
 - Versioned scan snapshots with deterministic retest comparison
 - Finding change history, retest scheduling, and report readiness checks
 - Built-in engagement templates with automatic methodology checklists
+- Current OWASP Top 10:2025 coverage for web engagements
 - Dedicated OWASP API Security Top 10 (2023) checklist for API engagements
 - Nuclei JSONL and SARIF 2.1 interoperability
 - Versioned engagement export and import that preserves checklist progress,
@@ -43,6 +44,10 @@ Third-party AI services may charge for API usage. Local model support does not r
 - Custom report templates and AI prompts
 - Immediate access to one local owner workspace with no account or login setup
 - Light and dark themes
+
+OWASP Top 10 checklists are practical baselines, not claims of complete test
+coverage. Use a scope-appropriate verification standard and methodology for the
+full assessment.
 
 ## Local application security
 

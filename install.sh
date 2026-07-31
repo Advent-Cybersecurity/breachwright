@@ -3,7 +3,7 @@ set -e
 
 # ================================================================
 #  BREACHWRIGHT INSTALLER
-#  An Advent Cybersecurity Product
+#  Created by Advent Cybersecurity | Open Source
 #
 #  Detects whether it's running from:
 #    A) A pre-built binary bundle (dist/Breachwright/ exists)
@@ -28,10 +28,10 @@ DESKTOP_DIR="$XDG_DATA_ROOT/applications"
 banner() {
     echo ""
     echo -e "${RED}${BOLD}"
-    echo "  ╔══════════════════════════════════════════════╗"
-    echo "  ║            BREACHWRIGHT INSTALLER            ║"
-    echo "  ║         An Advent Cybersecurity Product       ║"
-    echo "  ╚══════════════════════════════════════════════╝"
+    echo "  ================================================"
+    echo "              BREACHWRIGHT INSTALLER"
+    echo "       Created by Advent Cybersecurity | Open Source"
+    echo "  ================================================"
     echo -e "${NC}"
     echo ""
 }
@@ -45,7 +45,7 @@ banner
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── Detect install mode ──
+# Detect install mode
 BINARY_DIR=""
 if [ -f "$SCRIPT_DIR/Breachwright" ] && [ -d "$SCRIPT_DIR/_internal" ]; then
     # We're inside an extracted binary bundle
@@ -71,7 +71,7 @@ if [ "$INSTALL_DIR" != "$LEGACY_INSTALL_DIR" ] \
     warn "Migrated the previous installation to $INSTALL_DIR"
 fi
 
-# ── Create directories ──
+# Create directories
 mkdir -p "$INSTALL_DIR" "$BIN_DIR" "$DESKTOP_DIR"
 mkdir -p "$DATA_DIR"
 
@@ -206,7 +206,7 @@ fi
 cat > "$DESKTOP_DIR/breachwright.desktop" << DESKTOPEOF
 [Desktop Entry]
 Name=Breachwright
-Comment=AI-Powered Penetration Testing Assistant
+Comment=Local open-source penetration test management
 Exec=$BIN_DIR/breachwright
 Icon=$INSTALL_DIR/icon.png
 Terminal=false
@@ -232,7 +232,7 @@ if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
     export PATH="$BIN_DIR:$PATH"
 fi
 
-# ── Done ──
+# Done
 echo ""
 echo -e "${GREEN}${BOLD}  ================================================================"
 echo "  INSTALLATION COMPLETE"

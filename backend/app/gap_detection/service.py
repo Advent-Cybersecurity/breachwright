@@ -23,6 +23,7 @@ from app.ai.provider import get_provider
 from app.ai.output_validation import validate_gap_analysis
 from app.ai.completion import complete_validated_json
 from app.ai.prompts.loader import get_prompt
+from app.ai.context import AIContextTooLarge, build_bounded_untrusted_context
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +271,14 @@ async def analyze_gaps(
 
     # Build prompt
     user_message = build_context_prompt(context, methodology_key)
+    try:
+        bounded_message = build_bounded_untrusted_context(
+            "untrusted_coverage_data",
+            user_message,
+            label="Methodology coverage data",
+        )
+    except AIContextTooLarge as exc:
+        return {"error": str(exc)}
 
     # Check for custom prompt, fall back to default
     custom_prompt = await get_prompt(db, "prompt_gap_analysis")
@@ -285,11 +294,7 @@ async def analyze_gaps(
         candidate, metadata = await complete_validated_json(
             provider,
             system_prompt=system_prompt,
-            user_message=(
-                "<untrusted_coverage_data>\n"
-                f"{user_message}\n"
-                "</untrusted_coverage_data>"
-            ),
+            user_message=bounded_message,
             validator=validate_gap_analysis,
             max_tokens=4096,
             temperature=0.2,

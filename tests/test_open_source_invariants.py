@@ -74,6 +74,7 @@ class OpenSourceReleaseTests(unittest.TestCase):
         installers = (
             (ROOT / "install-windows.bat").read_text(encoding="utf-8"),
             (ROOT / "install.sh").read_text(encoding="utf-8"),
+            (ROOT / "INSTALL_WSL.md").read_text(encoding="utf-8"),
         )
 
         main = (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8")
@@ -100,6 +101,8 @@ class OpenSourceReleaseTests(unittest.TestCase):
         for installer in installers:
             self.assertNotIn("--setup", installer)
             self.assertNotIn("Create your admin account", installer)
+            self.assertIn("Advent Cybersecurity", installer)
+            self.assertIn("open source", installer.lower())
         self.assertNotIn("PyJWT", requirements)
         self.assertNotIn("passlib", requirements)
         self.assertNotIn("token: str = None", reports_router)
@@ -167,6 +170,17 @@ class OpenSourceReleaseTests(unittest.TestCase):
             source = path.read_text(encoding="utf-8")
             self.assertNotIn("cvss_score or 'N/A'", source, path)
             self.assertNotIn('cvss_score or "N/A"', source, path)
+            self.assertNotIn("if f.cvss_score else None", source, path)
+            self.assertNotIn("if finding.cvss_score else None", source, path)
+            self.assertNotIn("finding.cvss_score and (", source, path)
+        engagement_page = (
+            ROOT / "frontend" / "src" / "pages" / "EngagementDetail.jsx"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("finding.cvss_score || '-'", engagement_page)
+        knowledge_page = (
+            ROOT / "frontend" / "src" / "pages" / "KnowledgeBase.jsx"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("detail.entry.default_cvss &&", knowledge_page)
 
     def test_advertised_bedrock_provider_is_installed_and_packaged(self):
         requirements = (ROOT / "backend" / "requirements.txt").read_text(

@@ -45,8 +45,13 @@ assessment workflow:
 - deterministic new, persistent, resolved, and regressed classifications
 - finding revision history, retest status, and retest due dates
 - built-in assessment templates with automatic methodology checklists
+- current OWASP Top 10:2025 web coverage and OWASP API Security Top 10:2023
+  API coverage
 - advisory report-readiness blockers and warnings
 - Nuclei JSONL and SARIF 2.1 interchange
+- portable project transfer for checklists, finding history, retest metadata,
+  scan comparison history, reviewed AI provenance, and attack narratives
+- deterministic risk-first reports with reviewed MITRE ATT&CK mappings
 
 ## 2.3: evidence workspace and asset coverage
 

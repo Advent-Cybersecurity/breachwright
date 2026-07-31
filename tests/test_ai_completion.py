@@ -9,6 +9,10 @@ if str(BACKEND) not in sys.path:
 from app.ai.completion import complete_validated_json, parse_json_response
 from app.ai.output_validation import validate_ai_findings
 from app.analysis.context import build_untrusted_analysis_message, chunk_scan_text
+from app.ai.context import (
+    AIContextTooLarge,
+    build_bounded_untrusted_context,
+)
 
 
 class FakeProvider:
@@ -76,6 +80,24 @@ class AICompletionTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("<untrusted_scan_data>", message)
         self.assertIn("evidence only", message)
+
+        bounded = build_bounded_untrusted_context(
+            "untrusted_test_data",
+            "reviewed evidence",
+            label="Test data",
+            max_chars=20,
+        )
+        self.assertEqual(
+            bounded,
+            "<untrusted_test_data>\nreviewed evidence\n</untrusted_test_data>",
+        )
+        with self.assertRaises(AIContextTooLarge):
+            build_bounded_untrusted_context(
+                "untrusted_test_data",
+                "x" * 21,
+                label="Test data",
+                max_chars=20,
+            )
 
 
 if __name__ == "__main__":

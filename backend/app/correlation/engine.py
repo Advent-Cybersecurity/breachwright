@@ -343,7 +343,13 @@ def _merge_into(finding: dict, vuln: dict):
         finding["severity"] = vuln["severity"]
 
     # Upgrade CVSS
-    if vuln.get("cvss") and (not finding["cvss"] or vuln["cvss"] > finding["cvss"]):
+    if (
+        vuln.get("cvss") is not None
+        and (
+            finding["cvss"] is None
+            or vuln["cvss"] > finding["cvss"]
+        )
+    ):
         finding["cvss"] = vuln["cvss"]
 
     # Set CVE if missing
@@ -385,7 +391,7 @@ def _compute_confidence(finding: dict, total_tools: int) -> float:
         score += 0.15
 
     # CVSS score present
-    if finding.get("cvss"):
+    if finding.get("cvss") is not None:
         score += 0.05
 
     # Multiple hosts affected
@@ -442,7 +448,7 @@ def to_ai_prompt(correlated: dict) -> str:
     for i, f in enumerate(correlated["findings"], 1):
         conf_label = "HIGH" if f["confidence"] >= 0.7 else "MEDIUM" if f["confidence"] >= 0.5 else "LOW"
         lines.append(f"\n--- Finding {i}: {f['title']} [{f['evidence_id']}] ---")
-        cvss_str = f" | CVSS: {f['cvss']}" if f.get('cvss') else ""
+        cvss_str = f" | CVSS: {f['cvss']}" if f.get('cvss') is not None else ""
         cve_str = f" | CVE: {f['cve']}" if f.get('cve') else ""
         lines.append(f"  Severity: {f['severity'].upper()}{cvss_str}{cve_str}")
         lines.append(f"  Confidence: {conf_label} ({f['confidence']}) — confirmed by {', '.join(f['sources'])}")

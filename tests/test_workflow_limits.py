@@ -1,6 +1,5 @@
 from pathlib import Path
 import sys
-import tempfile
 import unittest
 import uuid
 
@@ -8,7 +7,8 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 
-BACKEND = Path(__file__).resolve().parents[1] / "backend"
+ROOT = Path(__file__).resolve().parents[1]
+BACKEND = ROOT / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
@@ -34,15 +34,17 @@ class SnapshotInputLimitTests(unittest.TestCase):
             )
 
     def test_snapshot_reader_stops_at_remaining_byte_budget(self):
-        with tempfile.TemporaryDirectory(prefix="breachwright-snapshot-limit-") as temp_dir:
-            scan = Path(temp_dir) / "scan.jsonl"
+        scan = ROOT / f".breachwright-snapshot-limit-{uuid.uuid4()}.jsonl"
+        try:
             scan.write_bytes(b"1234")
             with self.assertRaises(HTTPException) as raised:
                 _read_snapshot_payload(str(scan), scan.name, 3)
+        finally:
+            scan.unlink(missing_ok=True)
         self.assertEqual(raised.exception.status_code, 413)
 
     def test_snapshot_reader_reports_missing_stored_file(self):
-        missing = Path(tempfile.gettempdir()) / f"missing-{uuid.uuid4()}.jsonl"
+        missing = ROOT / f".breachwright-missing-{uuid.uuid4()}.jsonl"
         with self.assertRaises(HTTPException) as raised:
             _read_snapshot_payload(str(missing), missing.name, 100)
         self.assertEqual(raised.exception.status_code, 409)
@@ -56,6 +58,7 @@ class SnapshotInputLimitTests(unittest.TestCase):
         self.assertEqual(len(limited), MAX_COMPARISON_DETAILS_PER_STATUS)
         self.assertEqual(limited, sorted(limited))
         self.assertEqual(truncated, 25)
+
 
 
 if __name__ == "__main__":

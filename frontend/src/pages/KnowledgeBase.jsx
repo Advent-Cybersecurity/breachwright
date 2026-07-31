@@ -92,7 +92,7 @@ function EntryDetail({ entry, onClose }) {
           <div className="flex items-center gap-3 flex-wrap">
             <SeverityBadge severity={detail.entry.default_severity || 'info'} />
             <CategoryTag category={detail.entry.category} />
-            {detail.entry.default_cvss && (
+            {detail.entry.default_cvss != null && (
               <span className="text-xs font-mono themed-text-secondary">CVSS: {detail.entry.default_cvss}</span>
             )}
             {detail.entry.cwe_id && (

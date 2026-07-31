@@ -1,73 +1,69 @@
 # Breachwright on WSL (Windows Subsystem for Linux)
 
+Breachwright was created by Advent Cybersecurity and is fully open source. WSL
+is useful for testing its Linux build on a Windows computer. It is optional for
+Windows users, who can use the native Windows archive.
+
 ## Prerequisites
 
-- Windows 11 with WSL2 (WSLg for GUI support)
-- Kali Linux or Ubuntu WSL distribution
+- Windows 11 with WSL 2 and WSLg for the desktop window
+- A current Ubuntu, Debian, or Kali WSL distribution
 
-## Install WSL2 + Kali (if not already installed)
+To install Ubuntu from an administrator PowerShell window:
 
 ```powershell
-# In PowerShell as Administrator
-wsl --install -d kali-linux
+wsl --install -d Ubuntu
 ```
 
-## Install Breachwright
+## Install the Linux release
+
+Download the `breachwright-*-linux-x64.tar.gz` archive from the matching
+GitHub release. Inside the WSL terminal, install the desktop dependencies and
+then run the included installer:
 
 ```bash
-# Inside your WSL terminal
+sudo apt-get update
+sudo apt-get install -y python3-gi python3-gi-cairo \
+  gir1.2-gtk-3.0 gir1.2-webkit2-4.1
 
-# Install prerequisites
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip nodejs npm \
-  python3-gi gir1.2-webkit2-4.1
-
-# Download and extract
-cd ~
-unzip breachwright-v1.0.zip
-cd breachwright
-chmod +x install.sh
+tar -xzf breachwright-*-linux-x64.tar.gz
+cd Breachwright
 ./install.sh
-
-# Configure
-nano ~/.local/share/breachwright/app/.env
-# Add: ANTHROPIC_API_KEY=sk-ant-api03-...
-
-# Create admin account
-breachwright --setup
-
-# Launch
 breachwright
 ```
 
-## GUI on WSL
+Breachwright opens directly into the local owner workspace. There is no
+account, password, or setup command.
 
-**Windows 11 (WSLg):** GUI works automatically. The pywebview window opens natively through WSLg.
+## Browser mode
 
-**Windows 10 or no WSLg:** Breachwright falls back to opening in your Windows browser at `http://127.0.0.1:13370`. Run in headless mode:
+When a desktop window is unavailable, run:
 
 ```bash
 breachwright --headless
 ```
 
-Then open `http://127.0.0.1:13370` in your Windows browser (Edge, Chrome, etc.).
+Then open `http://127.0.0.1:13370` in a Windows browser. Breachwright binds to
+localhost only and must not be exposed to the network because it has no
+application login.
 
-## Security Tools
+## Optional security tools
 
-Install the tools you want to use with the Tool Runner:
+The Tool Runner uses programs installed inside the WSL distribution. Install
+only the tools you intend to run and review their own documentation first. For
+example:
 
 ```bash
-sudo apt install -y nmap nikto
-sudo apt install -y subfinder httpx-toolkit feroxbuster
-
-# gowitness (optional)
-sudo apt install -y golang-go
-go install github.com/sensepost/gowitness@latest
-export PATH=$PATH:$(go env GOPATH)/bin
+sudo apt-get install -y nmap nikto
 ```
 
-## Notes
+## Data and configuration
 
-- Data is stored in `~/.local/share/breachwright/` inside WSL
-- The app binds to `127.0.0.1:13370` (localhost only, not exposed to your network)
-- Tool Runner executes tools inside WSL, so all Linux pentest tools work normally
+- Application data is stored under
+  `${XDG_DATA_HOME:-$HOME/.local/share}/breachwright/data` inside WSL.
+- Configure optional AI providers from **Settings** after launch. AI is not
+  required for scanning, findings, evidence, reports, or project transfer.
+- Back up the workspace from **Settings > Data Safety** before upgrading or
+  removing the WSL distribution.
+- For the native Windows installation and full Linux instructions, read
+  [INSTALL.md](INSTALL.md).

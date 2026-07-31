@@ -12,6 +12,8 @@
 - Finding and retest views now use risk-first ordering with deterministic ties.
 - Added built-in web, API, network, Active Directory, and cloud engagement
   templates.
+- Updated web templates to the current OWASP Top 10:2025 categories, including
+  Software Supply Chain Failures and Mishandling of Exceptional Conditions.
 - API engagements now receive a dedicated OWASP API Security Top 10 (2023)
   checklist instead of the general web checklist.
 - Added report readiness checks with actionable blockers and warnings.
@@ -26,6 +28,35 @@
   engagement-wide narrative. Finding references inside imported exploitation
   chains and saved narrative citations are remapped to the new local finding
   IDs.
+
+### Reporting, installation, and release quality
+
+- Reports now use deterministic risk-first finding and attack-path ordering.
+- Finding views, learned defaults, narrative context, and DOCX reports preserve
+  valid CVSS zero scores. DOCX output no longer duplicates attack paths already
+  present in the shared report content or summary sections already represented
+  by the native Word layout.
+- Generated reports record the selected template name, and invalid template
+  selections return a clear error instead of silently changing branding.
+- If Word generation falls back to Markdown, the saved report and interface
+  now show the actual format and do not claim that DOCX branding was applied.
+- A shared AI context ceiling prevents oversized reports, attack paths,
+  narratives, methodology reviews, and Active Directory datasets from creating
+  an accidental large or expensive provider request. Local workflows remain
+  available without that provider limit.
+- Reviewed attack-path narratives and MITRE ATT&CK mappings are included in
+  deterministic Markdown and DOCX reports without an AI provider.
+- Updated the WSL guide for the current Linux archive, direct local workspace,
+  data location, browser mode, and optional AI setup.
+- Added the WSL guide and 2.2 release notes to each native release archive and
+  made archive validation require them.
+- Added regression coverage that prevents obsolete account-setup commands from
+  returning to Windows, Linux, or WSL installation instructions.
+- Installer banners and shortcuts identify Breachwright as open source and
+  created by Advent Cybersecurity without presenting AI as a requirement.
+- Replaced silent report, evidence, finding-history, checklist, Active
+  Directory, Tool Runner, and Settings load failures with actionable interface
+  errors.
 
 ## v2.1.0 (unreleased foundation)
 

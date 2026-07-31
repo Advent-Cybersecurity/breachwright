@@ -23,6 +23,7 @@ from app.ai.output_validation import (
     validate_path_narrative,
 )
 from app.ai.prompts.loader import get_prompt
+from app.ai.context import AIContextTooLarge, build_bounded_untrusted_context
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ async def generate_narrative(
             "id": f.id,
             "title": f.title,
             "severity": f.severity.value if hasattr(f.severity, 'value') else f.severity,
-            "cvss": float(f.cvss_score) if f.cvss_score else None,
+            "cvss": float(f.cvss_score) if f.cvss_score is not None else None,
             "hosts": f.affected_hosts,
             "description": f.description,
             "remediation": f.remediation,
@@ -146,7 +147,7 @@ async def generate_narrative(
                     lines.append(f"  Related Finding: [{marker}] [{matched['severity'].upper()}] {matched['title']}")
                     if matched['hosts']:
                         lines.append(f"  Affected Hosts: {matched['hosts']}")
-                    if matched['cvss']:
+                    if matched['cvss'] is not None:
                         lines.append(f"  CVSS: {matched['cvss']}")
                     if matched['evidence']:
                         lines.append(f"  Evidence: {matched['evidence'][:300]}")
@@ -173,6 +174,15 @@ async def generate_narrative(
 
     user_message = "\n".join(lines)
 
+    try:
+        bounded_message = build_bounded_untrusted_context(
+            "untrusted_attack_data",
+            user_message,
+            label="Attack-path narrative data",
+        )
+    except AIContextTooLarge as exc:
+        return {"error": str(exc)}
+
     # Get provider and prompt
     provider = get_provider()
     custom_prompt = await get_prompt(db, "prompt_narrative")
@@ -182,11 +192,7 @@ async def generate_narrative(
         candidate, metadata = await complete_validated_json(
             provider,
             system_prompt=system_prompt,
-            user_message=(
-                "<untrusted_attack_data>\n"
-                f"{user_message}\n"
-                "</untrusted_attack_data>"
-            ),
+            user_message=bounded_message,
             validator=validate_path_narrative,
             max_tokens=4096,
             temperature=0.4,
@@ -344,6 +350,15 @@ async def generate_engagement_narrative(
 
     user_message = "\n".join(lines)
 
+    try:
+        bounded_message = build_bounded_untrusted_context(
+            "untrusted_attack_data",
+            user_message,
+            label="Engagement narrative data",
+        )
+    except AIContextTooLarge as exc:
+        return {"error": str(exc)}
+
     # Use a unified narrative prompt
     unified_prompt = """You are a senior penetration tester writing the complete attack narrative for a penetration testing report. Write a single, unified narrative that covers the entire assessment.
 
@@ -381,11 +396,7 @@ OUTPUT FORMAT (JSON):
         candidate, metadata = await complete_validated_json(
             provider,
             system_prompt=(custom_prompt if custom_prompt else unified_prompt) + NARRATIVE_GROUNDING_RULES,
-            user_message=(
-                "<untrusted_attack_data>\n"
-                f"{user_message}\n"
-                "</untrusted_attack_data>"
-            ),
+            user_message=bounded_message,
             validator=validate_full_narrative,
             max_tokens=6000,
             temperature=0.4,

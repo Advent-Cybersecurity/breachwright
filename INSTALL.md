@@ -77,8 +77,8 @@ Application files and data use:
 
 ```text
 ${XDG_DATA_HOME:-$HOME/.local/share}/breachwright/
-├── bin/        application files
-└── data/       database, evidence, reports, backups, configuration, and logs
+|-- bin/        application files
+`-- data/       database, evidence, reports, backups, configuration, and logs
 ```
 
 The command-line companion is:

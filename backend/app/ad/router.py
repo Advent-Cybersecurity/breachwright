@@ -14,6 +14,7 @@ from app.ad.prompts import AD_ANALYSIS_PROMPT
 from app.ai.provider import get_provider
 from app.ai.output_validation import validate_ai_ad_paths
 from app.ai.completion import complete_validated_json
+from app.ai.context import AIContextTooLarge, build_bounded_untrusted_context
 
 logger = logging.getLogger(__name__)
 
@@ -326,19 +327,22 @@ async def analyze_ad_paths(
         evidence_catalog[evidence_id] = ref
         evidence_lines.append(f"[{evidence_id}] {ref['excerpt']}")
 
+    ad_context = build_ad_summary(parsed) + "\n" + "\n".join(evidence_lines)
+    try:
+        bounded_message = build_bounded_untrusted_context(
+            "untrusted_ad_data",
+            ad_context,
+            label="Active Directory analysis data",
+        )
+    except AIContextTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+
     provider = get_provider()
     try:
         validated_paths, metadata = await complete_validated_json(
             provider,
             system_prompt=AD_ANALYSIS_PROMPT,
-            user_message=(
-                "<untrusted_ad_data>\n"
-                + build_ad_summary(parsed)
-                + "\n"
-                + "\n".join(evidence_lines)
-                + "\n"
-                + "</untrusted_ad_data>"
-            ),
+            user_message=bounded_message,
             validator=validate_ai_ad_paths,
             max_tokens=8192,
             temperature=0.2,

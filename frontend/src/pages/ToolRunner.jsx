@@ -209,7 +209,9 @@ export default function ToolRunner() {
           setSelectedEng(engs[0].id);
           setTarget(engs[0].scope?.trim() || '');
         }
-      } catch (e) {}
+      } catch (e) {
+        setToast({ message: `Could not load Tool Runner: ${e.message}`, type: 'error' });
+      }
       finally { setLoading(false); }
     })();
   }, []);
@@ -217,7 +219,9 @@ export default function ToolRunner() {
   // Load jobs when engagement changes
   useEffect(() => {
     if (!selectedEng) return;
-    jobsApi.list(selectedEng).then(setJobList).catch(() => {});
+    jobsApi.list(selectedEng).then(setJobList).catch((e) => {
+      setToast({ message: `Could not load jobs: ${e.message}`, type: 'error' });
+    });
   }, [selectedEng]);
 
   const refreshJobs = useCallback(async () => {

@@ -3,7 +3,7 @@ import os
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -14,6 +14,7 @@ from app.engagements.schemas import ReportResponse
 from app.ai.provider import get_provider
 from app.ai.prompts.loader import get_prompt
 from app.ai.prompts.templates import REPORT_GROUNDING_RULES
+from app.ai.context import AIContextTooLarge, build_bounded_untrusted_context
 from app.config import settings
 from app.reports.content import build_report_content
 
@@ -28,6 +29,11 @@ async def list_reports(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    engagement = (await db.execute(
+        select(Engagement).where(Engagement.id == engagement_id)
+    )).scalar_one_or_none()
+    if engagement is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
     result = await db.execute(
         select(Report).where(Report.engagement_id == engagement_id).order_by(Report.created_at.desc())
     )
@@ -48,14 +54,75 @@ async def generate_report(
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
 
-    finding_result = await db.execute(select(Finding).where(Finding.engagement_id == engagement_id))
+    finding_result = await db.execute(
+        select(Finding)
+        .where(Finding.engagement_id == engagement_id)
+        .order_by(
+            case(
+                (Finding.severity == "critical", 0),
+                (Finding.severity == "high", 1),
+                (Finding.severity == "medium", 2),
+                (Finding.severity == "low", 3),
+                else_=4,
+            ),
+            Finding.cvss_score.desc(),
+            Finding.created_at,
+            Finding.id,
+        )
+    )
     findings = finding_result.scalars().all()
 
-    ap_result = await db.execute(select(AttackPath).where(AttackPath.engagement_id == engagement_id))
+    ap_result = await db.execute(
+        select(AttackPath)
+        .where(AttackPath.engagement_id == engagement_id)
+        .order_by(
+            case(
+                (AttackPath.risk_level == "critical", 0),
+                (AttackPath.risk_level == "high", 1),
+                (AttackPath.risk_level == "medium", 2),
+                (AttackPath.risk_level == "low", 3),
+                else_=4,
+            ),
+            AttackPath.created_at,
+            AttackPath.id,
+        )
+    )
     attack_paths = ap_result.scalars().all()
+
+    template = None
+    if format == "docx":
+        from app.reports.template_model import ReportTemplate
+
+        if template_id:
+            template = (await db.execute(
+                select(ReportTemplate).where(ReportTemplate.id == template_id)
+            )).scalar_one_or_none()
+            if template is None:
+                raise HTTPException(status_code=404, detail="Report template not found")
+        else:
+            template = (await db.execute(
+                select(ReportTemplate)
+                .where(ReportTemplate.is_default.is_(True))
+                .order_by(ReportTemplate.created_at.desc(), ReportTemplate.id)
+                .limit(1)
+            )).scalar_one_or_none()
 
     report_content = build_report_content(engagement, findings, attack_paths)
     if use_ai:
+        try:
+            user_message = build_bounded_untrusted_context(
+                "untrusted_report_data",
+                report_content,
+                label="Report",
+            )
+        except AIContextTooLarge as exc:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"{exc}. Generate the report locally or reduce the "
+                    "engagement content first."
+                ),
+            ) from exc
         provider = get_provider()
         system_prompt = await get_prompt(db, "prompt_reports") + REPORT_GROUNDING_RULES
         required_evidence_ids = {
@@ -68,11 +135,7 @@ async def generate_report(
         try:
             generated_content = await provider.complete(
                 system_prompt=system_prompt,
-                user_message=(
-                    "<untrusted_report_data>\n"
-                    f"{report_content}\n"
-                    "</untrusted_report_data>"
-                ),
+                user_message=user_message,
                 max_tokens=8192,
             )
             missing_ids = sorted(
@@ -107,6 +170,7 @@ async def generate_report(
         engagement_id=engagement_id,
         title=f"{engagement.name} - Penetration Test Report",
         format=format,
+        template_used=template.name if template else None,
         generated_by=current_user.id,
     )
     db.add(report)
@@ -114,16 +178,6 @@ async def generate_report(
 
     if format == "docx":
         from app.reports.docx_generator import generate_docx_report
-        from app.reports.template_model import ReportTemplate
-
-        # Load template if specified, or use default
-        template = None
-        if template_id:
-            t_result = await db.execute(select(ReportTemplate).where(ReportTemplate.id == template_id))
-            template = t_result.scalar_one_or_none()
-        elif not template_id:
-            t_result = await db.execute(select(ReportTemplate).where(ReportTemplate.is_default == True).limit(1))
-            template = t_result.scalar_one_or_none()
 
         file_path = os.path.join(report_dir, f"report-{report.id}.docx")
         try:
@@ -143,6 +197,7 @@ async def generate_report(
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(report_content)
             report.format = "md"
+            report.template_used = None
     else:
         file_path = os.path.join(report_dir, f"report-{report.id}.md")
         with open(file_path, "w", encoding="utf-8") as f:

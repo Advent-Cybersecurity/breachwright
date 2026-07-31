@@ -13,6 +13,7 @@ from app.ai.output_validation import validate_ai_attack_paths
 from app.ai.completion import complete_validated_json
 from app.ai.prompts.loader import get_prompt
 from app.ai.prompts.templates import ATTACK_PATH_GROUNDING_RULES
+from app.ai.context import AIContextTooLarge, build_bounded_untrusted_context
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +62,20 @@ async def generate_attack_paths(
         for f in findings
     )
 
-    user_message = (
-        "<untrusted_finding_data>\n"
+    finding_context = (
         f"Engagement: {engagement.name}\n"
         f"Client: {engagement.client_name}\n"
         f"Scope: {engagement.scope or 'Not specified'}\n\n"
         f"Findings:\n{findings_text}\n"
-        "</untrusted_finding_data>"
     )
+    try:
+        user_message = build_bounded_untrusted_context(
+            "untrusted_finding_data",
+            finding_context,
+            label="Attack-path finding data",
+        )
+    except AIContextTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
 
     provider = get_provider()
     system_prompt = await get_prompt(db, "prompt_attack_paths") + ATTACK_PATH_GROUNDING_RULES

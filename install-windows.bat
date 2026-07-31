@@ -1,7 +1,7 @@
 @echo off
 REM ================================================================
 REM  BREACHWRIGHT WINDOWS INSTALLER
-REM  An Advent Cybersecurity Product
+REM  Created by Advent Cybersecurity ^| Open Source
 REM
 REM  Installs to %LOCALAPPDATA%\Breachwright
 REM  Creates Start Menu shortcut
@@ -10,7 +10,7 @@ REM ================================================================
 echo.
 echo  ========================================
 echo   BREACHWRIGHT INSTALLER
-echo   An Advent Cybersecurity Product
+echo   Created by Advent Cybersecurity ^| Open Source
 echo  ========================================
 echo.
 
@@ -41,11 +41,11 @@ if /i "%BREACHWRIGHT_SKIP_SHORTCUTS%"=="1" goto shortcuts_done
 
 REM Create Start Menu shortcut using PowerShell
 echo [*] Creating Start Menu shortcut...
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%START_MENU%\Breachwright.lnk'); $s.TargetPath = '%INSTALL_DIR%\Breachwright.exe'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'Breachwright - AI Pentest Management'; $s.IconLocation = '%INSTALL_DIR%\icon.ico'; $s.Save()"
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%START_MENU%\Breachwright.lnk'); $s.TargetPath = '%INSTALL_DIR%\Breachwright.exe'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'Breachwright - Open-Source Pentest Management'; $s.IconLocation = '%INSTALL_DIR%\icon.ico'; $s.Save()"
 
 REM Create Desktop shortcut
 echo [*] Creating Desktop shortcut...
-powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\Breachwright.lnk'); $s.TargetPath = '%INSTALL_DIR%\Breachwright.exe'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'Breachwright - AI Pentest Management'; $s.IconLocation = '%INSTALL_DIR%\icon.ico'; $s.Save()"
+powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\Breachwright.lnk'); $s.TargetPath = '%INSTALL_DIR%\Breachwright.exe'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'Breachwright - Open-Source Pentest Management'; $s.IconLocation = '%INSTALL_DIR%\icon.ico'; $s.Save()"
 
 :shortcuts_done
 
