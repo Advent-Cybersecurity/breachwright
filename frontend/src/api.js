@@ -71,19 +71,23 @@ export const auth = {
     request('/auth/refresh', { method: 'POST', noAuth: true }),
 
   needsSetup: () =>
-    fetch('/api/auth/needs-setup').then(r => r.json()),
+    request('/auth/needs-setup', { noAuth: true }),
   setup: (email, password, displayName) =>
-    fetch('/api/auth/setup', {
+    request('/auth/setup', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, display_name: displayName }),
-    }).then(r => { if (!r.ok) throw r; return r.json(); }),
+      body: { email, password, display_name: displayName },
+      noAuth: true,
+    }),
   logout: () =>
     request('/auth/logout', { method: 'POST' }),
   me: () =>
     request('/auth/me'),
+  listUsers: () =>
+    request('/auth/users'),
   createUser: (data) =>
     request('/auth/users', { method: 'POST', body: data }),
+  updateUser: (id, data) =>
+    request(`/auth/users/${id}`, { method: 'PATCH', body: data }),
 };
 
 // Engagements

@@ -136,8 +136,8 @@ export default function Assistant() {
 
       {/* Engagement selector */}
       <div className="flex items-center gap-3 mb-4 shrink-0">
-        <label className="text-xs font-mono themed-text-muted uppercase tracking-wider">Context:</label>
-        <select className="input-field text-sm" style={{ maxWidth: 350 }}
+        <label htmlFor="assistant-context" className="text-xs font-mono themed-text-muted uppercase tracking-wider">Context:</label>
+        <select id="assistant-context" className="input-field text-sm" style={{ maxWidth: 350 }}
           value={selectedEng}
           onChange={(e) => setSelectedEng(e.target.value)}>
           <option value="">All Engagements (general)</option>

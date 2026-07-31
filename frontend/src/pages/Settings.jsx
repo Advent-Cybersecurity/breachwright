@@ -24,8 +24,10 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [showAddUser, setShowAddUser] = useState(false);
   const [toast, setToast] = useState(null);
+  const [userAccounts, setUserAccounts] = useState([]);
   const [userForm, setUserForm] = useState({ email: '', password: '', display_name: '', role: 'analyst' });
   const [addingUser, setAddingUser] = useState(false);
+  const [updatingUserId, setUpdatingUserId] = useState(null);
   const [prompts, setPrompts] = useState(null);
   const [editingPrompt, setEditingPrompt] = useState(null);
   const [promptDraft, setPromptDraft] = useState('');
@@ -48,6 +50,9 @@ export default function Settings() {
         try {
           setBackups(await system.listBackups());
         } catch (e) {}
+        try {
+          setUserAccounts(await authApi.listUsers());
+        } catch (e) {}
       }
       try {
         const p = await appSettings.getPrompts();
@@ -66,12 +71,26 @@ export default function Settings() {
     e.preventDefault();
     setAddingUser(true);
     try {
-      await authApi.createUser(userForm);
+      const created = await authApi.createUser(userForm);
+      setUserAccounts(prev => [...prev, created].sort((a, b) => a.email.localeCompare(b.email)));
       setShowAddUser(false);
       setUserForm({ email: '', password: '', display_name: '', role: 'analyst' });
       setToast({ message: 'User created', type: 'success' });
     } catch (err) { setToast({ message: err.message, type: 'error' }); }
     finally { setAddingUser(false); }
+  };
+
+  const handleUpdateUser = async (account, changes) => {
+    setUpdatingUserId(account.id);
+    try {
+      const updated = await authApi.updateUser(account.id, changes);
+      setUserAccounts(prev => prev.map(item => item.id === updated.id ? updated : item));
+      setToast({ message: `${updated.display_name} updated`, type: 'success' });
+    } catch (err) {
+      setToast({ message: err.message, type: 'error' });
+    } finally {
+      setUpdatingUserId(null);
+    }
   };
 
   if (loading) return <div className="flex items-center justify-center py-20"><Spinner style={{ color: 'var(--accent-red)' }} /></div>;
@@ -107,8 +126,8 @@ export default function Settings() {
           </div>
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Provider</label>
-              <select className="input-field text-sm" style={{ maxWidth: 250 }}
+              <label htmlFor="ai-provider" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Provider</label>
+              <select id="ai-provider" className="input-field text-sm" style={{ maxWidth: 250 }}
                 value={providerForm.ai_provider || 'anthropic'}
                 onChange={(e) => setProviderForm(prev => ({ ...prev, ai_provider: e.target.value }))}>
                 <option value="anthropic">Anthropic (Claude)</option>
@@ -119,16 +138,16 @@ export default function Settings() {
             {(providerForm.ai_provider || 'anthropic') === 'anthropic' && (
               <>
                 <div>
-                  <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+                  <label htmlFor="anthropic-api-key" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
                     Anthropic API Key {provider.has_anthropic_key && <span className="text-green-500 ml-1">(configured)</span>}
                   </label>
-                  <input className="input-field text-sm font-mono" type="password"
+                  <input id="anthropic-api-key" className="input-field text-sm font-mono" type="password"
                     placeholder={provider.has_anthropic_key ? 'Key is set (enter new to replace)' : 'sk-ant-api03-...'}
                     onChange={(e) => setProviderForm(prev => ({ ...prev, anthropic_api_key: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Model</label>
-                  <select className="input-field text-sm" style={{ maxWidth: 350 }}
+                  <label htmlFor="anthropic-model" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Model</label>
+                  <select id="anthropic-model" className="input-field text-sm" style={{ maxWidth: 350 }}
                     value={providerForm.anthropic_model || 'claude-sonnet-4-20250514'}
                     onChange={(e) => setProviderForm(prev => ({ ...prev, anthropic_model: e.target.value }))}>
                     <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
@@ -141,16 +160,16 @@ export default function Settings() {
             {providerForm.ai_provider === 'openai' && (
               <>
                 <div>
-                  <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+                  <label htmlFor="openai-api-key" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
                     OpenAI API Key {provider.has_openai_key && <span className="text-green-500 ml-1">(configured)</span>}
                   </label>
-                  <input className="input-field text-sm font-mono" type="password"
+                  <input id="openai-api-key" className="input-field text-sm font-mono" type="password"
                     placeholder={provider.has_openai_key ? 'Key is set (enter new to replace)' : 'sk-...'}
                     onChange={(e) => setProviderForm(prev => ({ ...prev, openai_api_key: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Model</label>
-                  <input className="input-field text-sm font-mono"
+                  <label htmlFor="openai-model" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Model</label>
+                  <input id="openai-model" className="input-field text-sm font-mono"
                     value={providerForm.openai_model || 'gpt-4o'}
                     onChange={(e) => setProviderForm(prev => ({ ...prev, openai_model: e.target.value }))}
                     placeholder="gpt-4o" />
@@ -192,10 +211,10 @@ export default function Settings() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+                  <label htmlFor="local-model-url" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
                     Server URL
                   </label>
-                  <input className="input-field text-sm font-mono"
+                  <input id="local-model-url" className="input-field text-sm font-mono"
                     value={providerForm.local_model_url || 'http://localhost:11434'}
                     onChange={(e) => setProviderForm(prev => ({ ...prev, local_model_url: e.target.value }))}
                     placeholder="http://localhost:11434" />
@@ -205,11 +224,11 @@ export default function Settings() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+                  <label htmlFor="local-model-name" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
                     Model
                   </label>
                   {localStatus?.online && localStatus.models?.length > 0 ? (
-                    <select className="input-field text-sm font-mono"
+                    <select id="local-model-name" className="input-field text-sm font-mono"
                       value={providerForm.local_model_name || ''}
                       onChange={(e) => setProviderForm(prev => ({ ...prev, local_model_name: e.target.value }))}>
                       <option value="">Select a model...</option>
@@ -218,7 +237,7 @@ export default function Settings() {
                       ))}
                     </select>
                   ) : (
-                    <input className="input-field text-sm font-mono"
+                    <input id="local-model-name" className="input-field text-sm font-mono"
                       value={providerForm.local_model_name || 'llama3.1'}
                       onChange={(e) => setProviderForm(prev => ({ ...prev, local_model_name: e.target.value }))}
                       placeholder="llama3.1" />
@@ -230,18 +249,18 @@ export default function Settings() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+                    <label htmlFor="local-model-api-key" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
                       API Key <span className="normal-case">(optional)</span>
                     </label>
-                    <input className="input-field text-sm font-mono" type="password"
+                    <input id="local-model-api-key" className="input-field text-sm font-mono" type="password"
                       placeholder="Most local servers don't need one"
                       onChange={(e) => setProviderForm(prev => ({ ...prev, local_model_api_key: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+                    <label htmlFor="local-model-timeout" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
                       Timeout <span className="normal-case">(seconds)</span>
                     </label>
-                    <input className="input-field text-sm font-mono" type="number"
+                    <input id="local-model-timeout" className="input-field text-sm font-mono" type="number"
                       value={providerForm.local_model_timeout || 120}
                       onChange={(e) => setProviderForm(prev => ({ ...prev, local_model_timeout: parseInt(e.target.value) || 120 }))}
                       min={10} max={600} />
@@ -474,27 +493,76 @@ export default function Settings() {
           <p className="text-sm themed-text-muted">
             Manage user accounts. Breachwright does not impose a seat limit.
           </p>
+          <div className="mt-4 space-y-2">
+            {userAccounts.map(account => {
+              const isCurrentUser = account.id === user.id;
+              const isUpdating = updatingUserId === account.id;
+              return (
+                <div
+                  key={account.id}
+                  className="flex flex-col sm:flex-row sm:items-center gap-3 px-3 py-3 rounded-md"
+                  style={{
+                    backgroundColor: 'var(--bg-700)',
+                    border: '1px solid var(--border)',
+                    opacity: account.is_active ? 1 : 0.65,
+                  }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm themed-text-primary truncate">
+                      {account.display_name}
+                      {isCurrentUser && <span className="text-xs themed-text-muted ml-1">(you)</span>}
+                    </p>
+                    <p className="text-xs themed-text-muted truncate">{account.email}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      aria-label={`Role for ${account.display_name}`}
+                      className="input-field text-xs py-1.5"
+                      style={{ width: 105 }}
+                      value={account.role}
+                      disabled={isCurrentUser || isUpdating}
+                      onChange={(event) => handleUpdateUser(account, { role: event.target.value })}
+                    >
+                      <option value="admin">Admin</option>
+                      <option value="analyst">Analyst</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                    <button
+                      type="button"
+                      aria-label={`${account.is_active ? 'Deactivate' : 'Reactivate'} ${account.display_name}`}
+                      className="btn-secondary text-xs min-w-[84px]"
+                      disabled={isCurrentUser || isUpdating}
+                      onClick={() => handleUpdateUser(account, { is_active: !account.is_active })}
+                    >
+                      {isUpdating ? 'Saving...' : account.is_active ? 'Deactivate' : 'Reactivate'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
           <Modal open={showAddUser} onClose={() => setShowAddUser(false)} title="Add User">
             <form onSubmit={handleAddUser} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Email</label>
-                <input className="input-field text-sm" type="email" value={userForm.email}
+                <label htmlFor="new-user-email" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Email</label>
+                <input id="new-user-email" className="input-field text-sm" type="email" value={userForm.email}
                   onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} required autoFocus />
               </div>
               <div>
-                <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Display Name</label>
-                <input className="input-field text-sm" value={userForm.display_name}
+                <label htmlFor="new-user-display-name" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Display Name</label>
+                <input id="new-user-display-name" className="input-field text-sm" value={userForm.display_name}
                   onChange={(e) => setUserForm({ ...userForm, display_name: e.target.value })} required />
               </div>
               <div>
-                <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Password</label>
-                <input className="input-field text-sm" type="password" value={userForm.password}
-                  onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} required minLength={8} />
+                <label htmlFor="new-user-password" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Password</label>
+                <input id="new-user-password" className="input-field text-sm" type="password" value={userForm.password}
+                  onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} required minLength={12} />
+                <p className="text-xs themed-text-muted mt-1">At least 12 characters.</p>
               </div>
               <div>
-                <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Role</label>
-                <select className="input-field text-sm" value={userForm.role}
+                <label htmlFor="new-user-role" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Role</label>
+                <select id="new-user-role" className="input-field text-sm" value={userForm.role}
                   onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}>
                   <option value="analyst">Analyst</option>
                   <option value="viewer">Viewer</option>

@@ -42,6 +42,16 @@ class UserResponse(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    display_name: Optional[str] = None
+    display_name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
+
+    @field_validator("display_name")
+    @classmethod
+    def display_name_is_not_blank(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Display name cannot be blank")
+        return cleaned

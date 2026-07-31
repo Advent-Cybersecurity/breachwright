@@ -361,8 +361,8 @@ export default function ToolRunner() {
 
       {/* Engagement selector */}
       <div className="flex items-center gap-3 mb-6">
-        <label className="text-xs font-mono themed-text-muted uppercase tracking-wider">Engagement:</label>
-        <select className="input-field text-sm" style={{ maxWidth: 400 }}
+        <label htmlFor="tool-engagement" className="text-xs font-mono themed-text-muted uppercase tracking-wider">Engagement:</label>
+        <select id="tool-engagement" className="input-field text-sm" style={{ maxWidth: 400 }}
           value={selectedEng}
           onChange={(e) => {
             setSelectedEng(e.target.value);
@@ -446,10 +446,10 @@ export default function ToolRunner() {
         {/* Inputs */}
         <div className="flex gap-3 mb-4">
           <div className="flex-1">
-            <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+            <label htmlFor="tool-target" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
               Target
             </label>
-            <input className="input-field font-mono text-sm" value={target}
+            <input id="tool-target" className="input-field font-mono text-sm" value={target}
               onChange={(e) => setTarget(e.target.value)}
               placeholder={activeTab === 'web' ? 'http://target:port' : activeTab === 'recon' ? 'example.com' : 'IP, CIDR, or hostname'}
             />
@@ -457,18 +457,18 @@ export default function ToolRunner() {
           {currentTool === 'nmap' && (
             <>
               <div style={{ width: 140 }}>
-                <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+                <label htmlFor="tool-ports" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
                   Ports
                 </label>
-                <input className="input-field font-mono text-sm" value={ports}
+                <input id="tool-ports" className="input-field font-mono text-sm" value={ports}
                   onChange={(e) => setPorts(e.target.value)}
                   placeholder="Default" />
               </div>
               <div style={{ width: 80 }}>
-                <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+                <label htmlFor="tool-timing" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
                   Timing
                 </label>
-                <select className="input-field text-sm" value={timing}
+                <select id="tool-timing" className="input-field text-sm" value={timing}
                   onChange={(e) => setTiming(e.target.value)}>
                   {['T1', 'T2', 'T3', 'T4', 'T5'].map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
@@ -480,10 +480,10 @@ export default function ToolRunner() {
         {/* Command preview */}
         {editingCmd ? (
           <div className="mb-4">
-            <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+            <label htmlFor="tool-custom-command" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
               Command
             </label>
-            <input className="input-field font-mono text-sm" value={customCmd}
+            <input id="tool-custom-command" className="input-field font-mono text-sm" value={customCmd}
               onChange={(e) => setCustomCmd(e.target.value)}
               placeholder="Enter full command..." />
           </div>

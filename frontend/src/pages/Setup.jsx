@@ -39,8 +39,7 @@ export default function Setup() {
         setError('Setup already completed. Redirecting to login...');
         setTimeout(() => navigate('/login'), 1500);
       } else {
-        const data = await err.json().catch(() => ({}));
-        setError(data.detail || 'Setup failed. Please try again.');
+        setError(err.message || 'Setup failed. Please try again.');
       }
     } finally {
       setLoading(false);

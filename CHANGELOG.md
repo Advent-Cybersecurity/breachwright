@@ -13,12 +13,15 @@
 ### Reporting and usability
 
 - Added complete Markdown and DOCX reporting without an AI provider
+- Added administrator account listing, role changes, deactivation, and reactivation
 - Made AI report enhancement an explicit opt-in
 - Added semantic version precedence so older releases are not presented as updates
 - Added accessible labels to first-run, login, engagement, and finding forms
+- Added dialog semantics, named close controls, Escape-key support, and accessible account fields
 - Added release-candidate version visibility across the API, desktop launcher, and frontend
 - Split large frontend pages into on-demand bundles to reduce the initial JavaScript download
 - Added interface error recovery and predictable unknown-route handling
+- Fixed first-run validation failures so they show readable feedback instead of crashing the interface
 
 ### Security
 

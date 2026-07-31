@@ -81,16 +81,21 @@ async def get_active_user_count(db: AsyncSession) -> int:
 
 
 async def create_user(
-    db: AsyncSession, email: str, password: str, display_name: str, role: UserRole = UserRole.analyst
+    db: AsyncSession,
+    email: str,
+    password: str,
+    display_name: Optional[str],
+    role: UserRole = UserRole.analyst,
 ) -> User:
     normalized_email = str(email).strip().lower()
     existing = await db.execute(select(User.id).where(User.email == normalized_email))
     if existing.scalar_one_or_none():
         raise DuplicateEmailError("A user with this email already exists")
+    normalized_name = (display_name or normalized_email.split("@")[0]).strip()
     user = User(
         email=normalized_email,
         password_hash=hash_password(password),
-        display_name=display_name,
+        display_name=normalized_name,
         role=role,
     )
     db.add(user)

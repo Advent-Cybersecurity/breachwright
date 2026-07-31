@@ -1,24 +1,46 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
 export function Modal({ open, onClose, title, children, wide = false }) {
   const ref = useRef(null);
+  const onCloseRef = useRef(onClose);
+  const titleId = useId();
+  onCloseRef.current = onClose;
   useEffect(() => {
-    if (open) { ref.current?.focus(); document.body.style.overflow = 'hidden'; }
-    else { document.body.style.overflow = ''; }
-    return () => { document.body.style.overflow = ''; };
+    if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onCloseRef.current();
+    };
+    ref.current?.focus();
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [open]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
       style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
       onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} tabIndex={-1}
+      <div
+        ref={ref}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className={`card p-6 w-full animate-fade-in ${wide ? 'max-w-2xl' : 'max-w-md'}`}
         style={{ maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold themed-text-primary">{title}</h2>
-          <button onClick={onClose} className="themed-text-muted hover:themed-text-primary transition-colors">
+          <h2 id={titleId} className="text-lg font-semibold themed-text-primary">{title}</h2>
+          <button
+            type="button"
+            aria-label={`Close ${title}`}
+            onClick={onClose}
+            className="themed-text-muted hover:themed-text-primary transition-colors"
+          >
             <X size={20} />
           </button>
         </div>

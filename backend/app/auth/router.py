@@ -1,16 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from app.db.session import get_db
-from app.auth.schemas import LoginRequest, TokenResponse, UserCreate, UserResponse
+from app.auth.schemas import (
+    LoginRequest,
+    TokenResponse,
+    UserCreate,
+    UserResponse,
+    UserUpdate,
+)
 from app.auth.service import (
     authenticate_user, create_access_token, create_refresh_token,
     decode_token, create_user, get_user_by_id, get_active_user_count,
     DuplicateEmailError,
 )
 from app.auth.dependencies import get_current_user, require_admin
-from app.auth.models import User
+from app.auth.models import User, UserRole
 from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -127,3 +134,68 @@ async def create_new_user(
     except DuplicateEmailError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return user
+
+
+@router.get("/users", response_model=list[UserResponse])
+async def list_users(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    result = await db.execute(select(User).order_by(User.email))
+    return list(result.scalars().all())
+
+
+@router.patch("/users/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: str,
+    request: UserUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    if not request.model_fields_set:
+        raise HTTPException(status_code=400, detail="No user changes were provided")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    target = result.scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    changes_own_access = target.id == admin.id and (
+        request.is_active is False
+        or (request.role is not None and request.role != target.role)
+    )
+    if changes_own_access:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot deactivate or change the role of your own account",
+        )
+
+    removes_active_admin = (
+        target.is_active
+        and target.role == UserRole.admin
+        and (
+            request.is_active is False
+            or (request.role is not None and request.role != UserRole.admin)
+        )
+    )
+    if removes_active_admin:
+        active_admins = await db.scalar(
+            select(func.count(User.id)).where(
+                User.role == UserRole.admin,
+                User.is_active == True,
+            )
+        )
+        if active_admins <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one active administrator is required",
+            )
+
+    if request.display_name is not None:
+        target.display_name = request.display_name
+    if request.role is not None:
+        target.role = request.role
+    if request.is_active is not None:
+        target.is_active = request.is_active
+    await db.flush()
+    return target

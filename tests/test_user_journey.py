@@ -263,6 +263,37 @@ class UserJourneyTests(unittest.TestCase):
             },
         )
         self.assertEqual(viewer.status_code, 200, viewer.text)
+        users = self.client.get("/api/auth/users", headers=headers)
+        self.assertEqual(users.status_code, 200, users.text)
+        self.assertEqual(len(users.json()), 3)
+        fallback_name_user = self.client.post(
+            "/api/auth/users",
+            headers=headers,
+            json={
+                "email": "fallback-name@example.com",
+                "password": "fallback-test-password",
+                "role": "viewer",
+            },
+        )
+        self.assertEqual(
+            fallback_name_user.status_code,
+            200,
+            fallback_name_user.text,
+        )
+        self.assertEqual(fallback_name_user.json()["display_name"], "fallback-name")
+        updated_viewer = self.client.patch(
+            f"/api/auth/users/{viewer.json()['id']}",
+            headers=headers,
+            json={"display_name": "Updated E2E Viewer"},
+        )
+        self.assertEqual(updated_viewer.status_code, 200, updated_viewer.text)
+        self.assertEqual(updated_viewer.json()["display_name"], "Updated E2E Viewer")
+        self_update = self.client.patch(
+            f"/api/auth/users/{me.json()['id']}",
+            headers=headers,
+            json={"role": "analyst"},
+        )
+        self.assertEqual(self_update.status_code, 400, self_update.text)
         viewer_login = self.client.post(
             "/api/auth/login",
             json={
@@ -274,6 +305,8 @@ class UserJourneyTests(unittest.TestCase):
         viewer_headers = {
             "Authorization": f"Bearer {viewer_login.json()['access_token']}"
         }
+        viewer_users = self.client.get("/api/auth/users", headers=viewer_headers)
+        self.assertEqual(viewer_users.status_code, 403, viewer_users.text)
         viewer_list = self.client.get(
             "/api/engagements",
             headers=viewer_headers,
@@ -425,6 +458,25 @@ class UserJourneyTests(unittest.TestCase):
             },
         )
         self.assertEqual(viewer_job.status_code, 403, viewer_job.text)
+        deactivated_viewer = self.client.patch(
+            f"/api/auth/users/{viewer.json()['id']}",
+            headers=headers,
+            json={"is_active": False},
+        )
+        self.assertEqual(deactivated_viewer.status_code, 200, deactivated_viewer.text)
+        self.assertFalse(deactivated_viewer.json()["is_active"])
+        inactive_viewer = self.client.get(
+            "/api/engagements",
+            headers=viewer_headers,
+        )
+        self.assertEqual(inactive_viewer.status_code, 401, inactive_viewer.text)
+        reactivated_viewer = self.client.patch(
+            f"/api/auth/users/{viewer.json()['id']}",
+            headers=headers,
+            json={"is_active": True},
+        )
+        self.assertEqual(reactivated_viewer.status_code, 200, reactivated_viewer.text)
+        self.assertTrue(reactivated_viewer.json()["is_active"])
 
         job = self.client.post(
             "/api/jobs",

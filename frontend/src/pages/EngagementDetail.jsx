@@ -1145,8 +1145,8 @@ function ReportsTab({ engId, toast }) {
                   {t.is_default && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>DEFAULT</span>}
                   {t.has_logo && <span className="text-[10px] font-mono themed-text-muted">LOGO</span>}
                 </button>
-                <button onClick={() => startEditTemplate(t)} className="themed-text-muted hover:text-white transition-colors p-1"><Edit3 size={12} /></button>
-                <button onClick={() => handleDeleteTemplate(t.id)} className="themed-text-muted hover:text-red-400 transition-colors p-1"><Trash2 size={12} /></button>
+                <button aria-label={`Edit ${t.name}`} onClick={() => startEditTemplate(t)} className="themed-text-muted hover:text-white transition-colors p-1"><Edit3 size={12} /></button>
+                <button aria-label={`Delete ${t.name}`} onClick={() => handleDeleteTemplate(t.id)} className="themed-text-muted hover:text-red-400 transition-colors p-1"><Trash2 size={12} /></button>
               </div>
             ))}
           </div>
@@ -1161,24 +1161,24 @@ function ReportsTab({ engId, toast }) {
           <div className="space-y-3 mt-3 p-4 rounded-md" style={{ backgroundColor: 'var(--bg-700)', border: '1px solid var(--border)' }}>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Template Name *</label>
-                <input className="input-field text-sm" value={templateForm.name} onChange={e => setTemplateForm(p => ({ ...p, name: e.target.value }))} placeholder="Client Report Template" />
+                <label htmlFor="template-name" className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Template Name *</label>
+                <input id="template-name" className="input-field text-sm" value={templateForm.name} onChange={e => setTemplateForm(p => ({ ...p, name: e.target.value }))} placeholder="Client Report Template" />
               </div>
               <div>
-                <label className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Company Name</label>
-                <input className="input-field text-sm" value={templateForm.company_name} onChange={e => setTemplateForm(p => ({ ...p, company_name: e.target.value }))} placeholder="Acme Security Inc." />
+                <label htmlFor="template-company-name" className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Company Name</label>
+                <input id="template-company-name" className="input-field text-sm" value={templateForm.company_name} onChange={e => setTemplateForm(p => ({ ...p, company_name: e.target.value }))} placeholder="Acme Security Inc." />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Primary Color</label>
+                <label htmlFor="template-primary-color" className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Primary Color</label>
                 <div className="flex items-center gap-2">
-                  <input type="color" value={templateForm.primary_color} onChange={e => setTemplateForm(p => ({ ...p, primary_color: e.target.value }))} className="w-8 h-8 rounded cursor-pointer" style={{ border: 'none', padding: 0 }} />
-                  <input className="input-field text-sm font-mono flex-1" value={templateForm.primary_color} onChange={e => setTemplateForm(p => ({ ...p, primary_color: e.target.value }))} />
+                  <input aria-label="Primary color picker" type="color" value={templateForm.primary_color} onChange={e => setTemplateForm(p => ({ ...p, primary_color: e.target.value }))} className="w-8 h-8 rounded cursor-pointer" style={{ border: 'none', padding: 0 }} />
+                  <input id="template-primary-color" className="input-field text-sm font-mono flex-1" value={templateForm.primary_color} onChange={e => setTemplateForm(p => ({ ...p, primary_color: e.target.value }))} />
                 </div>
               </div>
               <div>
-                <label className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Logo</label>
+                <p className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Logo</p>
                 <label className="btn-secondary text-xs cursor-pointer inline-flex items-center gap-1">
                   <Upload size={12} /> {logoFile ? logoFile.name : editingTemplate?.has_logo ? 'Replace Logo' : 'Upload Logo'}
                   <input type="file" className="hidden" accept=".png,.jpg,.jpeg" onChange={e => setLogoFile(e.target.files[0])} />
@@ -1187,12 +1187,12 @@ function ReportsTab({ engId, toast }) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Report Header</label>
-                <input className="input-field text-sm" value={templateForm.header_text} onChange={e => setTemplateForm(p => ({ ...p, header_text: e.target.value }))} placeholder="PENETRATION TEST REPORT" />
+                <label htmlFor="template-report-header" className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Report Header</label>
+                <input id="template-report-header" className="input-field text-sm" value={templateForm.header_text} onChange={e => setTemplateForm(p => ({ ...p, header_text: e.target.value }))} placeholder="PENETRATION TEST REPORT" />
               </div>
               <div>
-                <label className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Report Footer</label>
-                <input className="input-field text-sm" value={templateForm.footer_text} onChange={e => setTemplateForm(p => ({ ...p, footer_text: e.target.value }))} placeholder="CONFIDENTIAL" />
+                <label htmlFor="template-report-footer" className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Report Footer</label>
+                <input id="template-report-footer" className="input-field text-sm" value={templateForm.footer_text} onChange={e => setTemplateForm(p => ({ ...p, footer_text: e.target.value }))} placeholder="CONFIDENTIAL" />
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -1222,13 +1222,13 @@ function ReportsTab({ engId, toast }) {
           Enhance with configured AI
         </label>
         {reportFormat === 'docx' && templates.length > 0 && (
-          <select className="input-field text-sm" style={{ maxWidth: 200 }} value={selectedTemplate}
+          <select aria-label="Report template" className="input-field text-sm" style={{ maxWidth: 200 }} value={selectedTemplate}
             onChange={e => setSelectedTemplate(e.target.value)}>
             <option value="">Default Branding</option>
             {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         )}
-        <select className="input-field text-sm w-28" value={reportFormat}
+        <select aria-label="Report format" className="input-field text-sm w-28" value={reportFormat}
           onChange={(e) => setReportFormat(e.target.value)}>
           <option value="docx">DOCX</option>
           <option value="md">Markdown</option>
