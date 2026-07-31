@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Annotated, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -132,9 +132,11 @@ async def delete_finding(
 
 
 class BulkAction(BaseModel):
-    finding_ids: list[str]
-    action: str  # delete, update_severity, update_retest
-    value: Optional[str] = None
+    finding_ids: list[
+        Annotated[str, Field(min_length=1, max_length=36)]
+    ] = Field(min_length=1, max_length=1000)
+    action: str = Field(min_length=1, max_length=50)
+    value: Optional[str] = Field(default=None, max_length=50)
 
 
 @router.post("/bulk")

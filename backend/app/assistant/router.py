@@ -1,7 +1,7 @@
 import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,8 +31,8 @@ def _get_system_prompt():
 
 
 class ChatMessage(BaseModel):
-    message: str
-    engagement_id: Optional[str] = None
+    message: str = Field(min_length=1, max_length=20000)
+    engagement_id: Optional[str] = Field(default=None, max_length=36)
 
 
 class ChatResponse(BaseModel):

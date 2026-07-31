@@ -42,6 +42,7 @@
 - Fixed engagement deletion so methodology checklist data is removed reliably
 - Fixed Docker Compose persistence for evidence, configuration, and signing data
 - Bounded upload reads before validating scan, evidence, logo, and Active Directory file sizes
+- Bounded assistant messages and bulk finding selections before processing
 
 ### Security
 

@@ -380,6 +380,18 @@ class UserJourneyTests(unittest.TestCase):
         )
         token = replacement_refresh.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
+        empty_assistant_message = self.client.post(
+            "/api/assistant/chat",
+            headers=headers,
+            json={"message": ""},
+        )
+        self.assertEqual(empty_assistant_message.status_code, 422)
+        oversized_assistant_message = self.client.post(
+            "/api/assistant/chat",
+            headers=headers,
+            json={"message": "x" * 20001},
+        )
+        self.assertEqual(oversized_assistant_message.status_code, 422)
 
         viewer_login = self.client.post(
             "/api/auth/login",
@@ -570,6 +582,15 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(engagement.status_code, 201, engagement.text)
         engagement_id = engagement.json()["id"]
+        oversized_bulk_selection = self.client.post(
+            f"/api/engagements/{engagement_id}/findings/bulk",
+            headers=headers,
+            json={
+                "finding_ids": ["00000000-0000-0000-0000-000000000000"] * 1001,
+                "action": "delete",
+            },
+        )
+        self.assertEqual(oversized_bulk_selection.status_code, 422)
 
         viewer_detail = self.client.get(
             f"/api/engagements/{engagement_id}",
