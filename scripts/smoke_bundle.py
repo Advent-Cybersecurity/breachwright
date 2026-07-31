@@ -311,12 +311,29 @@ def main() -> int:
             )
             sarif_upload.raise_for_status()
 
+            rejected_preset = client.post(
+                "/api/jobs",
+                headers=headers,
+                json={
+                    "engagement_id": engagement_id,
+                    "tool": "nmap",
+                    "execution_mode": "preset",
+                    "preset": "quick",
+                    "target": "192.0.2.55 && whoami",
+                },
+            )
+            if rejected_preset.status_code != 422:
+                raise RuntimeError(
+                    "Packaged Tool Runner accepted an unsafe preset target"
+                )
+
             tool_job = client.post(
                 "/api/jobs",
                 headers=headers,
                 json={
                     "engagement_id": engagement_id,
                     "tool": "nmap",
+                    "execution_mode": "custom",
                     "command": "echo Nmap scan report for 192.0.2.55 > output.txt",
                 },
             )
