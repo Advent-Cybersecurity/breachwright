@@ -1041,6 +1041,35 @@ class UserJourneyTests(unittest.TestCase):
             headers=headers,
         )
         self.assertEqual(len(after_rejected_import.json()), 1)
+        invalid_attack_path_export = json.loads(json.dumps(exported))
+        invalid_attack_path_export["attack_paths"] = [
+            {
+                "name": "Malformed path",
+                "steps": "steps must be a list",
+                "risk_level": "high",
+            }
+        ]
+        rejected_attack_path_import = self.client.post(
+            "/api/engagements/import",
+            headers=headers,
+            files={
+                "file": (
+                    "invalid-attack-path.json",
+                    json.dumps(invalid_attack_path_export).encode("utf-8"),
+                    "application/json",
+                )
+            },
+        )
+        self.assertEqual(
+            rejected_attack_path_import.status_code,
+            422,
+            rejected_attack_path_import.text,
+        )
+        after_rejected_attack_path = self.client.get(
+            "/api/engagements",
+            headers=headers,
+        )
+        self.assertEqual(len(after_rejected_attack_path.json()), 1)
 
         imported = self.client.post(
             "/api/engagements/import",

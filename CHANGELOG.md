@@ -52,6 +52,7 @@
 ### Security
 
 - Added password length, email, duplicate-user, CVSS, date, and import validation
+- Added bounded attack-path validation and rollback coverage for engagement imports
 - Prevented scan filename and frontend fallback path traversal
 - Added scan and import size limits
 - Removed SVG report-template uploads and added PNG and JPEG signature checks

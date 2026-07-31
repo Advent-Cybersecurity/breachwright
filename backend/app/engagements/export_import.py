@@ -21,6 +21,9 @@ router = APIRouter(prefix="/api/engagements", tags=["export_import"])
 MAX_IMPORT_SIZE = 25 * 1024 * 1024
 MAX_IMPORT_FINDINGS = 5000
 MAX_IMPORT_ATTACK_PATHS = 1000
+MAX_ATTACK_PATH_DESCRIPTION_SIZE = 200000
+MAX_ATTACK_PATH_STEPS = 1000
+MAX_ATTACK_PATH_STEPS_SIZE = 500000
 VALID_RETEST_STATUSES = {
     None,
     "",
@@ -239,12 +242,39 @@ async def import_engagement(
                 status_code=422,
                 detail=f"Attack path {index + 1} has an invalid name",
             )
+        description = apd.get("description")
+        if description is not None and (
+            not isinstance(description, str)
+            or len(description) > MAX_ATTACK_PATH_DESCRIPTION_SIZE
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Attack path {index + 1} has an invalid description",
+            )
+        steps = apd.get("steps")
+        if steps is not None and (
+            not isinstance(steps, list)
+            or len(steps) > MAX_ATTACK_PATH_STEPS
+            or len(json.dumps(steps).encode("utf-8")) > MAX_ATTACK_PATH_STEPS_SIZE
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Attack path {index + 1} has invalid steps",
+            )
+        risk_level = apd.get("risk_level")
+        if risk_level is not None and (
+            not isinstance(risk_level, str) or len(risk_level) > 50
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Attack path {index + 1} has an invalid risk level",
+            )
         ap = AttackPath(
             engagement_id=engagement.id,
             name=name,
-            description=apd.get("description"),
-            steps=apd.get("steps"),
-            risk_level=apd.get("risk_level"),
+            description=description,
+            steps=steps,
+            risk_level=risk_level,
         )
         db.add(ap)
         ap_count += 1
