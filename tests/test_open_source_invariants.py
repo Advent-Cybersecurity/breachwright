@@ -61,7 +61,7 @@ class OpenSourceReleaseTests(unittest.TestCase):
         )
         self.assertIn("TrustedHostMiddleware", main)
         self.assertIn(
-            'allowed_hosts=["127.0.0.1", "localhost", "testserver"]',
+            'allowed_hosts=["127.0.0.1", "localhost"]',
             main,
         )
         self.assertIn('headers={"Host": "rebind.attacker.example"}', packaged_smoke)
