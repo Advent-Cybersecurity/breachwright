@@ -2,6 +2,12 @@ name: Candidate Build
 
 on:
   workflow_dispatch:
+    inputs:
+      retain_release_artifacts:
+        description: Retain exact tested archives for an approved release
+        required: true
+        type: boolean
+        default: false
   push:
     branches: ["codex/breachwright-2.1-foundation"]
 
@@ -77,3 +83,11 @@ jobs:
         run: bash scripts/smoke_install_linux.sh dist/Breachwright
       - name: Verify candidate release archive
         run: python scripts/verify_archive.py dist
+      - name: Retain approved release archive
+        if: github.event_name == 'workflow_dispatch' && inputs.retain_release_artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: breachwright-${{ runner.os }}-${{ github.sha }}
+          path: dist/breachwright-*
+          if-no-files-found: error
+          retention-days: 1

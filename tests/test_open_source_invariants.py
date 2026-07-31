@@ -258,9 +258,17 @@ class OpenSourceReleaseTests(unittest.TestCase):
         for name, source in workflows.items():
             self.assertIn("cancel-in-progress: true", source, name)
             self.assertNotIn("self-hosted", source, name)
-            self.assertNotIn("actions/upload-artifact", source, name)
+            if name != "candidate-build.yml":
+                self.assertNotIn("actions/upload-artifact", source, name)
 
         candidate = workflows["candidate-build.yml"]
+        self.assertIn("retain_release_artifacts:", candidate)
+        self.assertIn(
+            "github.event_name == 'workflow_dispatch' && inputs.retain_release_artifacts",
+            candidate,
+        )
+        self.assertIn("uses: actions/upload-artifact@v6", candidate)
+        self.assertIn("retention-days: 1", candidate)
         self.assertIn("timeout-minutes: 30", candidate)
         self.assertIn("timeout-minutes: 10", candidate)
         self.assertIn("Acquire::Retries=3", candidate)
