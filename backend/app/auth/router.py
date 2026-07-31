@@ -60,6 +60,11 @@ async def first_run_setup(request: UserCreate, db: AsyncSession = Depends(get_db
             )
         except DuplicateEmailError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        # Setup must be durable before the success response is returned. The
+        # normal request dependency commits later in response teardown, which
+        # leaves a small window where an immediate shutdown can lose the only
+        # administrator account.
+        await db.commit()
     return {"message": f"Admin account created: {user.email}", "email": user.email}
 
 
