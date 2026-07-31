@@ -247,6 +247,19 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("Backup validation failed:", launcher)
         self.assertIn('[str(cli), "--validate-backup"', smoke)
 
+    def test_backup_verification_stays_responsive_and_surfaces_failures(self):
+        router = (ROOT / "backend" / "app" / "system" / "router.py").read_text(
+            encoding="utf-8"
+        )
+        settings = (ROOT / "frontend" / "src" / "pages" / "Settings.jsx").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("await asyncio.to_thread(_list_backup_metadata", router)
+        self.assertIn("await asyncio.to_thread(validate_backup", router)
+        self.assertIn('"valid": False', router)
+        self.assertIn("failed verification", settings)
+        self.assertIn("protected file", settings)
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")

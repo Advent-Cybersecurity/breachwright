@@ -86,6 +86,9 @@
   rejects bundled runtime databases, logs, or `.env` files.
 - Packaged Windows and Linux CLIs can validate a backup and print its version,
   creation time, and manifest file count without modifying local data.
+- Settings now keeps corrupted backup archives visible with their verification
+  failure, reports each verified archive's protected file count, and verifies
+  stored or downloaded backups off the main request loop.
 
 ## v2.2.0 (2026-07-31)
 

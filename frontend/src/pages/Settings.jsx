@@ -33,7 +33,9 @@ export default function Settings() {
   const [localStatus, setLocalStatus] = useState(null);
   const [checkingLocal, setCheckingLocal] = useState(false);
   const [refreshingDiagnostics, setRefreshingDiagnostics] = useState(false);
-  const newestBackup = backups[0] || null;
+  const validBackups = backups.filter(backup => backup.valid !== false);
+  const invalidBackups = backups.filter(backup => backup.valid === false);
+  const newestBackup = validBackups[0] || null;
   const newestBackupAgeDays = newestBackup
     ? Math.max(0, Math.floor((Date.now() - new Date(newestBackup.created_at).getTime()) / 86400000))
     : null;
@@ -436,6 +438,19 @@ export default function Settings() {
           <p className="text-xs themed-text-muted mb-4">
             Create a verified local backup of the database, finding and notebook attachments, uploads, reports, template assets, and Tool Runner output. API keys and environment configuration are excluded.
           </p>
+          {invalidBackups.length > 0 && (
+            <div className="mb-4 rounded-md border border-red-500/40 bg-red-500/5 px-3 py-2 flex items-start gap-2" role="alert">
+              <AlertTriangle size={14} className="text-red-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs themed-text-primary">
+                  {invalidBackups.length} stored backup{invalidBackups.length === 1 ? '' : 's'} failed verification.
+                </p>
+                <p className="text-[10px] themed-text-muted mt-0.5">
+                  These archives are listed below so you can remove them. Create and download a fresh verified backup before relying on recovery.
+                </p>
+              </div>
+            </div>
+          )}
           <div className={`mb-4 rounded-md border px-3 py-2 flex items-start gap-2 ${
             newestBackupAgeDays === null || newestBackupAgeDays > 30
               ? 'border-red-500/40 bg-red-500/5'
@@ -462,7 +477,10 @@ export default function Settings() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-xs themed-text-secondary">
               <ShieldCheck size={14} className="text-green-400" />
-              {backups.length} verified backup{backups.length === 1 ? '' : 's'}
+              {validBackups.length} verified backup{validBackups.length === 1 ? '' : 's'}
+              {invalidBackups.length > 0 && (
+                <span className="text-red-400">{invalidBackups.length} invalid</span>
+              )}
             </div>
             <button
               onClick={async () => {
@@ -486,28 +504,37 @@ export default function Settings() {
           </div>
           {backups.length > 0 && (
             <div className="space-y-2">
-              {backups.slice(0, 5).map(backup => (
+              {backups.slice(0, 10).map(backup => (
                 <div key={backup.filename} className="flex items-center gap-3 px-3 py-2 rounded-md"
-                  style={{ backgroundColor: 'var(--bg-700)', border: '1px solid var(--border)' }}>
+                  style={{ backgroundColor: 'var(--bg-700)', border: `1px solid ${backup.valid === false ? 'rgb(239 68 68 / 0.4)' : 'var(--border)'}` }}>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-mono themed-text-primary truncate">{backup.filename}</p>
-                    <p className="text-[10px] themed-text-muted">
-                      {new Date(backup.created_at).toLocaleString()} · {(backup.size / (1024 ** 2)).toFixed(2)} MB
-                    </p>
+                    {backup.valid === false ? (
+                      <>
+                        <p className="text-[10px] text-red-400">Verification failed · {(backup.size / (1024 ** 2)).toFixed(2)} MB</p>
+                        <p className="text-[10px] themed-text-muted truncate" title={backup.error}>{backup.error || 'Backup archive is invalid'}</p>
+                      </>
+                    ) : (
+                      <p className="text-[10px] themed-text-muted">
+                        {new Date(backup.created_at).toLocaleString()} · {(backup.size / (1024 ** 2)).toFixed(2)} MB · {backup.file_count ?? 0} protected file{backup.file_count === 1 ? '' : 's'}
+                      </p>
+                    )}
                   </div>
-                  <button
-                    onClick={async () => {
-                      try {
-                        await system.downloadBackup(backup.filename);
-                      } catch (err) {
-                        setToast({ message: err.message, type: 'error' });
-                      }
-                    }}
-                    className="btn-ghost flex items-center gap-1 text-xs"
-                  >
-                    <Download size={12} />
-                    Download
-                  </button>
+                  {backup.valid !== false && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          await system.downloadBackup(backup.filename);
+                        } catch (err) {
+                          setToast({ message: err.message, type: 'error' });
+                        }
+                      }}
+                      className="btn-ghost flex items-center gap-1 text-xs"
+                    >
+                      <Download size={12} />
+                      Download
+                    </button>
+                  )}
                   {pendingBackupDelete === backup.filename ? (
                     <div className="flex items-center gap-1">
                       <button
