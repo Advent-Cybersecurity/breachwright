@@ -1,123 +1,117 @@
 #!/usr/bin/env python3
-"""Verify the Breachwright PyInstaller bundle has everything it needs."""
-import os
+"""Verify a built Breachwright directory without launching it."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
 import sys
 
-BUNDLE = os.path.expanduser("~/Desktop/breachwright/dist/Breachwright")
-INTERNAL = os.path.join(BUNDLE, "_internal")
 
-RED = "\033[91m"
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-BOLD = "\033[1m"
-NC = "\033[0m"
+PROJECT_ROOT = Path(__file__).resolve().parent
 
-passed = 0
-warned = 0
-failed = 0
 
-def check(label, path):
-    global passed, failed
-    if os.path.exists(path):
-        print(f"  {GREEN}✓{NC} {label}")
-        passed += 1
-        return True
-    else:
-        print(f"  {RED}✗{NC} {label}  →  {path}")
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "bundle",
+        nargs="?",
+        type=Path,
+        default=PROJECT_ROOT / "dist" / "Breachwright",
+        help="Path to the extracted or freshly built Breachwright directory.",
+    )
+    args = parser.parse_args()
+    bundle = args.bundle.expanduser().resolve()
+    internal = bundle / "_internal"
+    passed = 0
+    failed = 0
+
+    def check(label: str, path: Path) -> bool:
+        nonlocal passed, failed
+        if path.exists():
+            print(f"  [OK]   {label}")
+            passed += 1
+            return True
+        print(f"  [FAIL] {label}: {path}")
         failed += 1
         return False
 
-def warn_check(label, path):
-    global passed, warned
-    if os.path.exists(path):
-        print(f"  {GREEN}✓{NC} {label}")
-        passed += 1
+    print("Breachwright bundle verification")
+    print(f"Bundle: {bundle}")
+    if not bundle.is_dir():
+        print("[FAIL] Bundle directory does not exist")
+        return 1
+
+    windows = (bundle / "Breachwright.exe").is_file()
+    executable = bundle / ("Breachwright.exe" if windows else "Breachwright")
+    cli = bundle / ("BreachwrightCLI.exe" if windows else "BreachwrightCLI")
+    installer = bundle / ("install-windows.bat" if windows else "install.sh")
+    uninstaller = bundle / ("uninstall-windows.bat" if windows else "uninstall.sh")
+
+    print("\nExecutables")
+    check("desktop executable", executable)
+    check("command-line executable", cli)
+
+    print("\nRuntime data")
+    check("frontend index", internal / "frontend" / "dist" / "index.html")
+    assets = internal / "frontend" / "dist" / "assets"
+    if check("frontend assets", assets):
+        javascript = len(list(assets.glob("*.js")))
+        stylesheets = len(list(assets.glob("*.css")))
+        if javascript == 0 or stylesheets == 0:
+            print("  [FAIL] Frontend assets do not contain JavaScript and CSS")
+            failed += 1
+        else:
+            print(f"         {javascript} JavaScript, {stylesheets} CSS bundle(s)")
+    check("Alembic configuration", internal / "backend" / "alembic.ini")
+    check("Alembic environment", internal / "backend" / "alembic" / "env.py")
+    migrations = internal / "backend" / "alembic" / "versions"
+    if check("database migrations", migrations):
+        migration_count = len([
+            path for path in migrations.glob("*.py")
+            if not path.name.startswith("__")
+        ])
+        if migration_count == 0:
+            print("  [FAIL] No database migration files were bundled")
+            failed += 1
+        else:
+            print(f"         {migration_count} migration file(s)")
+
+    print("\nDistribution files")
+    for name in ("VERSION", "README.md", "LICENSE", "NOTICE", "SECURITY.md"):
+        check(name, bundle / name)
+    check(installer.name, installer)
+    check(uninstaller.name, uninstaller)
+    check("data-safety guide", bundle / "docs" / "DATA_SAFETY.md")
+    check("dependency license directory", bundle / "THIRD_PARTY_LICENSES")
+
+    unexpected = [
+        path.relative_to(bundle)
+        for path in bundle.rglob("*")
+        if path.is_file()
+        and (
+            path.name == ".env"
+            or path.suffix.lower() in {".db", ".sqlite", ".sqlite3", ".log"}
+        )
+    ]
+    if unexpected:
+        print("\n  [FAIL] Runtime data or secrets are present:")
+        for path in unexpected[:20]:
+            print(f"         {path}")
+        failed += 1
     else:
-        print(f"  {YELLOW}⚠{NC} {label} (optional)")
-        warned += 1
-
-print(f"\n{BOLD}Breachwright Bundle Verification{NC}")
-print(f"Bundle: {BUNDLE}")
-print(f"Internal: {INTERNAL}\n")
-
-# Executable
-print(f"{BOLD}── Executable ──{NC}")
-exe = os.path.join(BUNDLE, "Breachwright")
-check("Breachwright binary", exe)
-if os.path.exists(exe):
-    size_mb = os.path.getsize(exe) / (1024*1024)
-    print(f"       Size: {size_mb:.1f} MB")
-
-# Frontend
-print(f"\n{BOLD}── Frontend ──{NC}")
-check("frontend/dist/index.html", os.path.join(INTERNAL, "frontend", "dist", "index.html"))
-check("frontend/dist/assets/", os.path.join(INTERNAL, "frontend", "dist", "assets"))
-
-# Count JS/CSS files
-assets_dir = os.path.join(INTERNAL, "frontend", "dist", "assets")
-if os.path.isdir(assets_dir):
-    js_files = [f for f in os.listdir(assets_dir) if f.endswith('.js')]
-    css_files = [f for f in os.listdir(assets_dir) if f.endswith('.css')]
-    print(f"       JS bundles: {len(js_files)}, CSS bundles: {len(css_files)}")
-
-# Alembic
-print(f"\n{BOLD}── Database Migrations ──{NC}")
-check("backend/alembic.ini", os.path.join(INTERNAL, "backend", "alembic.ini"))
-check("backend/alembic/env.py", os.path.join(INTERNAL, "backend", "alembic", "env.py"))
-check("backend/alembic/versions/", os.path.join(INTERNAL, "backend", "alembic", "versions"))
-
-versions_dir = os.path.join(INTERNAL, "backend", "alembic", "versions")
-if os.path.isdir(versions_dir):
-    migrations = [f for f in os.listdir(versions_dir) if f.endswith('.py') and not f.startswith('__')]
-    print(f"       Migration files: {len(migrations)}")
-
-# Key Python modules (spot check inside _internal)
-print(f"\n{BOLD}── Python Modules ──{NC}")
-for mod in ["fastapi", "uvicorn", "sqlalchemy", "alembic", "docx", "webview", "pydantic"]:
-    warn_check(f"{mod} package", os.path.join(INTERNAL, mod))
-
-# GTK / gi (critical for pywebview)
-print(f"\n{BOLD}── GTK / PyGObject ──{NC}")
-# gi could be in multiple locations
-gi_found = False
-for candidate in [
-    os.path.join(INTERNAL, "gi"),
-    os.path.join(INTERNAL, "lib", "gi"),
-]:
-    if os.path.exists(candidate):
-        gi_found = True
-        print(f"  {GREEN}✓{NC} gi package  →  {candidate}")
+        print("\n  [OK]   No .env, database, or log files are bundled")
         passed += 1
-        break
-if not gi_found:
-    # Check if gi is importable from system
-    print(f"  {YELLOW}⚠{NC} gi not in bundle (will use system gi via --system-site-packages)")
-    warned += 1
 
-# User data directory
-print(f"\n{BOLD}── User Data ──{NC}")
-user_data = os.path.expanduser("~/.local/share/breachwright")
-warn_check("User data dir exists", user_data)
-warn_check("Database file", os.path.join(user_data, "breachwright.db"))
+    files = [path for path in bundle.rglob("*") if path.is_file()]
+    total_bytes = sum(path.stat().st_size for path in files)
+    print("\nSummary")
+    print(f"  Files: {len(files)}")
+    print(f"  Bytes: {total_bytes}")
+    print(f"  Passed: {passed}")
+    print(f"  Failed: {failed}")
+    return 1 if failed else 0
 
-# Bundle stats
-print(f"\n{BOLD}── Bundle Stats ──{NC}")
-total_files = 0
-total_size = 0
-for root, dirs, files in os.walk(BUNDLE):
-    for f in files:
-        fp = os.path.join(root, f)
-        total_files += 1
-        total_size += os.path.getsize(fp)
-print(f"  Total files: {total_files}")
-print(f"  Total size:  {total_size / (1024*1024):.1f} MB")
 
-# Summary
-print(f"\n{BOLD}── Summary ──{NC}")
-print(f"  {GREEN}Passed: {passed}{NC}  {YELLOW}Warnings: {warned}{NC}  {RED}Failed: {failed}{NC}")
-if failed == 0:
-    print(f"\n  {GREEN}{BOLD}Bundle looks good!{NC}\n")
-else:
-    print(f"\n  {RED}{BOLD}Fix {failed} failure(s) before distributing.{NC}\n")
-
-sys.exit(1 if failed > 0 else 0)
+if __name__ == "__main__":
+    raise SystemExit(main())

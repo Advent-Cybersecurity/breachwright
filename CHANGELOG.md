@@ -81,6 +81,9 @@
 - Packaged Windows and Linux user journeys now cover scan metadata, provider-free
   AI preflight, recent workspace activity, Tool Runner reuse, reports, backup,
   and restore in addition to core assessment workflows.
+- Replaced the machine-specific legacy bundle checker with a portable,
+  argument-driven Windows/Linux verifier that uses console-safe output and
+  rejects bundled runtime databases, logs, or `.env` files.
 
 ## v2.2.0 (2026-07-31)
 
