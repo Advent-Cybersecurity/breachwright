@@ -50,7 +50,6 @@ def main() -> int:
         env.update(
             {
                 "DATA_DIR": str(Path(temp_dir) / "data"),
-                "SECRET_KEY": "desktop-smoke-test-secret",
                 "DESKTOP": "true",
             }
         )

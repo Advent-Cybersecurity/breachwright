@@ -356,7 +356,7 @@ export default function ToolRunner() {
       <div className="mb-6 rounded p-3 text-xs themed-text-secondary"
         style={{ border: '1px solid color-mix(in srgb, #f59e0b 45%, var(--border))', backgroundColor: 'color-mix(in srgb, #f59e0b 8%, var(--bg-800))' }}>
         Commands run on the Breachwright host with the permissions of the Breachwright process.
-        Only trusted users should have application accounts. Review every command and target before running it.
+        Keep Breachwright on a trusted local machine. Review every command and target before running it.
       </div>
 
       {/* Engagement selector */}

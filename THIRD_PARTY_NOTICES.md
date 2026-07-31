@@ -16,9 +16,6 @@ are the source of truth for exact versions and transitive dependencies.
 | aiosqlite | MIT |
 | asyncpg | Apache-2.0 |
 | Alembic | MIT |
-| PyJWT | MIT |
-| Passlib | BSD |
-| bcrypt | Apache-2.0 |
 | Anthropic Python SDK | MIT |
 | OpenAI Python SDK | Apache-2.0 |
 | Boto3 AWS SDK for Python | Apache-2.0 |

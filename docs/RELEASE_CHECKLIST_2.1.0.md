@@ -10,8 +10,8 @@ fully open source.
 - [x] Frontend production build and release audit pass
 - [x] Windows candidate builds from a clean checkout
 - [x] Linux candidate builds from a clean checkout
-- [x] Windows packaged first-run and core user journey pass
-- [x] Linux packaged first-run and core user journey pass
+- [x] Windows packaged immediate-open and core user journey pass
+- [x] Linux packaged immediate-open and core user journey pass
 - [x] Windows desktop window smoke test passes
 - [x] Linux GTK and WebKit desktop window smoke test passes
 - [x] Backup creation, validation, download, restore, and rollback pass
@@ -40,9 +40,9 @@ As of 2026-07-31:
 - [x] Windows desktop window smoke test passes
 - [x] Windows native install, version, uninstall, and data preservation pass
 - [x] Packaged AWS Bedrock provider initializes without making a model request
-- [x] A database created by the v2.0.0 source upgrades with its account, engagement, and finding intact
-- [x] First-run administrator setup remains durable after an immediate process restart
-- [x] Browser setup, login, engagement, finding, DOCX report, diagnostics, and backup flows passed
+- [x] A database created by the v2.0.0 source upgrades with its engagement and finding intact in the local workspace
+- [x] Fresh installations create the internal local owner durably and open without setup
+- [x] Browser immediate-open, engagement, finding, DOCX report, diagnostics, and backup flows passed
 - [x] Docker Compose configuration and persistent application data mapping pass
 - [x] GitHub-hosted Linux packaged journey, desktop window, native install, and archive gates pass
 - [x] Large DOCX generation remains responsive to concurrent health requests

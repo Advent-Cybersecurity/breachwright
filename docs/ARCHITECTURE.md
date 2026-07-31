@@ -11,7 +11,7 @@ All application capabilities are part of the open-source distribution. There is 
 | Area | Location | Responsibility |
 | --- | --- | --- |
 | API composition | `backend/app/main.py` | Starts the service, runs migrations, registers routers, exposes health and update checks, and serves the built frontend |
-| Authentication | `backend/app/auth` | First-run administrator setup, JWT sessions, roles, and user management |
+| Local ownership | `backend/app/auth` | Maintains one internal owner record so existing database relationships remain compatible; no login or account API is exposed |
 | Engagement data | `backend/app/engagements` | Engagements, findings, attack paths, reports, scans, settings, export, and import |
 | Scan analysis | `backend/app/analysis` | Uploads scan data, parses supported formats, calls the configured AI provider, deduplicates findings, and updates knowledge data |
 | Correlation | `backend/app/correlation` | Normalizes structured output from several tools and correlates hosts and findings |
@@ -54,7 +54,7 @@ The strings `Enterprise Admins` and `Enterprise Key Admins` in the parser are Mi
 1. The backend loads the engagement, findings, attack paths, evidence references, and selected template.
 2. Optional AI assistance drafts report narrative content.
 3. The report service writes Markdown or DOCX output to the application data directory.
-4. An authenticated download endpoint returns the generated file.
+4. The local API returns the generated file.
 
 ## Trust boundaries
 
@@ -62,8 +62,12 @@ The strings `Enterprise Admins` and `Enterprise Key Admins` in the parser are Mi
 - Local model endpoints keep model traffic within infrastructure controlled by the operator, subject to that endpoint's configuration.
 - Tool Runner commands execute on the Breachwright host with the permissions of the Breachwright process.
 - Evidence and report files are stored outside the source tree in the platform application data directory.
-- The desktop application binds to loopback by default. Any broader network exposure requires TLS, firewall rules, and deliberate deployment hardening.
+- The desktop application and included Docker web port bind to loopback. Breachwright has no application login, so it must not be exposed to a network.
 
 ## Data and migrations
 
-Alembic migrations in `backend/alembic/versions` define the persistent schema. Existing installations can upgrade in place. Removing the former activation subsystem does not delete assessment data or require a schema migration because activation state was stored in separate local files.
+Alembic migrations in `backend/alembic/versions` define the persistent schema.
+Existing installations can upgrade in place. The earliest existing
+administrator remains the internal local owner so engagement and finding
+ownership relationships do not change. Other legacy user rows remain only for
+database compatibility and are not exposed as accounts.

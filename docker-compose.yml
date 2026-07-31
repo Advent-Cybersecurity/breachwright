@@ -2,8 +2,8 @@ services:
   api:
     build: ./backend
     container_name: breachwright-api
-    ports:
-      - "13370:13370"
+    expose:
+      - "13370"
     env_file:
       - .env
     environment:
@@ -37,7 +37,7 @@ services:
     build: ./frontend
     container_name: breachwright-web
     ports:
-      - "80:80"
+      - "127.0.0.1:80:80"
     depends_on:
       - api
     restart: unless-stopped

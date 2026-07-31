@@ -179,7 +179,7 @@ for _mod in ("docx", "lxml", "lxml.etree", "lxml._elementpath"):
 hidden_imports += collect_submodules("docx")
 
 # -- AI / LLM libraries
-for _mod in ("openai", "anthropic", "boto3", "botocore", "httpx", "jwt"):
+for _mod in ("openai", "anthropic", "boto3", "botocore", "httpx"):
     try:
         importlib.import_module(_mod)
         hidden_imports += collect_submodules(_mod)
@@ -190,9 +190,6 @@ for _mod in ("openai", "anthropic", "boto3", "botocore", "httpx", "jwt"):
 for _mod in (
     "multipart",
     "jose",
-    "passlib",
-    "bcrypt",
-    "email_validator",
     "dotenv",
     "yaml",
     "jinja2",
@@ -238,7 +235,6 @@ hidden_imports = sorted(
 _extra_datas = []
 for _pkg in (
     "certifi",
-    "email_validator",
     "docx",
     "jinja2",
     "alembic",

@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth';
 import {
   engagements as engApi, findings as findingsApi, analysis as analysisApi,
   attackPaths as apApi, reports as reportsApi, evidence as evidenceApi,
@@ -1597,8 +1596,7 @@ function ADTab({ engId, toast, onFindingsCreated }) {
 
 // Main engagement detail page
 export default function EngagementDetail() {
-  const { user } = useAuth();
-  const canEdit = user?.role !== 'viewer';
+  const canEdit = true;
   const { id } = useParams();
   const navigate = useNavigate();
   const [engagement, setEngagement] = useState(null);
@@ -1722,20 +1720,6 @@ export default function EngagementDetail() {
           </button>
         </div>
       </div>
-
-      {!canEdit && (
-        <div
-          className="mb-5 px-4 py-3 rounded-lg text-sm themed-text-secondary"
-          style={{
-            backgroundColor: 'rgba(59,130,246,0.08)',
-            border: '1px solid rgba(59,130,246,0.2)',
-          }}
-        >
-          Read-only access: you can review and export this engagement. Changes,
-          tool execution, uploads, and AI-assisted actions are disabled for
-          viewer accounts.
-        </div>
-      )}
 
       {/* Severity summary */}
       <div className="flex items-center gap-4 mb-4">

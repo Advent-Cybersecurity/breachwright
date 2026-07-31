@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '../auth';
+import { Outlet, NavLink } from 'react-router-dom';
 import { useTheme } from '../theme';
 import { system } from '../api';
 import {
-  LayoutDashboard, Settings, LogOut, Sun, Moon, Terminal, Bot, ArrowUpCircle, Brain
+  LayoutDashboard, Settings, Sun, Moon, Terminal, Bot, ArrowUpCircle, Brain
 } from 'lucide-react';
 
 function SidebarLink({ to, icon: Icon, label, end = false }) {
@@ -28,9 +27,7 @@ function SidebarLink({ to, icon: Icon, label, end = false }) {
 }
 
 export default function Layout() {
-  const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
-  const navigate = useNavigate();
   const [updateInfo, setUpdateInfo] = useState(null);
 
   useEffect(() => {
@@ -38,11 +35,6 @@ export default function Layout() {
       if (info.update_available) setUpdateInfo(info);
     }).catch(() => {});
   }, []);
-
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
 
   return (
     <div className="min-h-screen flex" style={{ backgroundColor: 'var(--bg-900)' }}>
@@ -72,17 +64,13 @@ export default function Layout() {
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-1">
           <SidebarLink to="/" icon={LayoutDashboard} label="Engagements" end />
-          {user?.role !== 'viewer' && (
-            <>
-              <SidebarLink to="/tools" icon={Terminal} label="Tool Runner" />
-              <SidebarLink to="/assistant" icon={Bot} label="AI Assistant" />
-            </>
-          )}
+          <SidebarLink to="/tools" icon={Terminal} label="Tool Runner" />
+          <SidebarLink to="/assistant" icon={Bot} label="AI Assistant" />
           <SidebarLink to="/knowledge" icon={Brain} label="Knowledge Base" />
           <SidebarLink to="/settings" icon={Settings} label="Settings" />
         </nav>
 
-        {/* Theme toggle + User + Logout */}
+        {/* Theme toggle */}
         <div className="px-3 py-4" style={{ borderTop: '1px solid var(--border)' }}>
           {/* Theme toggle */}
           <button
@@ -94,28 +82,6 @@ export default function Layout() {
           >
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
-          </button>
-
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: 'var(--bg-500)' }}>
-              <span className="text-xs font-bold themed-text-secondary">
-                {user?.display_name?.[0]?.toUpperCase() || '?'}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium themed-text-primary truncate">{user?.display_name}</p>
-              <p className="text-xs themed-text-muted font-mono">{user?.role}</p>
-            </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 w-full px-3 py-2 mt-1 text-sm themed-text-muted rounded-md transition-colors"
-            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--bg-700)'; e.currentTarget.style.color = 'var(--accent-red)'; }}
-            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-          >
-            <LogOut size={16} />
-            <span>Logout</span>
           </button>
         </div>
       </aside>

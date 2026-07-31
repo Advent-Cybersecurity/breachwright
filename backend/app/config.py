@@ -1,6 +1,5 @@
 import os
 import sys
-import secrets
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -22,32 +21,6 @@ def get_data_dir() -> str:
         xdg = os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))
         return os.path.join(xdg, "breachwright")
 
-
-
-def _load_or_create_secret_key(data_dir: str) -> str:
-    """Load secret key from file, or generate one on first run.
-
-    A hardcoded default is a security risk — every install would share
-    the same JWT signing key. This generates a unique key per install
-    and persists it so tokens survive restarts.
-    """
-    key_file = os.path.join(data_dir, ".secret_key")
-    if os.path.exists(key_file):
-        with open(key_file, "r") as f:
-            key = f.read().strip()
-            if key:
-                return key
-    # Generate new key
-    key = secrets.token_hex(32)
-    os.makedirs(data_dir, exist_ok=True)
-    with open(key_file, "w") as f:
-        f.write(key)
-    # Lock permissions (owner read/write only)
-    try:
-        os.chmod(key_file, 0o600)
-    except OSError:
-        pass
-    return key
 
 
 DEFAULT_DATA_DIR = get_data_dir()
@@ -107,10 +80,7 @@ class Settings(BaseSettings):
     database_url: Optional[str] = None
 
     # Application
-    secret_key: str = ""  # Auto-generated per install, see below
     cors_origins: str = "http://localhost,http://127.0.0.1"
-    access_token_expire_minutes: int = 60
-    refresh_token_expire_days: int = 30
     host: str = "127.0.0.1"
     port: int = 13370
 
@@ -177,10 +147,6 @@ class Settings(BaseSettings):
 settings = Settings()
 settings.ensure_data_dirs()
 
-
-# Auto-generate secret key if not set via env
-if not settings.secret_key:
-    settings.secret_key = _load_or_create_secret_key(settings.data_dir)
 
 # Configure file logging
 _log_dir = os.path.join(settings.data_dir, "logs")

@@ -15,18 +15,18 @@ A Breachwright backup is a validated ZIP archive containing:
 - Tool Runner output files
 - A manifest with file sizes and SHA-256 checksums
 
-The archive does not contain `.env` or `.secret_key`. This prevents configured
-API keys and the local token-signing secret from being copied into a portable
-archive. Store those separately if you need to reproduce the same
-configuration.
+The archive does not contain `.env` or a legacy `.secret_key` file. This
+prevents configured API keys or authentication material left by an older
+installation from entering a portable archive. Store provider configuration
+separately if you need to reproduce it.
 
 Built-in backup and restore currently support the default SQLite deployment.
 PostgreSQL deployments should use PostgreSQL-native backup tools.
 
 ## Create and download a backup
 
-Administrators can open **Settings**, select **Create Backup**, and download
-the resulting ZIP file.
+Open **Settings**, select **Create Backup**, and download the resulting ZIP
+file.
 
 Packaged installations also include a command-line companion:
 

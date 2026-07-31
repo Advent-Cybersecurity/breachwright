@@ -52,7 +52,7 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("Created by [Advent Cybersecurity]", readme)
         self.assertIn("Apache License 2.0", readme)
 
-    def test_sensitive_downloads_require_bearer_authentication(self):
+    def test_local_workspace_has_no_account_or_token_surface(self):
         reports_router = (
             ROOT / "backend" / "app" / "reports" / "router.py"
         ).read_text(encoding="utf-8")
@@ -62,8 +62,39 @@ class OpenSourceReleaseTests(unittest.TestCase):
         frontend_api = (ROOT / "frontend" / "src" / "api.js").read_text(
             encoding="utf-8"
         )
+        frontend_app = (ROOT / "frontend" / "src" / "App.jsx").read_text(
+            encoding="utf-8"
+        )
+        frontend_layout = (
+            ROOT / "frontend" / "src" / "components" / "Layout.jsx"
+        ).read_text(encoding="utf-8")
+        frontend_settings = (
+            ROOT / "frontend" / "src" / "pages" / "Settings.jsx"
+        ).read_text(encoding="utf-8")
 
-        self.assertNotIn("download?token=", frontend_api)
+        main = (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+        requirements = (ROOT / "backend" / "requirements.txt").read_text(
+            encoding="utf-8"
+        )
+
+        for path in (
+            ROOT / "backend" / "app" / "auth" / "router.py",
+            ROOT / "backend" / "app" / "auth" / "service.py",
+            ROOT / "frontend" / "src" / "pages" / "Login.jsx",
+            ROOT / "frontend" / "src" / "pages" / "Setup.jsx",
+        ):
+            self.assertFalse(path.exists(), path)
+
+        self.assertNotIn("auth_router", main)
+        self.assertNotIn("Authorization", frontend_api)
+        self.assertNotIn("accessToken", frontend_api)
+        self.assertNotIn("import('./pages/Login')", frontend_app)
+        self.assertNotIn("import('./pages/Setup')", frontend_app)
+        self.assertNotIn("Logout", frontend_layout)
+        self.assertNotIn("User Management", frontend_settings)
+        self.assertNotIn("Change Password", frontend_settings)
+        self.assertNotIn("PyJWT", requirements)
+        self.assertNotIn("passlib", requirements)
         self.assertNotIn("token: str = None", reports_router)
         self.assertIn(
             "current_user: User = Depends(get_current_user)",
@@ -75,7 +106,7 @@ class OpenSourceReleaseTests(unittest.TestCase):
         )
         self.assertNotIn(
             '@app.get("/api/evidence/{attachment_id}/file")',
-            (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8"),
+            main,
         )
 
     def test_docx_generation_runs_off_event_loop(self):
@@ -98,6 +129,11 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("- ./data:/app/data", compose)
         self.assertNotIn("./data/uploads:/app/data/uploads", compose)
         self.assertNotIn("./data/reports:/app/data/reports", compose)
+        self.assertIn('- "127.0.0.1:80:80"', compose)
+        self.assertNotIn('- "13370:13370"', compose)
+
+        launcher = (ROOT / "run.py").read_text(encoding="utf-8")
+        self.assertIn('choices=("127.0.0.1", "localhost")', launcher)
 
     def test_upload_routes_do_not_read_unbounded_requests(self):
         upload_routes = (

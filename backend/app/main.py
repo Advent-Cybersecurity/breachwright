@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from app.config import settings
+from app.auth.local_owner import ensure_local_owner
 from app.db.migrations import run_migrations
 from app.version import APP_VERSION, is_newer_version
 import sys
@@ -37,6 +38,8 @@ async def lifespan(app: FastAPI):
     try:
         await run_migrations(BASE_DIR, settings.resolved_database_url)
         logger.info("Database migrations complete")
+        owner = await ensure_local_owner()
+        logger.info("Local workspace owner ready: %s", owner.id)
     except Exception:
         logger.exception("Database migration failed; startup aborted")
         raise
@@ -107,7 +110,6 @@ async def security_headers(request, call_next):
 
 
 # API Routers
-from app.auth.router import router as auth_router
 from app.engagements.router import router as engagements_router
 from app.findings.router import router as findings_router
 from app.findings.evidence import router as evidence_router
@@ -127,7 +129,6 @@ from app.correlation.router import router as correlation_router
 from app.narrative.router import router as narrative_router
 from app.system.router import router as system_router
 
-app.include_router(auth_router)
 app.include_router(engagements_router)
 app.include_router(findings_router)
 app.include_router(evidence_router)

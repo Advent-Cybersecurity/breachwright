@@ -22,10 +22,14 @@ We will acknowledge receipt when capacity allows, investigate the report, and co
 
 ## Operational security
 
-Breachwright stores assessment evidence, reports, credentials for configured AI providers, and authentication data on the host where it runs. Operators are responsible for host security, backups, access control, TLS termination, network restrictions, and the handling requirements that apply to their client data.
+Breachwright stores assessment evidence, reports, and credentials for
+configured AI providers on the host where it runs. It is a single-owner local
+desktop tool with no application login or user roles. The packaged application
+and included Docker configuration bind to loopback by default.
 
 The Tool Runner executes operator-supplied shell commands with the
-operating-system permissions of the Breachwright process. Administrators and
-analysts can access this function; viewers cannot. Do not create editing
-accounts for untrusted people, do not expose the application directly to an
-untrusted network, and review each command before execution.
+operating-system permissions of the Breachwright process. Anyone with access
+to the local operating-system account can use Breachwright and its Tool
+Runner. Protect that account, use disk encryption and appropriate file
+permissions, do not expose the application to a network, and review each
+command before execution.

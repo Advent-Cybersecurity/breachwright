@@ -11,7 +11,6 @@ import shutil
 import time
 import unittest
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -51,7 +50,6 @@ class UserJourneyTests(unittest.TestCase):
                     "sqlite+aiosqlite:///"
                     + cls.database_path.as_posix()
                 ),
-                "SECRET_KEY": "e2e-only-secret-key",
                 "DESKTOP": "false",
                 "PYTHONPATH": str(BACKEND),
                 "PYTHONUNBUFFERED": "1",
@@ -140,7 +138,7 @@ class UserJourneyTests(unittest.TestCase):
         if temp_root:
             shutil.rmtree(temp_root, ignore_errors=True)
 
-    def test_complete_first_run_to_report_and_export(self):
+    def test_complete_local_workspace_to_report_and_export(self):
         health = self.client.get("/api/health")
         self.assertEqual(health.status_code, 200)
         self.assertEqual(health.json()["distribution"], "open_source")
@@ -164,255 +162,28 @@ class UserJourneyTests(unittest.TestCase):
             self.assertEqual(traversal.status_code, 404)
         self.assertNotIn("# Breachwright", traversal.text)
 
-        unauthorized = self.client.get("/api/engagements")
-        self.assertEqual(unauthorized.status_code, 401)
-
-        setup_state = self.client.get("/api/auth/needs-setup")
-        self.assertEqual(setup_state.json(), {"needs_setup": True})
-
-        weak_setup = self.client.post(
-            "/api/auth/setup",
-            json={
-                "email": "admin@example.com",
-                "password": "too-short",
-            },
-        )
-        self.assertEqual(weak_setup.status_code, 422)
-
-        invalid_email = self.client.post(
-            "/api/auth/setup",
-            json={
-                "email": "not-an-email",
-                "password": "correct-horse-battery-staple",
-            },
-        )
-        self.assertEqual(invalid_email.status_code, 422)
-        blank_display_name = self.client.post(
-            "/api/auth/setup",
-            json={
-                "email": "admin@example.com",
-                "password": "correct-horse-battery-staple",
-                "display_name": "   ",
-            },
-        )
-        self.assertEqual(blank_display_name.status_code, 422)
-        oversized_bcrypt_password = self.client.post(
-            "/api/auth/setup",
-            json={
-                "email": "admin@example.com",
-                "password": "\u00e9" * 40,
-            },
-        )
-        self.assertEqual(oversized_bcrypt_password.status_code, 422)
-
-        setup_payload = {
-                "email": "admin@example.com",
-                "password": "correct-horse-battery-staple",
-                "display_name": "E2E Admin",
-        }
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            setup_attempts = list(
-                executor.map(
-                    lambda _: httpx.post(
-                        f"{self.base_url}/api/auth/setup",
-                        json=setup_payload,
-                        timeout=20,
-                    ),
-                    range(2),
-                )
-            )
-        self.assertEqual(
-            sorted(response.status_code for response in setup_attempts),
-            [200, 403],
-            [response.text for response in setup_attempts],
-        )
-        setup = next(
-            response
-            for response in setup_attempts
-            if response.status_code == 200
-        )
-
-        repeated_setup = self.client.post(
-            "/api/auth/setup",
-            json={
-                "email": "other@example.com",
-                "password": "unused-password",
-            },
-        )
-        self.assertEqual(repeated_setup.status_code, 403)
-
-        for _ in range(10):
-            failed_login = self.client.post(
-                "/api/auth/login",
-                json={
-                    "email": "unknown@example.com",
-                    "password": "not-the-password",
-                },
-            )
-            self.assertEqual(failed_login.status_code, 401)
-        throttled_login = self.client.post(
+        workspace = self.client.get("/api/engagements")
+        self.assertEqual(workspace.status_code, 200, workspace.text)
+        self.assertEqual(workspace.json(), [])
+        headers = {}
+        for retired_route in (
+            "/api/auth/needs-setup",
             "/api/auth/login",
-            json={
-                "email": "unknown@example.com",
-                "password": "not-the-password",
-            },
-        )
-        self.assertEqual(throttled_login.status_code, 429)
-        self.assertGreater(int(throttled_login.headers["retry-after"]), 0)
-
-        login = self.client.post(
-            "/api/auth/login",
-            json={
-                "email": "admin@example.com",
-                "password": "correct-horse-battery-staple",
-            },
-        )
-        self.assertEqual(login.status_code, 200, login.text)
-        self.assertIn("Path=/;", login.headers["set-cookie"])
-        refreshed = self.client.post("/api/auth/refresh")
-        self.assertEqual(refreshed.status_code, 200, refreshed.text)
-        token = login.json()["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
-
-        me = self.client.get("/api/auth/me", headers=headers)
-        self.assertEqual(me.status_code, 200)
-        self.assertEqual(me.json()["role"], "admin")
-
-        analyst = self.client.post(
+            "/api/auth/refresh",
+            "/api/auth/me",
             "/api/auth/users",
-            headers=headers,
-            json={
-                "email": "analyst@example.com",
-                "password": "analyst-test-password",
-                "display_name": "E2E Analyst",
-                "role": "analyst",
-            },
-        )
-        self.assertEqual(analyst.status_code, 200, analyst.text)
-        duplicate_analyst = self.client.post(
-            "/api/auth/users",
-            headers=headers,
-            json={
-                "email": "ANALYST@example.com",
-                "password": "another-test-password",
-                "role": "analyst",
-            },
-        )
-        self.assertEqual(duplicate_analyst.status_code, 409)
+        ):
+            retired = self.client.get(retired_route)
+            self.assertEqual(retired.status_code, 404, retired.text)
 
-        viewer = self.client.post(
-            "/api/auth/users",
-            headers=headers,
-            json={
-                "email": "viewer@example.com",
-                "password": "viewer-test-password",
-                "display_name": "E2E Viewer",
-                "role": "viewer",
-            },
-        )
-        self.assertEqual(viewer.status_code, 200, viewer.text)
-        users = self.client.get("/api/auth/users", headers=headers)
-        self.assertEqual(users.status_code, 200, users.text)
-        self.assertEqual(len(users.json()), 3)
-        fallback_name_user = self.client.post(
-            "/api/auth/users",
-            headers=headers,
-            json={
-                "email": "fallback-name@example.com",
-                "password": "fallback-test-password",
-                "role": "viewer",
-            },
-        )
+        with closing(sqlite3.connect(self.database_path)) as connection:
+            owner = connection.execute(
+                "SELECT email, display_name, role, is_active FROM users"
+            ).fetchall()
         self.assertEqual(
-            fallback_name_user.status_code,
-            200,
-            fallback_name_user.text,
+            owner,
+            [("local@breachwright.invalid", "Local Owner", "admin", 1)],
         )
-        self.assertEqual(fallback_name_user.json()["display_name"], "fallback-name")
-        updated_viewer = self.client.patch(
-            f"/api/auth/users/{viewer.json()['id']}",
-            headers=headers,
-            json={"display_name": "Updated E2E Viewer"},
-        )
-        self.assertEqual(updated_viewer.status_code, 200, updated_viewer.text)
-        self.assertEqual(updated_viewer.json()["display_name"], "Updated E2E Viewer")
-        self_update = self.client.patch(
-            f"/api/auth/users/{me.json()['id']}",
-            headers=headers,
-            json={"role": "analyst"},
-        )
-        self.assertEqual(self_update.status_code, 400, self_update.text)
-        old_refresh_cookie = next(
-            cookie
-            for cookie in self.client.cookies.jar
-            if cookie.name == "refresh_token" and cookie.path == "/"
-        )
-
-        wrong_password_change = self.client.post(
-            "/api/auth/change-password",
-            headers=headers,
-            json={
-                "current_password": "not-the-current-password",
-                "new_password": "replacement-admin-password",
-            },
-        )
-        self.assertEqual(
-            wrong_password_change.status_code,
-            400,
-            wrong_password_change.text,
-        )
-        reused_password = self.client.post(
-            "/api/auth/change-password",
-            headers=headers,
-            json={
-                "current_password": "correct-horse-battery-staple",
-                "new_password": "correct-horse-battery-staple",
-            },
-        )
-        self.assertEqual(reused_password.status_code, 400, reused_password.text)
-        changed_password = self.client.post(
-            "/api/auth/change-password",
-            headers=headers,
-            json={
-                "current_password": "correct-horse-battery-staple",
-                "new_password": "replacement-admin-password",
-            },
-        )
-        self.assertEqual(changed_password.status_code, 200, changed_password.text)
-        revoked_access = self.client.get("/api/auth/me", headers=headers)
-        self.assertEqual(revoked_access.status_code, 401, revoked_access.text)
-        self.client.cookies.set(
-            old_refresh_cookie.name,
-            old_refresh_cookie.value,
-            domain=old_refresh_cookie.domain,
-            path=old_refresh_cookie.path,
-        )
-        revoked_refresh = self.client.post("/api/auth/refresh")
-        self.assertEqual(revoked_refresh.status_code, 401, revoked_refresh.text)
-        old_password_login = self.client.post(
-            "/api/auth/login",
-            json={
-                "email": "admin@example.com",
-                "password": "correct-horse-battery-staple",
-            },
-        )
-        self.assertEqual(old_password_login.status_code, 401, old_password_login.text)
-        replacement_login = self.client.post(
-            "/api/auth/login",
-            json={
-                "email": "admin@example.com",
-                "password": "replacement-admin-password",
-            },
-        )
-        self.assertEqual(replacement_login.status_code, 200, replacement_login.text)
-        replacement_refresh = self.client.post("/api/auth/refresh")
-        self.assertEqual(
-            replacement_refresh.status_code,
-            200,
-            replacement_refresh.text,
-        )
-        token = replacement_refresh.json()["access_token"]
-        headers = {"Authorization": f"Bearer {token}"}
         empty_assistant_message = self.client.post(
             "/api/assistant/chat",
             headers=headers,
@@ -425,40 +196,6 @@ class UserJourneyTests(unittest.TestCase):
             json={"message": "x" * 20001},
         )
         self.assertEqual(oversized_assistant_message.status_code, 422)
-
-        viewer_login = self.client.post(
-            "/api/auth/login",
-            json={
-                "email": "viewer@example.com",
-                "password": "viewer-test-password",
-            },
-        )
-        self.assertEqual(viewer_login.status_code, 200, viewer_login.text)
-        viewer_headers = {
-            "Authorization": f"Bearer {viewer_login.json()['access_token']}"
-        }
-        viewer_users = self.client.get("/api/auth/users", headers=viewer_headers)
-        self.assertEqual(viewer_users.status_code, 403, viewer_users.text)
-        viewer_list = self.client.get(
-            "/api/engagements",
-            headers=viewer_headers,
-        )
-        self.assertEqual(viewer_list.status_code, 200, viewer_list.text)
-        viewer_create = self.client.post(
-            "/api/engagements",
-            headers=viewer_headers,
-            json={
-                "name": "Viewer Must Not Create",
-                "client_name": "Example Client",
-            },
-        )
-        self.assertEqual(viewer_create.status_code, 403, viewer_create.text)
-        viewer_template = self.client.post(
-            "/api/report-templates",
-            headers=viewer_headers,
-            data={"name": "Viewer Must Not Create"},
-        )
-        self.assertEqual(viewer_template.status_code, 403, viewer_template.text)
 
         invalid_provider = self.client.put(
             "/api/settings/provider",
@@ -536,7 +273,6 @@ class UserJourneyTests(unittest.TestCase):
             {item["id"] for item in templates.json()},
         )
         template_logo_url = f"/api/report-templates/{template_id}/logo"
-        self.assertEqual(self.client.get(template_logo_url).status_code, 401)
         template_logo = self.client.get(template_logo_url, headers=headers)
         self.assertEqual(template_logo.status_code, 200, template_logo.text)
         self.assertEqual(template_logo.headers["content-type"], "image/png")
@@ -624,94 +360,6 @@ class UserJourneyTests(unittest.TestCase):
             },
         )
         self.assertEqual(oversized_bulk_selection.status_code, 422)
-
-        viewer_detail = self.client.get(
-            f"/api/engagements/{engagement_id}",
-            headers=viewer_headers,
-        )
-        self.assertEqual(viewer_detail.status_code, 200, viewer_detail.text)
-        viewer_update = self.client.put(
-            f"/api/engagements/{engagement_id}",
-            headers=viewer_headers,
-            json={"name": "Viewer Must Not Update"},
-        )
-        self.assertEqual(viewer_update.status_code, 403, viewer_update.text)
-        viewer_finding = self.client.post(
-            f"/api/engagements/{engagement_id}/findings",
-            headers=viewer_headers,
-            json={"title": "Viewer Must Not Create", "severity": "low"},
-        )
-        self.assertEqual(viewer_finding.status_code, 403, viewer_finding.text)
-        viewer_report = self.client.post(
-            f"/api/engagements/{engagement_id}/reports",
-            headers=viewer_headers,
-        )
-        self.assertEqual(viewer_report.status_code, 403, viewer_report.text)
-        viewer_narrative = self.client.post(
-            f"/api/engagements/{engagement_id}/narrative/full/save",
-            headers=viewer_headers,
-            json={"narrative": "viewer must not save"},
-        )
-        self.assertEqual(
-            viewer_narrative.status_code,
-            403,
-            viewer_narrative.text,
-        )
-        viewer_job = self.client.post(
-            "/api/jobs",
-            headers=viewer_headers,
-            json={
-                "engagement_id": engagement_id,
-                "tool": "custom",
-                "command": "echo should-not-run",
-            },
-        )
-        self.assertEqual(viewer_job.status_code, 403, viewer_job.text)
-        deactivated_viewer = self.client.patch(
-            f"/api/auth/users/{viewer.json()['id']}",
-            headers=headers,
-            json={"is_active": False},
-        )
-        self.assertEqual(deactivated_viewer.status_code, 200, deactivated_viewer.text)
-        self.assertFalse(deactivated_viewer.json()["is_active"])
-        inactive_viewer = self.client.get(
-            "/api/engagements",
-            headers=viewer_headers,
-        )
-        self.assertEqual(inactive_viewer.status_code, 401, inactive_viewer.text)
-        reactivated_viewer = self.client.patch(
-            f"/api/auth/users/{viewer.json()['id']}",
-            headers=headers,
-            json={"is_active": True},
-        )
-        self.assertEqual(reactivated_viewer.status_code, 200, reactivated_viewer.text)
-        self.assertTrue(reactivated_viewer.json()["is_active"])
-        revoked_viewer_session = self.client.get(
-            "/api/engagements",
-            headers=viewer_headers,
-        )
-        self.assertEqual(
-            revoked_viewer_session.status_code,
-            401,
-            revoked_viewer_session.text,
-        )
-        revoked_viewer_refresh = self.client.post("/api/auth/refresh")
-        self.assertEqual(
-            revoked_viewer_refresh.status_code,
-            401,
-            revoked_viewer_refresh.text,
-        )
-        viewer_relogin = self.client.post(
-            "/api/auth/login",
-            json={
-                "email": "viewer@example.com",
-                "password": "viewer-test-password",
-            },
-        )
-        self.assertEqual(viewer_relogin.status_code, 200, viewer_relogin.text)
-        viewer_headers = {
-            "Authorization": f"Bearer {viewer_relogin.json()['access_token']}"
-        }
 
         job = self.client.post(
             "/api/jobs",
@@ -828,19 +476,6 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(checklist_items.status_code, 200, checklist_items.text)
         self.assertGreater(len(checklist_items.json()), 0)
         checklist_item_id = checklist_items.json()[0]["id"]
-        viewer_checklist_update = self.client.put(
-            (
-                f"/api/engagements/{engagement_id}/checklists/"
-                f"{checklist_item_id}"
-            ),
-            headers=viewer_headers,
-            json={"status": "done"},
-        )
-        self.assertEqual(
-            viewer_checklist_update.status_code,
-            403,
-            viewer_checklist_update.text,
-        )
         invalid_checklist_status = self.client.put(
             (
                 f"/api/engagements/{engagement_id}/checklists/"
@@ -972,7 +607,6 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(stored_evidence[0].suffix, ".png")
         self.assertNotIn(":", stored_evidence[0].name)
 
-        self.assertEqual(self.client.get(evidence_url).status_code, 401)
         downloaded_evidence = self.client.get(evidence_url, headers=headers)
         self.assertEqual(downloaded_evidence.status_code, 200)
         self.assertEqual(downloaded_evidence.content, evidence_bytes)

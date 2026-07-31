@@ -196,14 +196,9 @@ def main() -> int:
             health.raise_for_status()
             if health.json().get("version") != "2.1.0-rc.1":
                 raise RuntimeError("Candidate version was not loaded")
-            login = candidate_client.post(
-                "/api/auth/login",
-                json={"email": email, "password": password},
-            )
-            login.raise_for_status()
-            headers = {
-                "Authorization": f"Bearer {login.json()['access_token']}"
-            }
+            if candidate_client.get("/api/auth/login").status_code != 404:
+                raise RuntimeError("Candidate authentication routes are still exposed")
+            headers = {}
             engagement = candidate_client.get(
                 f"/api/engagements/{engagement_id}",
                 headers=headers,

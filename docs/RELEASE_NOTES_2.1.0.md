@@ -10,9 +10,9 @@ usage limits.
 - Windows x64 and Linux x64 packages built from the same source and data model
 - Native installation and uninstall scripts that preserve application data
 - Complete Markdown and DOCX report generation without an AI provider
-- Administrator account management and read-only viewer roles
-- Self-service password changes and reliable session revocation
-- Login-failure throttling and uniform invalid-credential responses
+- A single local owner workspace that opens without accounts, passwords, or login
+- In-place upgrade compatibility for databases created by Breachwright 2.0
+- Loopback-only packaged and Docker access by default
 - Verified SQLite backups with offline restore, rollback, and secret exclusion
 - Backup coverage for evidence, scans, reports, template assets, and Tool
   Runner output
@@ -42,7 +42,8 @@ Breachwright from source.
 
 Back up the current Breachwright data directory before upgrading. The 2.1
 candidate workflow opens a copied 2.0 database, runs every migration, and
-verifies that the account, engagement, and finding remain intact.
+verifies that the engagement and finding remain intact and open directly in
+the local workspace.
 
 Uninstalling a packaged application preserves its data by default. See
 `INSTALL.md` and `docs/DATA_SAFETY.md` before replacing application files or
@@ -67,8 +68,8 @@ PostgreSQL volume and the persisted `./data` directory.
 
 Breachwright processes sensitive assessment data and can execute
 operator-supplied security-tool commands. Keep it on a trusted host, use only
-authorized targets, restrict editing accounts, and do not expose the API
-directly to an untrusted network.
+authorized targets, protect the local operating-system account, and do not
+expose the API to a network.
 
 ## Release validation
 
@@ -77,7 +78,7 @@ The release gate requires all of the following before publication:
 - Source tests and dependency audits on Windows and Ubuntu
 - CodeQL analysis
 - Clean Windows and Linux package builds
-- Packaged first-run and offline user journeys
+- Packaged immediate-open and offline user journeys
 - Native desktop-window checks
 - Install, version, uninstall, and data-preservation checks
 - Upgrade from a copied 2.0 database

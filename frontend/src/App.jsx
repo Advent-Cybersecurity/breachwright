@@ -1,11 +1,8 @@
 import { Component, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './auth';
 import { ThemeProvider } from './theme';
 import Layout from './components/Layout';
 
-const Login = lazy(() => import('./pages/Login'));
-const Setup = lazy(() => import('./pages/Setup'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const EngagementDetail = lazy(() => import('./pages/EngagementDetail'));
 const ToolRunner = lazy(() => import('./pages/ToolRunner'));
@@ -63,65 +60,11 @@ function PageLoader() {
   );
 }
 
-function ProtectedRoute({ children }) {
-  const { user, loading, needsSetup } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-surface-900 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-accent-red border-t-transparent rounded-full animate-spin" />
-          <span className="text-text-muted font-mono text-sm">INITIALIZING</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to={needsSetup ? '/setup' : '/login'} replace />;
-  }
-  return children;
-}
-
 function AppRoutes() {
-  const { user, loading, needsSetup } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-surface-900 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-accent-red border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
-        <Route
-          path="/setup"
-          element={
-            user
-              ? <Navigate to="/" replace />
-              : needsSetup === false
-                ? <Navigate to="/login" replace />
-                : <Setup />
-          }
-        />
-        <Route
-          path="/login"
-          element={
-            user
-              ? <Navigate to="/" replace />
-              : needsSetup
-                ? <Navigate to="/setup" replace />
-                : <Login />
-          }
-        />
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Layout />
-          </ProtectedRoute>
-        }>
+        <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="engagements/:id" element={<EngagementDetail />} />
           <Route path="tools" element={<ToolRunner />} />
@@ -129,15 +72,9 @@ function AppRoutes() {
           <Route path="settings" element={<Settings />} />
           <Route path="knowledge" element={<KnowledgeBase />} />
         </Route>
-        <Route
-          path="*"
-          element={
-            <Navigate
-              to={user ? '/' : needsSetup ? '/setup' : '/login'}
-              replace
-            />
-          }
-        />
+        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="/setup" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
   );
@@ -148,9 +85,7 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <ThemeProvider>
-          <AuthProvider>
-            <AppRoutes />
-          </AuthProvider>
+          <AppRoutes />
         </ThemeProvider>
       </BrowserRouter>
     </ErrorBoundary>

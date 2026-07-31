@@ -1,29 +1,9 @@
 const BASE = '/api';
 
-let accessToken = null;
-let onAuthError = null;
-
-export function setToken(token) {
-  accessToken = token;
-}
-
-export function getToken() {
-  return accessToken;
-}
-
-export function setAuthErrorHandler(handler) {
-  onAuthError = handler;
-}
-
 async function request(path, options = {}) {
-  const isAuthenticatedRequest = Boolean(accessToken && !options.noAuth);
   const headers = {
     ...(options.headers || {}),
   };
-
-  if (accessToken && !options.noAuth) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
-  }
 
   if (options.body && !(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
@@ -33,13 +13,7 @@ async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers,
-    credentials: 'include',
   });
-
-  if (res.status === 401 && onAuthError && isAuthenticatedRequest) {
-    onAuthError();
-    throw new Error('Unauthorized');
-  }
 
   if (res.status === 204) return null;
 
@@ -63,45 +37,6 @@ async function request(path, options = {}) {
 
   return data;
 }
-
-// Auth
-export const auth = {
-  login: (email, password) =>
-    request('/auth/login', {
-      method: 'POST',
-      body: { email, password },
-      noAuth: true,
-    }),
-  refresh: () =>
-    request('/auth/refresh', { method: 'POST', noAuth: true }),
-
-  needsSetup: () =>
-    request('/auth/needs-setup', { noAuth: true }),
-  setup: (email, password, displayName) =>
-    request('/auth/setup', {
-      method: 'POST',
-      body: { email, password, display_name: displayName },
-      noAuth: true,
-    }),
-  logout: () =>
-    request('/auth/logout', { method: 'POST' }),
-  me: () =>
-    request('/auth/me'),
-  changePassword: (currentPassword, newPassword) =>
-    request('/auth/change-password', {
-      method: 'POST',
-      body: {
-        current_password: currentPassword,
-        new_password: newPassword,
-      },
-    }),
-  listUsers: () =>
-    request('/auth/users'),
-  createUser: (data) =>
-    request('/auth/users', { method: 'POST', body: data }),
-  updateUser: (id, data) =>
-    request(`/auth/users/${id}`, { method: 'PATCH', body: data }),
-};
 
 // Engagements
 export const engagements = {
@@ -183,8 +118,6 @@ export const reports = {
     const url = `/api/reports/${reportId}/download`;
     // Fetch as blob and save via object URL
     const res = await fetch(url, {
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-      credentials: 'include',
     });
     if (!res.ok) throw new Error('Download failed');
     const blob = await res.blob();
@@ -224,7 +157,7 @@ export const reports = {
 // System
 export const system = {
   health: () =>
-    request('/health', { noAuth: true }),
+    request('/health'),
   versionCheck: () =>
     request('/version-check'),
   diagnostics: () =>
@@ -237,8 +170,6 @@ export const system = {
     request(`/system/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' }),
   downloadBackup: async (filename) => {
     const res = await fetch(`/api/system/backups/${encodeURIComponent(filename)}`, {
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-      credentials: 'include',
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -274,8 +205,6 @@ export const evidence = {
     request(`/engagements/${engId}/findings/${findingId}/evidence/${attachmentId}`, { method: 'DELETE' }),
   objectUrl: async (url) => {
     const res = await fetch(url, {
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-      credentials: 'include',
     });
     if (!res.ok) throw new Error('Unable to load evidence file');
     return URL.createObjectURL(await res.blob());
@@ -313,15 +242,11 @@ export const reportTemplates = {
   create: (formData) =>
     fetch(`${BASE}/report-templates`, {
       method: 'POST',
-      headers: accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {},
-      credentials: 'include',
       body: formData,
     }).then(async r => { if (!r.ok) throw new Error((await r.json()).detail || r.statusText); return r.json(); }),
   update: (id, formData) =>
     fetch(`${BASE}/report-templates/${id}`, {
       method: 'PUT',
-      headers: accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {},
-      credentials: 'include',
       body: formData,
     }).then(async r => { if (!r.ok) throw new Error((await r.json()).detail || r.statusText); return r.json(); }),
   delete: (id) => request(`/report-templates/${id}`, { method: 'DELETE' }),
@@ -383,8 +308,6 @@ export const ad = {
 export const exportImport = {
   export: async (engId) => {
     const res = await fetch(`${BASE}/engagements/${engId}/export`, {
-      headers: accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {},
-      credentials: 'include',
     });
     if (!res.ok) throw new Error('Export failed');
     const blob = await res.blob();

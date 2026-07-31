@@ -30,7 +30,6 @@ def main() -> int:
         env.update(
             {
                 "DATA_DIR": str(Path(temp_dir) / "data"),
-                "SECRET_KEY": "bundle-smoke-test-secret",
                 "DESKTOP": "false",
             }
         )
@@ -68,26 +67,11 @@ def main() -> int:
             else:
                 raise RuntimeError("Packaged application did not become healthy")
 
-            setup = client.post(
-                "/api/auth/setup",
-                json={
-                    "email": "bundle@example.com",
-                    "password": "bundle-smoke-password",
-                    "display_name": "Bundle Smoke",
-                },
-            )
-            setup.raise_for_status()
-            login = client.post(
-                "/api/auth/login",
-                json={
-                    "email": "bundle@example.com",
-                    "password": "bundle-smoke-password",
-                },
-            )
-            login.raise_for_status()
-            headers = {
-                "Authorization": f"Bearer {login.json()['access_token']}"
-            }
+            if client.get("/api/engagements").status_code != 200:
+                raise RuntimeError("Packaged local workspace was not immediately usable")
+            if client.get("/api/auth/login").status_code != 404:
+                raise RuntimeError("Packaged authentication routes are still exposed")
+            headers = {}
             engagement = client.post(
                 "/api/engagements",
                 headers=headers,

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { engagements as engApi, exportImport } from '../api';
-import { useAuth } from '../auth';
 import { Modal, StatusBadge, SeverityBadge, EmptyState, SectionHeader, Toast } from '../components/UI';
 import { Plus, Search, Crosshair, ChevronRight, FolderOpen, Calendar, Building2, Upload, Trash2, BarChart3 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -44,8 +43,7 @@ function EngagementRow({ engagement, onClick, onDelete }) {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const canEdit = user?.role !== 'viewer';
+  const canEdit = true;
   const [engagementList, setEngagementList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);

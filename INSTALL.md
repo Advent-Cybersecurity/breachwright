@@ -30,7 +30,7 @@ directory and installer files.
 2. Open the extracted `Breachwright` folder.
 3. Run `install-windows.bat`.
 4. Start Breachwright from the desktop or Start menu shortcut.
-5. Follow the first-run screen to create the administrator account.
+5. Breachwright opens directly into your local workspace.
 
 Application files are installed in `%LOCALAPPDATA%\Breachwright`. Assessment
 data, reports, evidence, backups, configuration, and logs are stored separately
@@ -70,7 +70,7 @@ Open a new terminal if the installer added `~/.local/bin` to `PATH`, then run:
 breachwright
 ```
 
-Follow the first-run screen to create the administrator account. The
+The application opens directly into your local workspace. The
 application-menu entry can also launch Breachwright.
 
 Application files and data use:
@@ -98,10 +98,10 @@ separately.
 
 ## Backup before upgrading
 
-Administrators can create a verified backup from **Settings > Data Safety**.
+Create a verified backup from **Settings > Data Safety**.
 Backups include the SQLite database, evidence, uploaded scans, reports, custom
 template assets, and Tool Runner output.
-API keys and token-signing secrets are excluded.
+API keys and environment configuration are excluded.
 
 For command-line backup and restore instructions, including the required
 offline restore process, read [docs/DATA_SAFETY.md](docs/DATA_SAFETY.md).

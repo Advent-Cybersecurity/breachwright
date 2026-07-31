@@ -6,7 +6,6 @@ No browser, no Docker, no exposed ports.
 
 Usage:
     breachwright              # Launch the app
-    breachwright --setup      # Create admin account
     breachwright --headless   # API server only (no window)
 """
 import argparse
@@ -87,11 +86,6 @@ def wait_for_server(host, port, timeout=20):
     return False
 
 
-def run_setup():
-    from app.auth.setup import setup
-    setup()
-
-
 def launch_window(host, port):
     try:
         import webview
@@ -136,7 +130,6 @@ def main():
         action="version",
         version=f"Breachwright {APP_VERSION}",
     )
-    parser.add_argument("--setup", action="store_true", help="Create admin account")
     parser.add_argument("--headless", action="store_true", help="Run server only, no GUI")
     parser.add_argument(
         "--create-backup",
@@ -158,7 +151,12 @@ def main():
         action="store_true",
         help="Validate the configured AI provider without sending a model request",
     )
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        choices=("127.0.0.1", "localhost"),
+        help="Loopback address for the local workspace",
+    )
     parser.add_argument("--port", type=int, default=13370)
     args = parser.parse_args()
 
@@ -196,10 +194,6 @@ def main():
             settings.resolved_database_url,
         )
         print(f"Restore complete. Previous data: {safety_path}")
-        return
-
-    if args.setup:
-        run_setup()
         return
 
     print()

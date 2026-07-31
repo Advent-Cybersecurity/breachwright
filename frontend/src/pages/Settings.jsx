@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { system, auth as authApi, appSettings } from '../api';
-import { useAuth } from '../auth';
+import { system, appSettings } from '../api';
 import { useTheme } from '../theme';
-import { Modal, Toast, Spinner } from '../components/UI';
-import { Users, Server, UserPlus, Sun, Moon, Palette, MessageSquare, RotateCcw, Bot, Save, Wifi, WifiOff, RefreshCw, DatabaseBackup, Download, ShieldCheck, KeyRound } from 'lucide-react';
+import { Toast, Spinner } from '../components/UI';
+import { Server, Sun, Moon, Palette, MessageSquare, RotateCcw, Bot, Save, Wifi, WifiOff, RefreshCw, DatabaseBackup, Download, ShieldCheck } from 'lucide-react';
 
 function InfoRow({ label, value, mono = false }) {
   return (
@@ -15,7 +14,6 @@ function InfoRow({ label, value, mono = false }) {
 }
 
 export default function Settings() {
-  const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
   const [health, setHealth] = useState(null);
   const [diagnostics, setDiagnostics] = useState(null);
@@ -24,19 +22,7 @@ export default function Settings() {
   const [pendingBackupDelete, setPendingBackupDelete] = useState(null);
   const [deletingBackup, setDeletingBackup] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [showAddUser, setShowAddUser] = useState(false);
-  const [showChangePassword, setShowChangePassword] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({
-    current: '',
-    next: '',
-    confirm: '',
-  });
-  const [changingPassword, setChangingPassword] = useState(false);
   const [toast, setToast] = useState(null);
-  const [userAccounts, setUserAccounts] = useState([]);
-  const [userForm, setUserForm] = useState({ email: '', password: '', display_name: '', role: 'analyst' });
-  const [addingUser, setAddingUser] = useState(false);
-  const [updatingUserId, setUpdatingUserId] = useState(null);
   const [prompts, setPrompts] = useState(null);
   const [editingPrompt, setEditingPrompt] = useState(null);
   const [promptDraft, setPromptDraft] = useState('');
@@ -55,14 +41,9 @@ export default function Settings() {
       try {
         setDiagnostics(await system.diagnostics());
       } catch (e) {}
-      if (user?.role === 'admin') {
-        try {
-          setBackups(await system.listBackups());
-        } catch (e) {}
-        try {
-          setUserAccounts(await authApi.listUsers());
-        } catch (e) {}
-      }
+      try {
+        setBackups(await system.listBackups());
+      } catch (e) {}
       try {
         const p = await appSettings.getPrompts();
         setPrompts(p);
@@ -74,52 +55,7 @@ export default function Settings() {
       } catch (e) {}
       finally { setLoading(false); }
     })();
-  }, [user?.role]);
-
-  const handleAddUser = async (e) => {
-    e.preventDefault();
-    setAddingUser(true);
-    try {
-      const created = await authApi.createUser(userForm);
-      setUserAccounts(prev => [...prev, created].sort((a, b) => a.email.localeCompare(b.email)));
-      setShowAddUser(false);
-      setUserForm({ email: '', password: '', display_name: '', role: 'analyst' });
-      setToast({ message: 'User created', type: 'success' });
-    } catch (err) { setToast({ message: err.message, type: 'error' }); }
-    finally { setAddingUser(false); }
-  };
-
-  const handleUpdateUser = async (account, changes) => {
-    setUpdatingUserId(account.id);
-    try {
-      const updated = await authApi.updateUser(account.id, changes);
-      setUserAccounts(prev => prev.map(item => item.id === updated.id ? updated : item));
-      setToast({ message: `${updated.display_name} updated`, type: 'success' });
-    } catch (err) {
-      setToast({ message: err.message, type: 'error' });
-    } finally {
-      setUpdatingUserId(null);
-    }
-  };
-
-  const handleChangePassword = async (event) => {
-    event.preventDefault();
-    if (passwordForm.next !== passwordForm.confirm) {
-      setToast({ message: 'New passwords do not match', type: 'error' });
-      return;
-    }
-    setChangingPassword(true);
-    try {
-      await authApi.changePassword(passwordForm.current, passwordForm.next);
-      setShowChangePassword(false);
-      setPasswordForm({ current: '', next: '', confirm: '' });
-      await logout();
-    } catch (err) {
-      setToast({ message: err.message, type: 'error' });
-    } finally {
-      setChangingPassword(false);
-    }
-  };
+  }, []);
 
   if (loading) return <div className="flex items-center justify-center py-20"><Spinner style={{ color: 'var(--accent-red)' }} /></div>;
 
@@ -146,7 +82,7 @@ export default function Settings() {
       </div>
 
       {/* AI Provider */}
-      {user?.role === 'admin' && provider && (
+      {provider && (
         <div className="card p-5 mb-5">
           <div className="flex items-center gap-2.5 mb-4">
             <Bot size={18} className="text-cyan-400" />
@@ -370,37 +306,14 @@ export default function Settings() {
         )}
       </div>
 
-      {/* Account security */}
-      <div className="card p-5 mb-5">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <KeyRound size={18} className="text-yellow-400" />
-            <div>
-              <h2 className="text-base font-semibold themed-text-primary">Account Security</h2>
-              <p className="text-xs themed-text-muted mt-0.5">
-                Changing your password signs out every session for this account.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowChangePassword(true)}
-            className="btn-secondary text-sm whitespace-nowrap"
-          >
-            Change Password
-          </button>
-        </div>
-      </div>
-
       {/* Data safety */}
-      {user?.role === 'admin' && (
-        <div className="card p-5 mb-5">
+      <div className="card p-5 mb-5">
           <div className="flex items-center gap-2.5 mb-2">
             <DatabaseBackup size={18} className="text-green-400" />
             <h2 className="text-base font-semibold themed-text-primary">Data Safety</h2>
           </div>
           <p className="text-xs themed-text-muted mb-4">
-            Create a verified local backup of the database, evidence, uploads, reports, template assets, and Tool Runner output. API keys and signing secrets are excluded.
+            Create a verified local backup of the database, evidence, uploads, reports, template assets, and Tool Runner output. API keys and environment configuration are excluded.
           </p>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-xs themed-text-secondary">
@@ -499,11 +412,10 @@ export default function Settings() {
           <p className="text-[10px] themed-text-muted mt-3">
             Restores are intentionally offline. Stop Breachwright, then use BreachwrightCLI with the documented restore command.
           </p>
-        </div>
-      )}
+      </div>
 
       {/* Custom AI Prompts */}
-      {user?.role === 'admin' && prompts && (
+      {prompts && (
         <div className="card p-5 mb-5">
           <div className="flex items-center gap-2.5 mb-4">
             <MessageSquare size={18} className="text-cyan-400" />
@@ -568,180 +480,6 @@ export default function Settings() {
           ))}
         </div>
       )}
-
-      {/* User Management */}
-      {user?.role === 'admin' && (
-        <div className="card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2.5">
-              <Users size={18} className="text-cyan-400" />
-              <h2 className="text-base font-semibold themed-text-primary">User Management</h2>
-            </div>
-            <button onClick={() => setShowAddUser(true)} className="btn-secondary flex items-center gap-2 text-sm">
-              <UserPlus size={14} /> Add User
-            </button>
-          </div>
-          <p className="text-sm themed-text-muted">
-            Manage user accounts. Breachwright does not impose a seat limit.
-          </p>
-          <div className="mt-4 space-y-2">
-            {userAccounts.map(account => {
-              const isCurrentUser = account.id === user.id;
-              const isUpdating = updatingUserId === account.id;
-              return (
-                <div
-                  key={account.id}
-                  className="flex flex-col sm:flex-row sm:items-center gap-3 px-3 py-3 rounded-md"
-                  style={{
-                    backgroundColor: 'var(--bg-700)',
-                    border: '1px solid var(--border)',
-                    opacity: account.is_active ? 1 : 0.65,
-                  }}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm themed-text-primary truncate">
-                      {account.display_name}
-                      {isCurrentUser && <span className="text-xs themed-text-muted ml-1">(you)</span>}
-                    </p>
-                    <p className="text-xs themed-text-muted truncate">{account.email}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <select
-                      aria-label={`Role for ${account.display_name}`}
-                      className="input-field text-xs py-1.5"
-                      style={{ width: 105 }}
-                      value={account.role}
-                      disabled={isCurrentUser || isUpdating}
-                      onChange={(event) => handleUpdateUser(account, { role: event.target.value })}
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="analyst">Analyst</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
-                    <button
-                      type="button"
-                      aria-label={`${account.is_active ? 'Deactivate' : 'Reactivate'} ${account.display_name}`}
-                      className="btn-secondary text-xs min-w-[84px]"
-                      disabled={isCurrentUser || isUpdating}
-                      onClick={() => handleUpdateUser(account, { is_active: !account.is_active })}
-                    >
-                      {isUpdating ? 'Saving...' : account.is_active ? 'Deactivate' : 'Reactivate'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <Modal open={showAddUser} onClose={() => setShowAddUser(false)} title="Add User">
-            <form onSubmit={handleAddUser} className="space-y-4">
-              <div>
-                <label htmlFor="new-user-email" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Email</label>
-                <input id="new-user-email" className="input-field text-sm" type="email" value={userForm.email}
-                  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} required autoFocus />
-              </div>
-              <div>
-                <label htmlFor="new-user-display-name" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Display Name</label>
-                <input id="new-user-display-name" className="input-field text-sm" value={userForm.display_name}
-                  onChange={(e) => setUserForm({ ...userForm, display_name: e.target.value })} required />
-              </div>
-              <div>
-                <label htmlFor="new-user-password" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Password</label>
-                <input id="new-user-password" className="input-field text-sm" type="password" value={userForm.password}
-                  onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} required minLength={12} />
-                <p className="text-xs themed-text-muted mt-1">At least 12 characters.</p>
-              </div>
-              <div>
-                <label htmlFor="new-user-role" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Role</label>
-                <select id="new-user-role" className="input-field text-sm" value={userForm.role}
-                  onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}>
-                  <option value="analyst">Analyst</option>
-                  <option value="viewer">Viewer</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowAddUser(false)} className="btn-secondary">Cancel</button>
-                <button type="submit" disabled={addingUser} className="btn-primary flex items-center gap-2">
-                  {addingUser && <Spinner className="w-4 h-4" />} Create User
-                </button>
-              </div>
-            </form>
-          </Modal>
-        </div>
-      )}
-
-      <Modal
-        open={showChangePassword}
-        onClose={() => setShowChangePassword(false)}
-        title="Change Password"
-      >
-        <form onSubmit={handleChangePassword} className="space-y-4">
-          <div>
-            <label htmlFor="current-password" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
-              Current Password
-            </label>
-            <input
-              id="current-password"
-              className="input-field text-sm"
-              type="password"
-              autoComplete="current-password"
-              value={passwordForm.current}
-              onChange={(event) => setPasswordForm({ ...passwordForm, current: event.target.value })}
-              required
-              autoFocus
-            />
-          </div>
-          <div>
-            <label htmlFor="next-password" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
-              New Password
-            </label>
-            <input
-              id="next-password"
-              className="input-field text-sm"
-              type="password"
-              autoComplete="new-password"
-              minLength={12}
-              value={passwordForm.next}
-              onChange={(event) => setPasswordForm({ ...passwordForm, next: event.target.value })}
-              required
-            />
-            <p className="text-xs themed-text-muted mt-1">At least 12 characters.</p>
-          </div>
-          <div>
-            <label htmlFor="confirm-next-password" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
-              Confirm New Password
-            </label>
-            <input
-              id="confirm-next-password"
-              className="input-field text-sm"
-              type="password"
-              autoComplete="new-password"
-              minLength={12}
-              value={passwordForm.confirm}
-              onChange={(event) => setPasswordForm({ ...passwordForm, confirm: event.target.value })}
-              required
-            />
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => setShowChangePassword(false)}
-              className="btn-secondary"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={changingPassword}
-              className="btn-primary flex items-center gap-2"
-            >
-              {changingPassword && <Spinner className="w-4 h-4" />}
-              Change Password
-            </button>
-          </div>
-        </form>
-      </Modal>
 
       {toast && <Toast {...toast} onDismiss={() => setToast(null)} />}
     </div>

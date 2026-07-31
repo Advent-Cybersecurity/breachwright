@@ -32,17 +32,18 @@ Third-party AI services may charge for API usage. Local model support does not r
 - PTES, OWASP, and NIST methodology checklists and gap analysis
 - Cross-engagement intelligence, client risk profiles, and recurring-finding analysis
 - Custom report templates and AI prompts
-- Multi-user roles with read-only viewers and no application-enforced seat limit
+- Immediate access to one local owner workspace with no account or login setup
 - Light and dark themes
 
-## Security and authorization
+## Local application security
 
 Breachwright can execute security tools and process sensitive assessment data. Use it only on systems and data you are authorized to test. Review Tool Runner commands before execution, protect the application data directory, and do not expose the API directly to untrusted networks.
 
-Administrators can manage configuration, backups, and users. Analysts can
-create and edit assessment data and run tools. Viewers can browse and download
-existing data but cannot create, edit, delete, execute tools, or invoke
-AI-assisted actions.
+Breachwright is designed as a single-owner local desktop tool. It opens
+directly into the workspace without accounts, passwords, roles, or sessions.
+The packaged application binds only to the local machine. Anyone who can use
+the operating-system account can access Breachwright data and run its tools,
+so rely on workstation login, disk encryption, and file permissions.
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting and supported versions.
 
@@ -86,7 +87,7 @@ Set-Location ..
 python run.py
 ```
 
-On first launch, Breachwright guides you through creating the initial administrator account.
+On first launch, Breachwright opens directly into the local workspace.
 
 ## Windows and Linux packages
 
@@ -117,10 +118,10 @@ AI configuration is optional for manual findings, evidence management, checklist
 
 ## Back up and restore data
 
-Administrators can create and download verified local backups from the
-Settings page. Backups include the SQLite database, evidence, uploads, reports,
-custom template assets, and Tool Runner output. API keys and token-signing
-secrets are excluded.
+Create and download verified local backups from the Settings page. Backups
+include the SQLite database, evidence, uploads, reports, custom template
+assets, and Tool Runner output. API keys and environment configuration are
+excluded.
 
 Restores are offline by design and preserve displaced data in a recovery
 folder. See [docs/DATA_SAFETY.md](docs/DATA_SAFETY.md) for packaged and source
@@ -136,12 +137,12 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The Docker deployment listens on port 80 by default. Application files and
-the generated signing key persist in `./data`; PostgreSQL data persists in the
-`pgdata` volume. The built-in portable backup currently supports SQLite
-installations, so Docker/PostgreSQL users must back up both PostgreSQL and
-`./data`. Review authentication, TLS termination, network exposure, backups,
-and secret management before using it with real assessment data.
+The Docker deployment listens only on `127.0.0.1:80` by default. Application
+files persist in `./data`; PostgreSQL data persists in the `pgdata` volume.
+The built-in portable backup currently supports SQLite installations, so
+Docker/PostgreSQL users must back up both PostgreSQL and `./data`. Do not
+change the loopback binding unless you add a separate, deliberate access
+control and transport-security layer.
 
 ## Architecture
 
