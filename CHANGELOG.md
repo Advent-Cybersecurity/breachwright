@@ -21,6 +21,7 @@
 - Added dialog semantics, named close controls, Escape-key support, and accessible account fields
 - Added release-candidate version visibility across the API, desktop launcher, and frontend
 - Split large frontend pages into on-demand bundles to reduce the initial JavaScript download
+- Moved dashboard finding counts into database aggregation so large projects do not load every finding into memory
 - Added interface error recovery and predictable unknown-route handling
 - Fixed first-run validation failures so they show readable feedback instead of crashing the interface
 - Fixed session restoration after desktop WebView and browser page reloads
@@ -47,6 +48,12 @@
 - Added a real v2.0.0 database upgrade smoke test
 - Added separate native Windows and Linux archives built from the same source
 - Added release-archive verification for required notices, launchers, checksums, and private-data exclusions
+- Fixed Linux bundle installation, legacy data migration, uninstall cleanup, and data preservation
+- Added a packaged CLI version command and Linux install/uninstall smoke test
+- Added non-interactive Windows bundle install/uninstall validation with data-preservation checks
+- Removed internal runtime-path debug output from packaged command-line operations
+- Aligned packaged and source data-directory selection on Windows and Linux
+- Added a machine-readable version file to every native release archive
 
 ## v2.0.0
 

@@ -16,6 +16,7 @@ REQUIRED_DOCUMENTS = {
     "Breachwright/README.md",
     "Breachwright/THIRD_PARTY_NOTICES.md",
     "Breachwright/TRADEMARKS.md",
+    "Breachwright/VERSION",
 }
 FORBIDDEN_NAMES = {".env", ".secret_key", "breachwright.db"}
 

@@ -148,6 +148,16 @@ def main() -> int:
         cli = executable.with_name(cli_name)
         if not cli.is_file():
             raise RuntimeError(f"Packaged CLI not found: {cli}")
+        version = subprocess.run(
+            [str(cli), "--version"],
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.strip()
+        if version != f"Breachwright {health.get('version')}":
+            raise RuntimeError(f"Packaged CLI reported an unexpected version: {version}")
         subprocess.run(
             [str(cli), "--create-backup"],
             env=env,

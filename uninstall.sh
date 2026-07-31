@@ -8,6 +8,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 INSTALL_DIR="$HOME/.local/share/breachwright"
+DATA_DIR="$INSTALL_DIR/data"
 BIN_DIR="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 
@@ -30,13 +31,15 @@ echo ""
 [ -f "$BIN_DIR/breachwright" ] && rm "$BIN_DIR/breachwright" && echo -e "  ${CYAN}[*]${NC} Removed launcher"
 
 # Remove app and venv (keep data directory)
+[ -d "$INSTALL_DIR/bin" ] && rm -rf "$INSTALL_DIR/bin" && echo -e "  ${CYAN}[*]${NC} Removed binary files"
 [ -d "$INSTALL_DIR/app" ] && rm -rf "$INSTALL_DIR/app" && echo -e "  ${CYAN}[*]${NC} Removed application files"
 [ -d "$INSTALL_DIR/venv" ] && rm -rf "$INSTALL_DIR/venv" && echo -e "  ${CYAN}[*]${NC} Removed virtual environment"
 [ -f "$INSTALL_DIR/icon.svg" ] && rm "$INSTALL_DIR/icon.svg"
+[ -f "$INSTALL_DIR/icon.png" ] && rm "$INSTALL_DIR/icon.png"
 
 echo ""
 echo -e "  ${GREEN}[+]${NC} Uninstall complete."
 echo ""
-echo -e "  Your data was preserved at: ${CYAN}$INSTALL_DIR/data/${NC}"
-echo "  To remove all data: rm -rf $INSTALL_DIR"
+echo -e "  Your data was preserved at: ${CYAN}$DATA_DIR/${NC}"
+echo "  To remove all data, delete: $DATA_DIR"
 echo ""

@@ -19,6 +19,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 INSTALL_DIR="$HOME/.local/share/breachwright"
+DATA_DIR="$INSTALL_DIR/data"
 BIN_DIR="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 
@@ -60,10 +61,27 @@ fi
 
 # ── Create directories ──
 mkdir -p "$INSTALL_DIR" "$BIN_DIR" "$DESKTOP_DIR"
-mkdir -p "$INSTALL_DIR/data/uploads"
-mkdir -p "$INSTALL_DIR/data/reports"
-mkdir -p "$INSTALL_DIR/data/backups"
-mkdir -p "$INSTALL_DIR/data/logs"
+mkdir -p "$DATA_DIR"
+
+# Move data written by older launchers into the intended preserved directory.
+migration_safety=""
+for item in breachwright.db .env .secret_key uploads reports backups logs evidence jobs; do
+    if [ -e "$INSTALL_DIR/$item" ]; then
+        if [ -e "$DATA_DIR/$item" ]; then
+            if [ -z "$migration_safety" ]; then
+                migration_safety="$DATA_DIR/migration-safety-$(date +%Y%m%d-%H%M%S)-$$"
+                mkdir -p "$migration_safety"
+                warn "Preserving pre-existing data-folder contents in $migration_safety"
+            fi
+            mv "$DATA_DIR/$item" "$migration_safety/$item"
+        fi
+        mv "$INSTALL_DIR/$item" "$DATA_DIR/$item"
+    fi
+done
+mkdir -p "$DATA_DIR/uploads"
+mkdir -p "$DATA_DIR/reports"
+mkdir -p "$DATA_DIR/backups"
+mkdir -p "$DATA_DIR/logs"
 
 # ================================================================
 #  BINARY INSTALL
@@ -82,6 +100,7 @@ if [ -n "$BINARY_DIR" ]; then
     # Create launcher
     cat > "$BIN_DIR/breachwright" << LAUNCHER
 #!/usr/bin/env bash
+export DATA_DIR="\${DATA_DIR:-$DATA_DIR}"
 exec "$INSTALL_DIR/bin/Breachwright" "\$@"
 LAUNCHER
     chmod +x "$BIN_DIR/breachwright"
@@ -141,6 +160,7 @@ else
     # Create launcher
     cat > "$BIN_DIR/breachwright" << LAUNCHER
 #!/usr/bin/env bash
+export DATA_DIR="\${DATA_DIR:-$DATA_DIR}"
 source "$VENV_DIR/bin/activate"
 cd "$APP_DIR"
 exec python run.py "\$@"
@@ -154,11 +174,11 @@ fi
 # ================================================================
 
 # .env file
-if [ ! -f "$INSTALL_DIR/data/.env" ]; then
+if [ ! -f "$DATA_DIR/.env" ]; then
     if [ -f "$SCRIPT_DIR/.env" ]; then
-        cp "$SCRIPT_DIR/.env" "$INSTALL_DIR/data/.env"
+        cp "$SCRIPT_DIR/.env" "$DATA_DIR/.env"
     elif [ -f "$SCRIPT_DIR/.env.example" ]; then
-        cp "$SCRIPT_DIR/.env.example" "$INSTALL_DIR/data/.env"
+        cp "$SCRIPT_DIR/.env.example" "$DATA_DIR/.env"
     fi
 fi
 
@@ -220,5 +240,5 @@ echo -e "     ${CYAN}breachwright${NC}"
 echo ""
 echo "  Or find it in your application menu under 'Security'."
 echo ""
-echo -e "  Data stored in: ${CYAN}$INSTALL_DIR/data/${NC}"
+echo -e "  Data stored in: ${CYAN}$DATA_DIR/${NC}"
 echo ""

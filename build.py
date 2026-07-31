@@ -116,6 +116,7 @@ def include_distribution_files(bundle_dir: Path) -> None:
         source = PROJECT_ROOT / name
         if source.is_file():
             shutil.copy2(source, bundle_dir / name)
+    (bundle_dir / "VERSION").write_text(f"{APP_VERSION}\n", encoding="utf-8")
 
 
 def validate_bundle(executable: Path, run_executable: bool) -> None:

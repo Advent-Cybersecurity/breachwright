@@ -17,13 +17,15 @@ async def list_engagements(
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(Engagement).order_by(Engagement.created_at.desc())
+        select(Engagement, func.count(Finding.id))
+        .outerjoin(Finding, Finding.engagement_id == Engagement.id)
+        .group_by(Engagement.id)
+        .order_by(Engagement.created_at.desc())
     )
-    engagements = result.scalars().all()
     response = []
-    for eng in engagements:
-        r = EngagementResponse.model_validate(eng)
-        r.finding_count = len(eng.findings) if eng.findings else 0
+    for engagement, finding_count in result.all():
+        r = EngagementResponse.model_validate(engagement)
+        r.finding_count = finding_count
         response.append(r)
     return response
 
@@ -98,12 +100,18 @@ async def get_engagement(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Engagement).where(Engagement.id == engagement_id))
-    engagement = result.scalar_one_or_none()
-    if not engagement:
+    result = await db.execute(
+        select(Engagement, func.count(Finding.id))
+        .outerjoin(Finding, Finding.engagement_id == Engagement.id)
+        .where(Engagement.id == engagement_id)
+        .group_by(Engagement.id)
+    )
+    row = result.one_or_none()
+    if row is None:
         raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement, finding_count = row
     r = EngagementResponse.model_validate(engagement)
-    r.finding_count = len(engagement.findings) if engagement.findings else 0
+    r.finding_count = finding_count
     return r
 
 

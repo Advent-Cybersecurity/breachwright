@@ -35,7 +35,10 @@ class Engagement(Base, TimestampMixin):
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
 
-    findings: Mapped[list["Finding"]] = relationship(back_populates="engagement", lazy="selectin")
+    findings: Mapped[list["Finding"]] = relationship(
+        back_populates="engagement",
+        lazy="raise",
+    )
 
 
 class Finding(Base, TimestampMixin):

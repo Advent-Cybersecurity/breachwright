@@ -58,7 +58,7 @@ os.environ.setdefault(
 #     (The frozen bundle itself is read-only on most platforms.)
 # ---------------------------------------------------------------------------
 if sys.platform == "win32":
-    _appdata = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+    _appdata = os.environ.get("APPDATA", os.path.expanduser("~"))
     _user_data = os.path.join(_appdata, "Breachwright")
 elif sys.platform == "darwin":
     _user_data = os.path.join(
@@ -71,6 +71,7 @@ else:
     )
 
 os.makedirs(_user_data, exist_ok=True)
+os.environ.setdefault("DATA_DIR", _user_data)
 os.environ.setdefault("BREACHWRIGHT_USER_DATA", _user_data)
 
 # ---------------------------------------------------------------------------
@@ -88,7 +89,3 @@ os.environ.setdefault(
     "BREACHWRIGHT_FRONTEND_DIST",
     os.path.join(BASE_DIR, "frontend", "dist"),
 )
-
-print(f"[runtime_hook] BASE_DIR        = {BASE_DIR}")
-print(f"[runtime_hook] USER_DATA       = {_user_data}")
-print(f"[runtime_hook] FROZEN          = {os.environ['BREACHWRIGHT_FROZEN']}")

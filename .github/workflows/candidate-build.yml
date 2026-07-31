@@ -53,8 +53,15 @@ jobs:
       - name: Smoke-test Windows desktop window
         if: runner.os == 'Windows'
         run: python scripts/smoke_desktop.py dist/Breachwright/Breachwright.exe
+      - name: Smoke-test Windows install and uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/smoke_install_windows.ps1 dist/Breachwright
       - name: Smoke-test Linux desktop window
         if: runner.os == 'Linux'
         run: xvfb-run -a python scripts/smoke_desktop.py dist/Breachwright/Breachwright
+      - name: Smoke-test Linux install and uninstall
+        if: runner.os == 'Linux'
+        run: bash scripts/smoke_install_linux.sh dist/Breachwright
       - name: Verify candidate release archive
         run: python scripts/verify_archive.py dist

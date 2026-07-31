@@ -131,6 +131,11 @@ def launch_window(host, port):
 
 def main():
     parser = argparse.ArgumentParser(description="Breachwright")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"Breachwright {APP_VERSION}",
+    )
     parser.add_argument("--setup", action="store_true", help="Create admin account")
     parser.add_argument("--headless", action="store_true", help="Run server only, no GUI")
     parser.add_argument(

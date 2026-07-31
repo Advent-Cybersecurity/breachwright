@@ -9,6 +9,9 @@ from typing import Optional
 
 def get_data_dir() -> str:
     """Determine the application data directory based on platform."""
+    configured = os.environ.get("DATA_DIR")
+    if configured:
+        return os.path.abspath(os.path.expanduser(configured))
     if sys.platform == "win32":
         base = os.environ.get("APPDATA", os.path.expanduser("~"))
         return os.path.join(base, "Breachwright")

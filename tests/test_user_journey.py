@@ -695,6 +695,10 @@ class UserJourneyTests(unittest.TestCase):
         engagements = self.client.get("/api/engagements", headers=headers)
         self.assertEqual(engagements.status_code, 200)
         self.assertEqual(len(engagements.json()), 2)
+        self.assertEqual(
+            sorted(item["finding_count"] for item in engagements.json()),
+            [1, 1],
+        )
 
         backup = self.client.post("/api/system/backups", headers=headers)
         self.assertEqual(backup.status_code, 201, backup.text)

@@ -37,6 +37,8 @@ if not exist "%DATA_DIR%\reports" mkdir "%DATA_DIR%\reports"
 if not exist "%DATA_DIR%\logs" mkdir "%DATA_DIR%\logs"
 if not exist "%DATA_DIR%\backups" mkdir "%DATA_DIR%\backups"
 
+if /i "%BREACHWRIGHT_SKIP_SHORTCUTS%"=="1" goto shortcuts_done
+
 REM Create Start Menu shortcut using PowerShell
 echo [*] Creating Start Menu shortcut...
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%START_MENU%\Breachwright.lnk'); $s.TargetPath = '%INSTALL_DIR%\Breachwright.exe'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'Breachwright - AI Pentest Management'; $s.IconLocation = '%INSTALL_DIR%\icon.ico'; $s.Save()"
@@ -44,6 +46,8 @@ powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = 
 REM Create Desktop shortcut
 echo [*] Creating Desktop shortcut...
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\Breachwright.lnk'); $s.TargetPath = '%INSTALL_DIR%\Breachwright.exe'; $s.WorkingDirectory = '%INSTALL_DIR%'; $s.Description = 'Breachwright - AI Pentest Management'; $s.IconLocation = '%INSTALL_DIR%\icon.ico'; $s.Save()"
+
+:shortcuts_done
 
 REM Copy uninstaller
 copy /Y "%~dp0uninstall-windows.bat" "%INSTALL_DIR%\" >nul 2>&1
@@ -67,4 +71,4 @@ echo.
 echo  ========================================
 echo.
 
-pause
+if /i not "%BREACHWRIGHT_NONINTERACTIVE%"=="1" pause
