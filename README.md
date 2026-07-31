@@ -98,7 +98,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and supported version
 ### Requirements
 
 - Python 3.11 or newer
-- Node.js 18 or newer
+- Node.js 20 or newer
 - GTK3 and WebKit2 on Linux when using the desktop window
 - Edge WebView2 on Windows when using the desktop application
 - Any external assessment tools you want to invoke through Tool Runner

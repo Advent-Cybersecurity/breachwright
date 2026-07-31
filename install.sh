@@ -128,6 +128,11 @@ else
     command -v python3 >/dev/null 2>&1 || fail "python3 not found"
     command -v node >/dev/null 2>&1 || fail "node not found"
     command -v npm >/dev/null 2>&1 || fail "npm not found"
+    NODE_MAJOR="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
+    case "$NODE_MAJOR" in
+        ''|*[!0-9]*) fail "Unable to determine the installed Node.js version" ;;
+    esac
+    [ "$NODE_MAJOR" -ge 20 ] || fail "Node.js 20 or newer is required (found $(node --version))"
 
     # System deps for native window
     if command -v apt >/dev/null 2>&1; then

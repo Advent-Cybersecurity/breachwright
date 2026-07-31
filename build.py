@@ -20,6 +20,7 @@ FRONTEND_DIR = PROJECT_ROOT / "frontend"
 SPEC_FILE = PROJECT_ROOT / "breachwright.spec"
 BUILD_DIR = PROJECT_ROOT / "build"
 DIST_DIR = PROJECT_ROOT / "dist"
+MINIMUM_NODE_MAJOR = 20
 
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
 from app.version import APP_VERSION
@@ -28,6 +29,26 @@ from app.version import APP_VERSION
 def run(command: list[str], cwd: Path = PROJECT_ROOT) -> None:
     print(f"> {' '.join(command)}")
     subprocess.run(command, cwd=cwd, check=True)
+
+
+def validate_node_version(node: str) -> None:
+    try:
+        result = subprocess.run(
+            [node, "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise SystemExit("Unable to determine the installed Node.js version.") from exc
+    match = re.fullmatch(r"v?(\d+)(?:\.\d+){1,2}", result.stdout.strip())
+    if not match:
+        raise SystemExit("Unable to determine the installed Node.js version.")
+    if int(match.group(1)) < MINIMUM_NODE_MAJOR:
+        raise SystemExit(
+            f"Node.js {MINIMUM_NODE_MAJOR} or newer is required "
+            f"(found {result.stdout.strip()})."
+        )
 
 
 def validate_tools(skip_frontend: bool) -> None:
@@ -43,6 +64,7 @@ def validate_tools(skip_frontend: bool) -> None:
         for executable in ("node", "npm"):
             if not shutil.which(executable):
                 raise SystemExit(f"{executable} is required to build the frontend.")
+        validate_node_version(shutil.which("node") or "node")
 
 
 def clean() -> None:
