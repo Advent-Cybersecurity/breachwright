@@ -156,8 +156,15 @@ async def bulk_action(
     findings = result.scalars().all()
 
     if body.action == "delete":
+        import os
+        import shutil
+        from app.config import settings
+
         for f in findings:
             await db.delete(f)
+            evidence_dir = os.path.join(settings.data_dir, "evidence", f.id)
+            if os.path.isdir(evidence_dir):
+                shutil.rmtree(evidence_dir, ignore_errors=True)
         return {"action": "delete", "count": len(findings)}
 
     elif body.action == "update_severity":

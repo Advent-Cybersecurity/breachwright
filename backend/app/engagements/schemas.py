@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional
+from typing import Literal, Optional
 from datetime import date, datetime
 from app.engagements.models import EngagementStatus, Severity
 
@@ -65,7 +65,9 @@ class FindingUpdate(BaseModel):
     affected_hosts: Optional[str] = Field(default=None, max_length=50000)
     evidence: Optional[str] = Field(default=None, max_length=200000)
     remediation: Optional[str] = Field(default=None, max_length=200000)
-    retest_status: Optional[str] = Field(default=None, max_length=50)
+    retest_status: Optional[
+        Literal["open", "remediated", "retest_needed", "accepted_risk"]
+    ] = None
 
     model_config = {"str_strip_whitespace": True}
 

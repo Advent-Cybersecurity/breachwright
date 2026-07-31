@@ -10,6 +10,8 @@
 - Added confirmed backup deletion so long-running installations can manage disk usage
 - Fixed startup so migration failures and timeouts stop the application instead of reporting false success
 - Added cleanup for evidence records and files when findings or engagements are deleted
+- Fixed bulk finding deletion so evidence files are removed with their records
+- Restricted direct finding updates to supported retest states
 - Bounded live Tool Runner output to 500 KB per job while retaining the newest
   output and marking truncation
 - Added bounded log rotation to prevent unattended installations from growing

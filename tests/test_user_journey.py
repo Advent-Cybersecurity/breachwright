@@ -627,6 +627,12 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(finding.status_code, 201, finding.text)
         finding_id = finding.json()["id"]
+        invalid_retest = self.client.put(
+            f"/api/engagements/{engagement_id}/findings/{finding_id}",
+            headers=headers,
+            json={"retest_status": "unrecognized-state"},
+        )
+        self.assertEqual(invalid_retest.status_code, 422, invalid_retest.text)
 
         checklist = self.client.post(
             f"/api/engagements/{engagement_id}/checklists/ptes",
@@ -707,6 +713,53 @@ class UserJourneyTests(unittest.TestCase):
             downloaded_evidence.headers["x-content-type-options"],
             "nosniff",
         )
+
+        bulk_cleanup_finding = self.client.post(
+            f"/api/engagements/{engagement_id}/findings",
+            headers=headers,
+            json={
+                "title": "Bulk cleanup finding",
+                "severity": "low",
+            },
+        )
+        self.assertEqual(
+            bulk_cleanup_finding.status_code,
+            201,
+            bulk_cleanup_finding.text,
+        )
+        bulk_cleanup_id = bulk_cleanup_finding.json()["id"]
+        bulk_cleanup_upload = self.client.post(
+            (
+                f"/api/engagements/{engagement_id}/findings/"
+                f"{bulk_cleanup_id}/evidence"
+            ),
+            headers=headers,
+            files={
+                "file": (
+                    "bulk-cleanup.png",
+                    evidence_bytes,
+                    "image/png",
+                )
+            },
+        )
+        self.assertEqual(
+            bulk_cleanup_upload.status_code,
+            200,
+            bulk_cleanup_upload.text,
+        )
+        bulk_evidence_directory = self.data_dir / "evidence" / bulk_cleanup_id
+        self.assertTrue(bulk_evidence_directory.is_dir())
+        bulk_delete = self.client.post(
+            f"/api/engagements/{engagement_id}/findings/bulk",
+            headers=headers,
+            json={
+                "finding_ids": [bulk_cleanup_id],
+                "action": "delete",
+            },
+        )
+        self.assertEqual(bulk_delete.status_code, 200, bulk_delete.text)
+        self.assertEqual(bulk_delete.json()["count"], 1)
+        self.assertFalse(bulk_evidence_directory.exists())
 
         markdown_report = self.client.post(
             f"/api/engagements/{engagement_id}/reports",
