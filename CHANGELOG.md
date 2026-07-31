@@ -10,6 +10,8 @@
 - Added confirmed backup deletion so long-running installations can manage disk usage
 - Fixed startup so migration failures and timeouts stop the application instead of reporting false success
 - Added cleanup for evidence records and files when findings or engagements are deleted
+- Added bounded log rotation to prevent unattended installations from growing
+  the application log indefinitely
 
 ### Reporting and usability
 
@@ -20,6 +22,7 @@
 - Made AI report enhancement an explicit opt-in
 - Added semantic version precedence so older releases are not presented as updates
 - Added accessible labels to first-run, login, engagement, and finding forms
+- Added accessible names to assistant message and send controls
 - Added dialog semantics, named close controls, Escape-key support, and accessible account fields
 - Added release-candidate version visibility across the API, desktop launcher, and frontend
 - Split large frontend pages into on-demand bundles to reduce the initial JavaScript download
@@ -39,6 +42,8 @@
 - Added SharpHound ZIP entry, expansion, member-size, and compression-ratio limits
 - Prevented environment-file line injection and made provider updates atomic
 - Added browser security headers and disabled API response caching
+- Removed raw HTML rendering from assistant messages so user and model content
+  is always escaped by React
 - Made viewer accounts read-only across engagement data, reports, uploads, Tool Runner, and AI-assisted actions
 - Fixed Windows backup staging permissions in the packaged runtime
 - Added an on-demand SQLite integrity check to system diagnostics
@@ -55,6 +60,7 @@
 - Fixed Linux bundle installation, legacy data migration, uninstall cleanup, and data preservation
 - Added a packaged CLI version command and Linux install/uninstall smoke test
 - Added non-interactive Windows bundle install/uninstall validation with data-preservation checks
+- Removed dependency test and type-checker modules from release bundles
 - Removed internal runtime-path debug output from packaged command-line operations
 - Aligned packaged and source data-directory selection on Windows and Linux
 - Added a machine-readable version file to every native release archive

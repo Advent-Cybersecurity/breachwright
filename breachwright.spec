@@ -210,8 +210,27 @@ for _mod in (
     except ImportError:
         pass
 
-# Deduplicate
-hidden_imports = sorted(set(hidden_imports))
+# Deduplicate and keep dependency test/type-checker packages out of the
+# distributable. Broad submodule discovery is useful for plugin-style runtime
+# imports, but it otherwise pulls in modules that only dependency maintainers
+# use.
+_non_runtime_segments = {
+    "_hypothesis_plugin",
+    "_tests",
+    "mypy",
+    "pytest_plugin",
+    "test",
+    "testing",
+    "tests",
+    "tox_support",
+}
+hidden_imports = sorted(
+    {
+        name
+        for name in hidden_imports
+        if not _non_runtime_segments.intersection(name.split("."))
+    }
+)
 
 
 # ========================== EXTRA DATA FILES ===============================

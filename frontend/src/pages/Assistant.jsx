@@ -3,6 +3,27 @@ import { engagements as engApi, assistant as assistantApi } from '../api';
 import { Toast, Spinner } from '../components/UI';
 import { Send, Bot, User, Info, ChevronDown } from 'lucide-react';
 
+function InlineContent({ text }) {
+  const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return (
+        <code
+          key={index}
+          className="px-1 py-0.5 rounded text-xs"
+          style={{ background: 'var(--bg-600)', color: '#06b6d4' }}
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return part;
+  });
+}
+
 function ChatMessage({ msg }) {
   const isUser = msg.role === 'user';
 
@@ -43,11 +64,11 @@ function ChatMessage({ msg }) {
             if (line.trim() === '') {
               return <div key={i} className="h-2" />;
             }
-            // Inline formatting
-            const formatted = line
-              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-              .replace(/`(.*?)`/g, '<code class="px-1 py-0.5 rounded text-xs" style="background:var(--bg-600);color:#06b6d4;">$1</code>');
-            return <p key={i} className="themed-text-secondary my-0.5" dangerouslySetInnerHTML={{ __html: formatted }} />;
+            return (
+              <p key={i} className="themed-text-secondary my-0.5">
+                <InlineContent text={line} />
+              </p>
+            );
           })}
         </div>
         {/* Context labels */}
@@ -212,6 +233,7 @@ export default function Assistant() {
       <div className="shrink-0 flex gap-3">
         <div className="flex-1 relative">
           <textarea ref={inputRef}
+            aria-label="Assistant message"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -222,7 +244,11 @@ export default function Assistant() {
             disabled={sending}
           />
         </div>
-        <button onClick={handleSend} disabled={sending || !input.trim()}
+        <button
+          type="button"
+          aria-label="Send message"
+          onClick={handleSend}
+          disabled={sending || !input.trim()}
           className="btn-primary flex items-center gap-2 self-end"
           style={{ height: 44 }}>
           {sending ? <Spinner className="w-4 h-4" /> : <Send size={16} />}

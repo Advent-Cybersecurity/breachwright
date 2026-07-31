@@ -2,6 +2,7 @@ import os
 import sys
 import secrets
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import Optional
@@ -184,7 +185,12 @@ if not settings.secret_key:
 # Configure file logging
 _log_dir = os.path.join(settings.data_dir, "logs")
 os.makedirs(_log_dir, exist_ok=True)
-_file_handler = logging.FileHandler(os.path.join(_log_dir, "breachwright.log"))
+_file_handler = RotatingFileHandler(
+    os.path.join(_log_dir, "breachwright.log"),
+    maxBytes=5 * 1024 * 1024,
+    backupCount=3,
+    encoding="utf-8",
+)
 _file_handler.setLevel(logging.INFO)
 _file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 logging.getLogger().addHandler(_file_handler)

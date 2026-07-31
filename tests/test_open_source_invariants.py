@@ -78,6 +78,12 @@ class OpenSourceReleaseTests(unittest.TestCase):
             (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8"),
         )
 
+    def test_chat_content_is_not_rendered_as_raw_html(self):
+        assistant = (
+            ROOT / "frontend" / "src" / "pages" / "Assistant.jsx"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("dangerouslySetInnerHTML", assistant)
+
 
 if __name__ == "__main__":
     unittest.main()

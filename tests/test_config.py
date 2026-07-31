@@ -1,4 +1,6 @@
 import os
+import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import sys
 import unittest
@@ -20,6 +22,17 @@ class DataDirectoryTests(unittest.TestCase):
         configured = ROOT / ".data-directory-test"
         with patch.dict(os.environ, {"DATA_DIR": str(configured)}):
             self.assertEqual(get_data_dir(), str(configured.resolve()))
+
+    def test_application_log_has_bounded_retention(self):
+        handlers = [
+            handler
+            for handler in logging.getLogger().handlers
+            if isinstance(handler, RotatingFileHandler)
+            and Path(handler.baseFilename).name == "breachwright.log"
+        ]
+        self.assertEqual(len(handlers), 1)
+        self.assertEqual(handlers[0].maxBytes, 5 * 1024 * 1024)
+        self.assertEqual(handlers[0].backupCount, 3)
 
 
 if __name__ == "__main__":
