@@ -41,6 +41,7 @@ As of 2026-07-31:
 - [x] Windows native install, version, uninstall, and data preservation pass
 - [x] Packaged AWS Bedrock provider initializes without making a model request
 - [x] A database created by the v2.0.0 source upgrades with its account, engagement, and finding intact
+- [x] First-run administrator setup remains durable after an immediate process restart
 - [x] Browser setup, login, engagement, finding, DOCX report, diagnostics, and backup flows passed
 - [x] Docker Compose configuration and persistent application data mapping pass
 - [x] GitHub-hosted Linux packaged journey, desktop window, native install, and archive gates pass
@@ -48,11 +49,11 @@ As of 2026-07-31:
 - [x] Candidate archives include generated Python and JavaScript dependency licenses
 - [x] The public v2.0.0 source release remains unchanged
 
-Application validation evidence for candidate `ce19c58`:
+Current validation history for the review branch:
 
-- [CI and dependency audits](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30626018174)
-- [CodeQL](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30626018165)
-- [Windows and Linux candidate build](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30626018171)
+- [CI and dependency audits](https://github.com/Advent-Cybersecurity/breachwright/actions/workflows/ci.yml?query=branch%3Acodex%2Fbreachwright-2.1-foundation)
+- [CodeQL](https://github.com/Advent-Cybersecurity/breachwright/actions/workflows/codeql.yml?query=branch%3Acodex%2Fbreachwright-2.1-foundation)
+- [Windows and Linux candidate builds](https://github.com/Advent-Cybersecurity/breachwright/actions/workflows/candidate-build.yml?query=branch%3Acodex%2Fbreachwright-2.1-foundation)
 
 Only deliberate review of the final release archives and checksums remains
 before publication.
