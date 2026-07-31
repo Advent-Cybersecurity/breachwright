@@ -56,11 +56,15 @@ class OpenSourceReleaseTests(unittest.TestCase):
         main = (ROOT / "backend" / "app" / "main.py").read_text(
             encoding="utf-8"
         )
+        packaged_smoke = (ROOT / "scripts" / "smoke_bundle.py").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("TrustedHostMiddleware", main)
         self.assertIn(
             'allowed_hosts=["127.0.0.1", "localhost", "testserver"]',
             main,
         )
+        self.assertIn('headers={"Host": "rebind.attacker.example"}', packaged_smoke)
 
     def test_local_workspace_has_no_account_or_token_surface(self):
         reports_router = (

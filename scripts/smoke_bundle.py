@@ -72,6 +72,14 @@ def main() -> int:
                 raise RuntimeError("Packaged local workspace was not immediately usable")
             if client.get("/api/auth/login").status_code != 404:
                 raise RuntimeError("Packaged authentication routes are still exposed")
+            rebinding_probe = client.get(
+                "/api/health",
+                headers={"Host": "rebind.attacker.example"},
+            )
+            if rebinding_probe.status_code != 400:
+                raise RuntimeError(
+                    "Packaged application accepted a non-loopback Host header"
+                )
             missing_assistant = client.post(
                 "/api/assistant/chat",
                 json={
