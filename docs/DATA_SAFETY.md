@@ -24,6 +24,23 @@ separately if you need to reproduce it.
 Built-in backup and restore currently support the default SQLite deployment.
 PostgreSQL deployments should use PostgreSQL-native backup tools.
 
+## Check local data integrity
+
+Open **Settings** and review both diagnostic results:
+
+- **Database integrity** runs SQLite's built-in quick check.
+- **Stored file integrity** verifies that database-backed scan, finding
+  evidence, Evidence Notebook, and report files still exist on disk.
+
+The stored-file check is bounded to 10,000 records and clearly labels a partial
+result. Use **Refresh** after repairing or restoring files. A healthy database
+does not prove that files moved or deleted outside Breachwright are present,
+which is why the two checks are reported separately.
+
+Settings also reports whether no verified backup exists and whether the newest
+backup is current, aging, or stale. Create a new backup after confirming both
+integrity checks.
+
 ## Create and download a backup
 
 Open **Settings**, select **Create Backup**, and download the resulting ZIP

@@ -20,6 +20,8 @@ Third-party AI services may charge for API usage. Local model support does not r
 
 ## Features
 
+- A refreshable engagement Overview with readiness, retest priorities, recent
+  local activity, and direct access to the next assessment task
 - Scan ingestion for nmap, Nessus, Burp Suite, and structured tool output
 - A latest-snapshot asset and service inventory with new, persistent,
   regressed, and resolved observation context
@@ -29,6 +31,8 @@ Third-party AI services may charge for API usage. Local model support does not r
   ready to become findings
 - Explicit no-AI promotion of scanner observations and reviewed notebook notes
   into findings with retained provenance
+- Explicit per-scan AI selection plus a provider-free preflight for input size,
+  provider choice, local redaction state, and readiness
 - AI-assisted finding drafts with severity, CVSS, evidence, and remediation
 - Evidence-grounded AI review with source excerpts, confidence, create/update
   diffs, and accept, edit, reject, or bulk review controls
@@ -49,7 +53,8 @@ Third-party AI services may charge for API usage. Local model support does not r
 - SharpHound and BloodHound ZIP import with Active Directory attack-path analysis
 - Markdown and DOCX report generation
 - Verified local backup and offline restore with secret exclusion
-- Built-in system diagnostics and version visibility
+- Built-in database and stored-file integrity diagnostics, backup freshness,
+  and version visibility
 - Validated image, PDF, HTTP, request, response, HAR, text, Markdown, CSV, and
   JSON evidence attachments
 - Tool Runner workflows for nmap, nikto, subfinder, feroxbuster, nuclei, and
@@ -151,6 +156,11 @@ default. The setting is visible and can be changed by the operator. Redaction
 reduces accidental disclosure but is not a guarantee that every sensitive
 value will be detected, so review assessment data and provider terms before
 using an external model.
+
+Before scan analysis starts, the Scans page shows the exact selected file
+count, combined size, configured provider, and redaction state without calling
+that provider. Select only the uploads needed for the task. Other stored scans
+remain available for evidence and snapshot work.
 
 AI configuration is optional for manual findings, evidence management, checklists, reporting from existing content, export/import, and other non-AI workflows.
 

@@ -61,6 +61,12 @@ in CI. Local models can be evaluated without API charges.
 
 ## Privacy and cost
 
+Scanner analysis is opt-in at the file level. The operator selects up to 50
+stored scans with a 50 MB per-file limit and a 250 MB combined limit. A local
+preflight reports the selected count, combined size, configured provider, and
+redaction state before any provider is initialized. Keeping an upload in an
+engagement does not require sending it to the model.
+
 Common API keys, bearer tokens, authorization headers, passwords, private-key
 blocks, and JWT-shaped values are redacted locally from AI context by default.
 The operator can change this behavior in Settings. Pattern-based redaction
