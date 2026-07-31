@@ -2,6 +2,8 @@ name: Candidate Build
 
 on:
   workflow_dispatch:
+  push:
+    branches: ["codex/breachwright-2.1-foundation"]
 
 permissions:
   contents: read
