@@ -232,6 +232,13 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("event.key.toLowerCase() === 'k'", engagement_page)
         self.assertIn("useState('overview')", engagement_page)
 
+    def test_bundle_verifier_is_portable_and_argument_driven(self):
+        source = (ROOT / "verify_bundle.py").read_text(encoding="utf-8")
+        self.assertIn('parser.add_argument(', source)
+        self.assertIn('default=PROJECT_ROOT / "dist" / "Breachwright"', source)
+        self.assertNotIn('expanduser("~/Desktop', source)
+        self.assertNotIn("â", source)
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")
