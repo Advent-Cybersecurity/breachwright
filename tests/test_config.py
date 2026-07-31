@@ -1,8 +1,11 @@
+import atexit
 import os
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+import shutil
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -12,9 +15,28 @@ BACKEND = ROOT / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-os.environ.setdefault("DATA_DIR", str(ROOT / ".breachwright-config-test"))
+legacy_test_root = ROOT / ".breachwright-config-test"
+if legacy_test_root.is_dir():
+    shutil.rmtree(legacy_test_root)
+
+config_test_root = Path(tempfile.mkdtemp(prefix="breachwright-config-test-"))
+os.environ.setdefault("DATA_DIR", str(config_test_root))
 
 from app.config import get_data_dir
+
+
+def _cleanup_config_test_root() -> None:
+    for handler in list(logging.getLogger().handlers):
+        if (
+            isinstance(handler, RotatingFileHandler)
+            and Path(handler.baseFilename).is_relative_to(config_test_root)
+        ):
+            logging.getLogger().removeHandler(handler)
+            handler.close()
+    shutil.rmtree(config_test_root, ignore_errors=True)
+
+
+atexit.register(_cleanup_config_test_root)
 
 
 class DataDirectoryTests(unittest.TestCase):
