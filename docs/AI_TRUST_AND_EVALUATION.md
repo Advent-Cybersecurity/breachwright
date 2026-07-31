@@ -42,6 +42,10 @@ AI-assisted and analyst reviewed.
   redaction requires an additional confirmation before report context is sent.
 - Coverage reviews must cite finding, scan, checklist, path, or methodology
   markers.
+- Coverage review rejects more than 500 findings, 1,000 checklist items, 1,000
+  scan records, or 100 attack paths before detailed records are loaded or a
+  provider is initialized. Narrative generation similarly rejects more than
+  500 findings or 100 attack paths before provider use.
 - Assistant responses receive bounded context with citation markers and show
   the sources supplied to the model.
 - Assistant requests reject missing engagement scopes before provider

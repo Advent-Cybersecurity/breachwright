@@ -1999,28 +1999,34 @@ function CollapsibleNarrative({ narrative, toast, onDelete }) {
 
   return (
     <div className="card overflow-hidden mb-4">
-      <button onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-3 px-5 py-4 text-left transition-colors"
-        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--bg-700) 50%, transparent)'}
-        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
-        {open ? <ChevronDown size={16} className="themed-text-muted" /> : <ChevronRight size={16} className="themed-text-muted" />}
-        <BookOpen size={16} style={{ color: '#8b5cf6' }} />
-        <h3 className="text-sm font-semibold themed-text-primary uppercase tracking-wider flex-1">Attack Narrative</h3>
-        {narrative.overall_risk && <SeverityBadge severity={narrative.overall_risk} />}
-        <span onClick={(e) => {
-          e.stopPropagation();
-          navigator.clipboard.writeText(narrative.full_narrative);
-          toast({ message: 'Narrative copied to clipboard', type: 'success' });
-        }} className="text-xs font-mono px-2 py-1 rounded themed-text-muted cursor-pointer" style={{ backgroundColor: 'var(--bg-600)' }}>
+      <div className="w-full flex items-center gap-3 px-5 py-4 transition-colors">
+        <button onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          className="flex flex-1 min-w-0 items-center gap-3 text-left">
+          {open ? <ChevronDown size={16} className="themed-text-muted" /> : <ChevronRight size={16} className="themed-text-muted" />}
+          <BookOpen size={16} style={{ color: '#8b5cf6' }} />
+          <h3 className="text-sm font-semibold themed-text-primary uppercase tracking-wider flex-1">Attack Narrative</h3>
+          {narrative.overall_risk && <SeverityBadge severity={narrative.overall_risk} />}
+        </button>
+        <button onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(narrative.full_narrative);
+            toast({ message: 'Narrative copied to clipboard', type: 'success' });
+          } catch {
+            toast({ message: 'Could not copy the narrative to the clipboard', type: 'error' });
+          }
+        }} className="text-xs font-mono px-2 py-1 rounded themed-text-muted" style={{ backgroundColor: 'var(--bg-600)' }}>
           Copy
-        </span>
-        <span onClick={(e) => {
-          e.stopPropagation();
+        </button>
+        <button onClick={() => {
+          if (!window.confirm('Delete the saved attack narrative? This cannot be undone.')) return;
           if (onDelete) onDelete();
-        }} className="text-xs font-mono px-2 py-1 rounded cursor-pointer" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }} title="Delete narrative">
+        }} aria-label="Delete saved attack narrative"
+          className="text-xs font-mono px-2 py-1 rounded"
+          style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }} title="Delete narrative">
           <Trash2 size={12} />
-        </span>
-      </button>
+        </button>
+      </div>
       {open && (
         <div className="px-5 pb-5" style={{ borderTop: '1px solid color-mix(in srgb, var(--border) 50%, transparent)' }}>
           {narrative.executive_summary && (

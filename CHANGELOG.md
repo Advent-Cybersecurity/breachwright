@@ -139,6 +139,10 @@
   now resolve relationship endpoints through a single object index instead of
   repeatedly scanning the full imported object list. Sub-second import
   timestamps and deterministic ties keep the newest dataset selected.
+- Methodology coverage review and narrative generation now reject excessive
+  database record counts before materializing AI context or initializing a
+  provider. Saved narrative deletion requires confirmation, and clipboard
+  failures are reported instead of showing a false success message.
 
 ## v2.2.0 (2026-07-31)
 

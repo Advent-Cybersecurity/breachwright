@@ -28,6 +28,11 @@ from app.ai.context import AIContextTooLarge, build_bounded_untrusted_context
 
 logger = logging.getLogger(__name__)
 
+MAX_GAP_ANALYSIS_FINDINGS = 500
+MAX_GAP_ANALYSIS_CHECKLIST_ITEMS = 1_000
+MAX_GAP_ANALYSIS_SCANS = 1_000
+MAX_GAP_ANALYSIS_ATTACK_PATHS = 100
+
 GAP_ANALYSIS_PROMPT = """You are an expert penetration testing QA reviewer. Your job is to review an engagement's coverage against a testing methodology and identify gaps: areas that should have been tested based on the scope but were not.
 
 CRITICAL RULES:
@@ -99,6 +104,24 @@ async def gather_engagement_context(
     engagement = eng_result.scalar_one_or_none()
     if not engagement:
         return None
+
+    count_limits = (
+        (Finding, MAX_GAP_ANALYSIS_FINDINGS, "findings"),
+        (ChecklistItem, MAX_GAP_ANALYSIS_CHECKLIST_ITEMS, "checklist items"),
+        (ScanUpload, MAX_GAP_ANALYSIS_SCANS, "scan uploads"),
+        (AttackPath, MAX_GAP_ANALYSIS_ATTACK_PATHS, "attack paths"),
+    )
+    for model, limit, label in count_limits:
+        count = (
+            await db.execute(
+                select(func.count(model.id)).where(model.engagement_id == engagement_id)
+            )
+        ).scalar_one()
+        if count > limit:
+            raise AIContextTooLarge(
+                f"Methodology coverage review supports up to {limit:,} {label}; "
+                f"this engagement has {count:,}"
+            )
 
     # Findings
     findings_result = await db.execute(
@@ -266,7 +289,10 @@ async def analyze_gaps(
         return {"error": f"Unknown methodology: {methodology_key}"}
 
     # Gather context
-    context = await gather_engagement_context(db, engagement_id)
+    try:
+        context = await gather_engagement_context(db, engagement_id)
+    except AIContextTooLarge as exc:
+        return {"error": str(exc)}
     if not context:
         return {"error": "Engagement not found"}
 
