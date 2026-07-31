@@ -1,3 +1,4 @@
+import asyncio
 import os
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -95,7 +96,15 @@ async def generate_report(
 
         file_path = os.path.join(report_dir, f"report-{report.id}.docx")
         try:
-            generate_docx_report(engagement, findings, attack_paths, report_content, file_path, template=template)
+            await asyncio.to_thread(
+                generate_docx_report,
+                engagement,
+                findings,
+                attack_paths,
+                report_content,
+                file_path,
+                template=template,
+            )
         except Exception as e:
             logger.error("DOCX generation error: %s", e)
             # Fall back to markdown

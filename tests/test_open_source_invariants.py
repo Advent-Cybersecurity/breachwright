@@ -78,6 +78,14 @@ class OpenSourceReleaseTests(unittest.TestCase):
             (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8"),
         )
 
+    def test_docx_generation_runs_off_event_loop(self):
+        reports_router = (
+            ROOT / "backend" / "app" / "reports" / "router.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("await asyncio.to_thread(", reports_router)
+        self.assertIn("generate_docx_report,", reports_router)
+
     def test_chat_content_is_not_rendered_as_raw_html(self):
         assistant = (
             ROOT / "frontend" / "src" / "pages" / "Assistant.jsx"
