@@ -1,5 +1,6 @@
 import os
 import logging
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Literal
@@ -40,6 +41,7 @@ MAX_SCAN_SIZE = 50 * 1024 * 1024
 MAX_ANALYSIS_SCANS = 50
 MAX_ANALYSIS_TOTAL_BYTES = 250 * 1024 * 1024
 RAW_EVIDENCE_SEGMENT_CHARS = 4000
+SCAN_DETECTION_BYTES = 1024 * 1024
 
 
 class DraftEdit(BaseModel):
@@ -202,6 +204,40 @@ def _safe_upload_extension(filename: str) -> str:
     return ".dat"
 
 
+def _detect_scan_type(content: bytes, filename: str) -> str:
+    """Conservatively identify supported scanner formats without executing input."""
+    sample = content[:SCAN_DETECTION_BYTES].decode("utf-8", errors="replace").lstrip()
+    lowered = sample.lower()
+    suffix = os.path.splitext(filename)[1].lower()
+    if "<nessusclientdata_v2" in lowered or suffix == ".nessus":
+        return "nessus"
+    if "<nmaprun" in lowered:
+        return "nmap"
+    if lowered.startswith("<items") and "<item>" in lowered:
+        return "burp"
+
+    first_line = next((line.strip() for line in sample.splitlines() if line.strip()), "")
+    try:
+        document = json.loads(sample)
+    except (ValueError, TypeError):
+        document = None
+    if isinstance(document, dict) and document.get("version") == "2.1.0" and isinstance(document.get("runs"), list):
+        return "sarif"
+    try:
+        first_record = json.loads(first_line)
+    except (ValueError, TypeError):
+        first_record = None
+    if isinstance(first_record, dict) and (
+        "template-id" in first_record
+        or "templateID" in first_record
+        or ("matched-at" in first_record and "info" in first_record)
+    ):
+        return "nuclei"
+    if suffix == ".sarif":
+        return "sarif"
+    return "custom"
+
+
 @router.get("/scans")
 async def list_scans(
     engagement_id: str,
@@ -325,14 +361,16 @@ async def delete_scan(
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
 
-    # Delete the file from disk
-    if scan.file_path and os.path.exists(scan.file_path):
-        try:
-            os.remove(scan.file_path)
-        except Exception as e:
-            logger.warning("Could not delete scan file %s: %s", scan.file_path, e)
-
+    file_path = scan.file_path
     await db.delete(scan)
+    await db.flush()
+
+    # Remove the file only after the database accepted the deletion.
+    if file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            logger.warning("Could not delete scan file %s: %s", file_path, e)
 
 
 @router.post("/upload-scan")
@@ -347,7 +385,7 @@ async def upload_scan(
     result = await db.execute(select(Engagement).where(Engagement.id == engagement_id))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Engagement not found")
-    if scan_type not in ALLOWED_SCAN_TYPES:
+    if scan_type not in ALLOWED_SCAN_TYPES | {"auto"}:
         raise HTTPException(status_code=400, detail="Unsupported scan type")
 
     # Save file
@@ -359,6 +397,11 @@ async def upload_scan(
     content = await file.read(MAX_SCAN_SIZE + 1)
     if len(content) > MAX_SCAN_SIZE:
         raise HTTPException(status_code=413, detail="Scan file too large (max 50MB)")
+    resolved_scan_type = (
+        _detect_scan_type(content, display_name)
+        if scan_type == "auto"
+        else scan_type
+    )
     with open(file_path, "wb") as f:
         f.write(content)
 
@@ -366,13 +409,31 @@ async def upload_scan(
         engagement_id=engagement_id,
         filename=display_name,
         file_path=file_path,
-        scan_type=scan_type,
+        scan_type=resolved_scan_type,
         uploaded_by=current_user.id,
     )
     db.add(scan)
-    await db.flush()
+    try:
+        await db.flush()
+        await db.refresh(scan)
+    except Exception:
+        await db.rollback()
+        try:
+            os.remove(file_path)
+        except OSError:
+            logger.warning("Could not remove failed scan upload %s", file_path)
+        raise
 
-    return {"id": scan.id, "filename": scan.filename, "scan_type": scan.scan_type}
+    return {
+        "id": scan.id,
+        "filename": scan.filename,
+        "scan_type": scan.scan_type,
+        "auto_detected": scan_type == "auto",
+        "size_bytes": len(content),
+        "created_at": scan.created_at,
+        "source_job_id": None,
+        "stored_file_available": True,
+    }
 
 
 @router.post("/analyze")

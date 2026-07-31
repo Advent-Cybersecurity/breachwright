@@ -429,6 +429,8 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
   };
 
   const handleDelete = async (findingId) => {
+    const finding = findingsList.find(item => item.id === findingId);
+    if (!window.confirm(`Delete finding "${finding?.title || 'Untitled'}" and its stored evidence? This cannot be undone without a backup.`)) return;
     try {
       await findingsApi.delete(engId, findingId);
       setFindingsList(prev => prev.filter(f => f.id !== findingId));
@@ -1665,7 +1667,9 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [scans, setScans] = useState([]);
-  const [scanType, setScanType] = useState('nmap');
+  const [scanType, setScanType] = useState('auto');
+  const [scanQuery, setScanQuery] = useState('');
+  const [scanListType, setScanListType] = useState('all');
   const [loadingScans, setLoadingScans] = useState(true);
   const [analysisPreview, setAnalysisPreview] = useState(null);
   const [analysisScanIds, setAnalysisScanIds] = useState(new Set());
@@ -1675,6 +1679,11 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
   const [snapshotLabel, setSnapshotLabel] = useState('');
   const [snapshotting, setSnapshotting] = useState(false);
   const [comparison, setComparison] = useState(null);
+  const normalizedScanQuery = scanQuery.trim().toLowerCase();
+  const visibleScans = scans.filter(scan => (
+    (scanListType === 'all' || scan.scan_type === scanListType)
+    && (!normalizedScanQuery || scan.filename.toLowerCase().includes(normalizedScanQuery))
+  ));
 
   useEffect(() => {
     Promise.all([analysisApi.listScans(engId), workflowApi.listSnapshots(engId)])
@@ -1713,7 +1722,10 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
       if (scan.scan_type !== 'custom') {
         setSelectedScanIds(prev => new Set([...prev, scan.id]));
       }
-      toast({ message: `Uploaded ${scan.filename}`, type: 'success' });
+      toast({
+        message: `Uploaded ${scan.filename} as ${scan.scan_type}${scan.auto_detected ? ' (auto-detected)' : ''}`,
+        type: 'success',
+      });
     } catch (err) {
       toast({ message: err.message, type: 'error' });
     } finally {
@@ -1775,6 +1787,7 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
           <div className="flex items-center gap-3">
             <select className="input-field text-sm w-28" value={scanType}
               onChange={(e) => setScanType(e.target.value)}>
+              <option value="auto">Auto</option>
               <option value="nmap">Nmap</option>
               <option value="nessus">Nessus</option>
               <option value="burp">Burp</option>
@@ -1792,14 +1805,28 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
         {scans.length > 0 && (
           <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
             <p className="text-[10px] themed-text-muted mb-2">First checkbox: include in AI analysis. Second checkbox: include in the next structured snapshot.</p>
+            <div className="grid sm:grid-cols-[minmax(0,1fr)_10rem] gap-2 mb-3">
+              <div className="relative">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 themed-text-muted" />
+                <input className="input w-full pl-8 text-xs" value={scanQuery}
+                  onChange={event => setScanQuery(event.target.value)}
+                  placeholder="Filter uploaded scans" aria-label="Filter uploaded scans" />
+              </div>
+              <select className="input text-xs" value={scanListType} onChange={event => setScanListType(event.target.value)} aria-label="Filter scans by type">
+                <option value="all">All types</option>
+                <option value="nmap">Nmap</option><option value="nessus">Nessus</option>
+                <option value="burp">Burp</option><option value="nuclei">Nuclei</option>
+                <option value="sarif">SARIF</option><option value="custom">Other</option>
+              </select>
+            </div>
             <div className="flex flex-wrap gap-2 mb-3">
-              <button className="btn-ghost text-xs" onClick={() => setAnalysisScanIds(new Set(scans.slice(0, 50).map(scan => scan.id)))}>Select first 50 for AI</button>
+              <button className="btn-ghost text-xs" onClick={() => setAnalysisScanIds(new Set(visibleScans.slice(0, 50).map(scan => scan.id)))}>Select first 50 matching for AI</button>
               <button className="btn-ghost text-xs" onClick={() => setAnalysisScanIds(new Set())}>Clear AI selection</button>
-              <button className="btn-ghost text-xs" onClick={() => setSelectedScanIds(new Set(scans.filter(scan => scan.scan_type !== 'custom').slice(0, 50).map(scan => scan.id)))}>Select structured snapshot</button>
+              <button className="btn-ghost text-xs" onClick={() => setSelectedScanIds(new Set(visibleScans.filter(scan => scan.scan_type !== 'custom').slice(0, 50).map(scan => scan.id)))}>Select matching snapshot</button>
               <button className="btn-ghost text-xs" onClick={() => setSelectedScanIds(new Set())}>Clear snapshot selection</button>
             </div>
             <div className="space-y-2">
-              {scans.map(s => (
+              {visibleScans.map(s => (
                 <div key={s.id} className="flex items-center gap-3 text-sm">
                   <input type="checkbox" checked={analysisScanIds.has(s.id)}
                     disabled={!analysisScanIds.has(s.id) && analysisScanIds.size >= 50}
@@ -1822,12 +1849,14 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
                   <span className="font-mono themed-text-secondary flex-1 min-w-0 truncate" title={s.filename}>{s.filename}</span>
                   <span className={`hidden md:inline text-[10px] font-mono ${s.stored_file_available ? 'themed-text-muted' : 'text-red-400'}`}>{formatFileSize(s.size_bytes)}</span>
                   {s.source_job_id && <span className="hidden lg:inline text-[10px] themed-text-muted">Tool Runner</span>}
+                  {s.created_at && <time className="hidden xl:inline text-[10px] themed-text-muted" dateTime={s.created_at}>{new Date(s.created_at).toLocaleString()}</time>}
                   <span className="badge" style={{ backgroundColor: 'var(--bg-600)', color: 'var(--text-muted)' }}>
                     {s.scan_type}
                   </span>
                   <button
                     onClick={async (e) => {
                       e.stopPropagation();
+                      if (!window.confirm(`Delete uploaded scan "${s.filename}"? Snapshots keep normalized observations, but the original file will be removed.`)) return;
                       try {
                         await analysisApi.deleteScan(engId, s.id);
                         setScans(prev => prev.filter(x => x.id !== s.id));
@@ -1843,6 +1872,7 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
                   </button>
                 </div>
               ))}
+              {visibleScans.length === 0 && <p className="text-xs themed-text-muted py-4 text-center">No uploaded scans match this filter.</p>}
             </div>
           </div>
         )}

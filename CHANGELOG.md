@@ -67,6 +67,14 @@
 - Scan management now shows stored size and Tool Runner origin, includes quick
   AI and snapshot selection controls, and prevents either selection from
   exceeding its 50-file processing limit.
+- Large scan lists can be filtered locally by filename and parser type, and
+  quick AI or snapshot selection applies only to the matching uploads.
+- Destructive finding and raw scan deletion now require explicit confirmation
+  and explain the local evidence or recovery impact.
+- Uploads now default to conservative local format detection for Nmap, Nessus,
+  Burp XML, Nuclei JSONL, and SARIF, with an explicit raw-evidence fallback and
+  manual parser override. Upload responses immediately show the detected type
+  and stored size, and failed database writes clean up the copied file.
 - Added migration, API, backup and restore, bounded-output, redaction,
   provenance, duplicate-prevention, and complete local user-journey coverage
   for the new workflows.

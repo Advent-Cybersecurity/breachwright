@@ -2033,6 +2033,61 @@ class UserJourneyTests(unittest.TestCase):
             204,
         )
 
+    def test_scan_upload_auto_detection_uses_safe_fallback(self):
+        engagement = self.client.post(
+            "/api/engagements",
+            json={"name": "Scan Detection", "client_name": "Local Test"},
+        )
+        self.assertEqual(engagement.status_code, 201, engagement.text)
+        engagement_id = engagement.json()["id"]
+        cases = [
+            ("scan.xml", b"<?xml version='1.0'?><nmaprun></nmaprun>", "nmap"),
+            ("audit.nessus", b"<NessusClientData_v2></NessusClientData_v2>", "nessus"),
+            ("burp.xml", b"<items burpVersion='2026'><item></item></items>", "burp"),
+            (
+                "nuclei.jsonl",
+                json.dumps({
+                    "template-id": "test-template",
+                    "matched-at": "https://example.test",
+                    "info": {"name": "Test", "severity": "info"},
+                }).encode("utf-8"),
+                "nuclei",
+            ),
+            (
+                "results.json",
+                json.dumps({"version": "2.1.0", "runs": []}).encode("utf-8"),
+                "sarif",
+            ),
+            ("notes.txt", b"unstructured analyst evidence", "custom"),
+        ]
+        for filename, content, expected_type in cases:
+            upload = self.client.post(
+                f"/api/engagements/{engagement_id}/upload-scan?scan_type=auto",
+                files={"file": (filename, content, "application/octet-stream")},
+            )
+            self.assertEqual(upload.status_code, 200, upload.text)
+            self.assertEqual(upload.json()["scan_type"], expected_type)
+            self.assertTrue(upload.json()["auto_detected"])
+            self.assertEqual(upload.json()["size_bytes"], len(content))
+            self.assertTrue(upload.json()["stored_file_available"])
+            self.assertIsNotNone(upload.json()["created_at"])
+        manual_override = self.client.post(
+            f"/api/engagements/{engagement_id}/upload-scan?scan_type=custom",
+            files={
+                "file": (
+                    "nmap-looking.txt",
+                    b"<nmaprun></nmaprun>",
+                    "text/plain",
+                )
+            },
+        )
+        self.assertEqual(manual_override.json()["scan_type"], "custom")
+        self.assertFalse(manual_override.json()["auto_detected"])
+        self.assertEqual(
+            self.client.delete(f"/api/engagements/{engagement_id}").status_code,
+            204,
+        )
+
     def test_engagement_evidence_notebook_notes_and_attachments(self):
         engagement = self.client.post(
             "/api/engagements",
