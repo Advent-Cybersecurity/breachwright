@@ -14,13 +14,60 @@ from app.engagements.schemas import ReportResponse
 from app.ai.provider import get_provider
 from app.ai.prompts.loader import get_prompt
 from app.ai.prompts.templates import REPORT_GROUNDING_RULES
-from app.ai.context import AIContextTooLarge, build_bounded_untrusted_context
+from app.ai.context import (
+    AIContextTooLarge,
+    MAX_GENERATIVE_CONTEXT_CHARS,
+    build_bounded_untrusted_context,
+)
+from app.ai.errors import AI_PROVIDER_FAILURE_MESSAGE
 from app.config import settings
 from app.reports.content import build_report_content
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["reports"])
+
+
+async def _load_report_source(engagement_id: str, db: AsyncSession):
+    engagement = (await db.execute(
+        select(Engagement).where(Engagement.id == engagement_id)
+    )).scalar_one_or_none()
+    if engagement is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+    findings = (await db.execute(
+        select(Finding)
+        .where(Finding.engagement_id == engagement_id)
+        .order_by(
+            case(
+                (Finding.severity == "critical", 0),
+                (Finding.severity == "high", 1),
+                (Finding.severity == "medium", 2),
+                (Finding.severity == "low", 3),
+                else_=4,
+            ),
+            Finding.cvss_score.desc(),
+            Finding.created_at,
+            Finding.id,
+        )
+    )).scalars().all()
+
+    attack_paths = (await db.execute(
+        select(AttackPath)
+        .where(AttackPath.engagement_id == engagement_id)
+        .order_by(
+            case(
+                (AttackPath.risk_level == "critical", 0),
+                (AttackPath.risk_level == "high", 1),
+                (AttackPath.risk_level == "medium", 2),
+                (AttackPath.risk_level == "low", 3),
+                else_=4,
+            ),
+            AttackPath.created_at,
+            AttackPath.id,
+        )
+    )).scalars().all()
+    return engagement, findings, attack_paths
 
 
 @router.get("/api/engagements/{engagement_id}/reports", response_model=list[ReportResponse])
@@ -40,6 +87,37 @@ async def list_reports(
     return [ReportResponse.model_validate(r) for r in result.scalars().all()]
 
 
+@router.get("/api/engagements/{engagement_id}/reports/ai-preflight")
+async def report_ai_preflight(
+    engagement_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Describe an AI report request without initializing or calling a provider."""
+    engagement, findings, attack_paths = await _load_report_source(engagement_id, db)
+    context_chars = len(build_report_content(engagement, findings, attack_paths))
+    issues = []
+    if context_chars > MAX_GENERATIVE_CONTEXT_CHARS:
+        issues.append(
+            "The report source exceeds the AI context limit. Generate it locally "
+            "or reduce the engagement content first."
+        )
+    provider = settings.ai_provider.lower()
+    return {
+        "provider": provider,
+        "external_provider": provider not in {
+            "local", "ollama", "vllm", "llamacpp", "lmstudio"
+        },
+        "redaction_enabled": settings.ai_redact_sensitive_data,
+        "context_chars": context_chars,
+        "max_context_chars": MAX_GENERATIVE_CONTEXT_CHARS,
+        "finding_count": len(findings),
+        "attack_path_count": len(attack_paths),
+        "ready": not issues,
+        "issues": issues,
+    }
+
+
 @router.post("/api/engagements/{engagement_id}/reports", response_model=ReportResponse, status_code=201)
 async def generate_report(
     engagement_id: str,
@@ -49,45 +127,7 @@ async def generate_report(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_editor),
 ):
-    result = await db.execute(select(Engagement).where(Engagement.id == engagement_id))
-    engagement = result.scalar_one_or_none()
-    if not engagement:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-
-    finding_result = await db.execute(
-        select(Finding)
-        .where(Finding.engagement_id == engagement_id)
-        .order_by(
-            case(
-                (Finding.severity == "critical", 0),
-                (Finding.severity == "high", 1),
-                (Finding.severity == "medium", 2),
-                (Finding.severity == "low", 3),
-                else_=4,
-            ),
-            Finding.cvss_score.desc(),
-            Finding.created_at,
-            Finding.id,
-        )
-    )
-    findings = finding_result.scalars().all()
-
-    ap_result = await db.execute(
-        select(AttackPath)
-        .where(AttackPath.engagement_id == engagement_id)
-        .order_by(
-            case(
-                (AttackPath.risk_level == "critical", 0),
-                (AttackPath.risk_level == "high", 1),
-                (AttackPath.risk_level == "medium", 2),
-                (AttackPath.risk_level == "low", 3),
-                else_=4,
-            ),
-            AttackPath.created_at,
-            AttackPath.id,
-        )
-    )
-    attack_paths = ap_result.scalars().all()
+    engagement, findings, attack_paths = await _load_report_source(engagement_id, db)
 
     template = None
     if format == "docx":
@@ -123,7 +163,6 @@ async def generate_report(
                     "engagement content first."
                 ),
             ) from exc
-        provider = get_provider()
         system_prompt = await get_prompt(db, "prompt_reports") + REPORT_GROUNDING_RULES
         required_evidence_ids = {
             str(ref.get("id"))
@@ -133,33 +172,44 @@ async def generate_report(
         }
         required_finding_titles = {finding.title for finding in findings}
         try:
+            provider = get_provider()
             generated_content = await provider.complete(
                 system_prompt=system_prompt,
                 user_message=user_message,
                 max_tokens=8192,
             )
-            missing_ids = sorted(
-                evidence_id
-                for evidence_id in required_evidence_ids
-                if evidence_id not in generated_content
+        except Exception as exc:
+            logger.warning("AI report request failed with %s", type(exc).__name__)
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"{AI_PROVIDER_FAILURE_MESSAGE} You can also generate the "
+                    "report locally."
+                ),
+            ) from exc
+
+        missing_ids = sorted(
+            evidence_id
+            for evidence_id in required_evidence_ids
+            if evidence_id not in generated_content
+        )
+        missing_titles = sorted(
+            title for title in required_finding_titles if title not in generated_content
+        )
+        if missing_ids or missing_titles:
+            logger.warning(
+                "Rejected AI report that omitted %d evidence IDs and %d finding titles",
+                len(missing_ids),
+                len(missing_titles),
             )
-            if missing_ids:
-                raise ValueError(
-                    "AI report omitted required evidence IDs: "
-                    + ", ".join(missing_ids[:10])
-                )
-            missing_titles = sorted(
-                title for title in required_finding_titles if title not in generated_content
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "AI output failed evidence validation and was not saved. Try "
+                    "again, or generate the report locally."
+                ),
             )
-            if missing_titles:
-                raise ValueError(
-                    "AI report omitted required findings: "
-                    + ", ".join(missing_titles[:10])
-                )
-            report_content = generated_content
-        except Exception as e:
-            logger.error("AI provider error: %s", e)
-            raise HTTPException(status_code=502, detail=f"AI provider error: {e}")
+        report_content = generated_content
     report_content = report_content.replace("\u2014", "-")
 
     # Save report

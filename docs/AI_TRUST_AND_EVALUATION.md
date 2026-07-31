@@ -33,6 +33,9 @@ AI-assisted and analyst reviewed.
   and every proposed node must exist in the imported graph.
 - Narratives must preserve finding and evidence citation markers.
 - AI-assisted reports must preserve every Evidence ID or generation fails.
+- Before AI report generation, a provider-free preflight shows the bounded
+  context size, provider, local redaction state, and readiness. Disabling
+  redaction requires an additional confirmation before report context is sent.
 - Coverage reviews must cite finding, scan, checklist, path, or methodology
   markers.
 - Assistant responses receive bounded context with citation markers and show
@@ -95,3 +98,8 @@ provider's data-handling and pricing terms. Local OpenAI-compatible endpoints
 can keep model traffic on operator-controlled systems. Breachwright's project
 CI does not call model APIs, provision hosted AI services, or require a paid
 test platform.
+
+Provider initialization and request failures are handled at the workflow
+boundary. The interface receives a stable recovery message, while logs record
+only the exception type rather than raw provider response text that could
+contain assessment data.

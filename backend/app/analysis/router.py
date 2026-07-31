@@ -16,6 +16,7 @@ from app.auth.models import User
 from app.engagements.models import AIFindingDraft, Engagement, Finding, ScanUpload
 from app.engagements.schemas import FindingResponse
 from app.ai.provider import get_provider
+from app.ai.errors import AI_PROVIDER_FAILURE_MESSAGE
 from app.ai.output_validation import validate_ai_findings
 from app.ai.completion import complete_validated_json
 from app.ai.context import redact_sensitive_text
@@ -544,13 +545,13 @@ async def analyze_scans(
     if settings.ai_redact_sensitive_data:
         scan_text = redact_sensitive_text(scan_text)
     chunks, truncated = chunk_scan_text(scan_text)
-    provider = get_provider()
     custom_prompt = await get_prompt(db, "prompt_analysis")
     system_prompt = custom_prompt + ANALYSIS_GROUNDING_RULES
     validated_findings = []
     total_latency_ms = 0
     repaired_chunks = 0
     try:
+        provider = get_provider()
         for chunk_index, chunk in enumerate(chunks, 1):
             candidates, metadata = await complete_validated_json(
                 provider,
@@ -570,8 +571,8 @@ async def analyze_scans(
             total_latency_ms += metadata.latency_ms
             repaired_chunks += int(metadata.repaired)
     except Exception as exc:
-        logger.error("AI provider or validation error: %s", exc)
-        raise HTTPException(status_code=502, detail=f"AI analysis failed: {exc}") from exc
+        logger.warning("Scanner AI request failed with %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail=AI_PROVIDER_FAILURE_MESSAGE) from exc
 
     existing_result = await db.execute(
         select(Finding).where(Finding.engagement_id == engagement_id)

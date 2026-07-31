@@ -330,6 +330,41 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn('Delete evidence attachment', engagement_page)
         self.assertIn('Delete notebook attachment', notebook_page)
 
+    def test_ai_reports_have_a_provider_free_privacy_preflight(self):
+        report_router = (ROOT / "backend" / "app" / "reports" / "router.py").read_text(
+            encoding="utf-8"
+        )
+        engagement_page = (ROOT / "frontend" / "src" / "pages" / "EngagementDetail.jsx").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('reports/ai-preflight', report_router)
+        self.assertIn('"redaction_enabled": settings.ai_redact_sensitive_data', report_router)
+        self.assertIn('"external_provider": provider not in', report_router)
+        self.assertIn('AI report preflight', engagement_page)
+        self.assertIn('External provider usage may incur charges.', engagement_page)
+        self.assertIn('Sensitive-data redaction is off.', engagement_page)
+        self.assertIn('AI report preflight unavailable:', engagement_page)
+        self.assertIn('disabled={!aiPreflight}', engagement_page)
+        self.assertNotIn('detail=f"AI provider error: {e}"', report_router)
+
+    def test_ai_provider_failures_do_not_echo_raw_provider_responses(self):
+        ai_workflows = (
+            ROOT / "backend" / "app" / "analysis" / "router.py",
+            ROOT / "backend" / "app" / "assistant" / "router.py",
+            ROOT / "backend" / "app" / "attack_paths" / "router.py",
+            ROOT / "backend" / "app" / "ad" / "router.py",
+            ROOT / "backend" / "app" / "gap_detection" / "service.py",
+            ROOT / "backend" / "app" / "narrative" / "service.py",
+            ROOT / "backend" / "app" / "reports" / "router.py",
+        )
+        for path in ai_workflows:
+            source = path.read_text(encoding="utf-8")
+            self.assertIn("AI_PROVIDER_FAILURE_MESSAGE", source, path)
+            self.assertNotIn('detail=f"AI provider error:', source, path)
+            self.assertNotIn('detail=f"AI analysis failed:', source, path)
+            self.assertNotIn('return {"error": f"AI provider error:', source, path)
+            self.assertNotIn('logger.error("AI provider', source, path)
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")

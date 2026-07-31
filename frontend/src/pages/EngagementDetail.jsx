@@ -2308,6 +2308,18 @@ function ReportsTab({ engId, toast }) {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [readiness, setReadiness] = useState(null);
   const [redactSarif, setRedactSarif] = useState(true);
+  const [aiPreflight, setAiPreflight] = useState(null);
+  const [aiPreflightError, setAiPreflightError] = useState('');
+
+  const loadAiPreflight = async () => {
+    setAiPreflightError('');
+    try {
+      setAiPreflight(await reportsApi.aiPreflight(engId));
+    } catch (e) {
+      setAiPreflight(null);
+      setAiPreflightError(e.message);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -2325,11 +2337,18 @@ function ReportsTab({ engId, toast }) {
       } catch (e) {
         toast({ message: `Could not load reports: ${e.message}`, type: 'error' });
       }
-      finally { setLoading(false); }
+      await loadAiPreflight();
+      setLoading(false);
     })();
   }, [engId]);
 
   const handleGenerate = async () => {
+    if (useAI && aiPreflight && !aiPreflight.redaction_enabled) {
+      const confirmed = window.confirm(
+        `Sensitive-data redaction is off. Report context will be sent to ${aiPreflight.provider}. Continue?`
+      );
+      if (!confirmed) return;
+    }
     setGenerating(true);
     try {
       const templateId = reportFormat === 'docx' && selectedTemplate ? selectedTemplate : null;
@@ -2524,12 +2543,39 @@ function ReportsTab({ engId, toast }) {
       </div>
 
       {/* Generate controls */}
+      {aiPreflightError && (
+        <div className="mb-4 rounded-md border border-yellow-500/40 bg-yellow-500/5 px-3 py-2 text-xs" role="alert">
+          <span className="text-yellow-300">AI report preflight unavailable: {aiPreflightError}</span>
+          <span className="themed-text-muted"> AI enhancement is disabled, but local report generation remains available.</span>
+          <button className="btn-ghost text-xs ml-2" onClick={loadAiPreflight}>Retry</button>
+        </div>
+      )}
+      {useAI && aiPreflight && (
+        <div className={`mb-4 rounded-md border px-3 py-2 ${aiPreflight.ready ? 'border-cyan-500/30 bg-cyan-500/5' : 'border-yellow-500/40 bg-yellow-500/5'}`} role="status">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            <span className="themed-text-primary font-medium">AI report preflight</span>
+            <span className="themed-text-secondary">Provider: {aiPreflight.provider}</span>
+            <span className="themed-text-secondary">
+              {aiPreflight.context_chars.toLocaleString()} / {aiPreflight.max_context_chars.toLocaleString()} characters
+            </span>
+            <span className={aiPreflight.redaction_enabled ? 'text-green-400' : 'text-yellow-400'}>
+              Local secret redaction {aiPreflight.redaction_enabled ? 'on' : 'off'}
+            </span>
+          </div>
+          {aiPreflight.issues.map(issue => <p key={issue} className="text-xs text-yellow-300 mt-1">{issue}</p>)}
+          {aiPreflight.ready && <p className="text-[10px] themed-text-muted mt-1">
+            Bounded report context will be sent only when generation starts.
+            {aiPreflight.external_provider ? ' External provider usage may incur charges.' : ' The configured provider is local.'}
+          </p>}
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-end gap-3 mb-4">
         <label className="flex items-center gap-2 text-xs themed-text-secondary">
           <input
             type="checkbox"
             checked={useAI}
             onChange={e => setUseAI(e.target.checked)}
+            disabled={!aiPreflight}
           />
           Enhance with configured AI
         </label>
@@ -2545,7 +2591,7 @@ function ReportsTab({ engId, toast }) {
           <option value="docx">DOCX</option>
           <option value="md">Markdown</option>
         </select>
-        <button onClick={handleGenerate} disabled={generating}
+        <button onClick={handleGenerate} disabled={generating || (useAI && (!aiPreflight || !aiPreflight.ready))}
           className="btn-primary flex items-center gap-2 text-sm">
           {generating ? <Spinner className="w-4 h-4" /> : <FileText size={14} />}
           {generating ? 'Generating...' : 'Generate Report'}

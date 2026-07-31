@@ -134,6 +134,8 @@ export const attackPaths = {
 export const reports = {
   list: (engId) =>
     request(`/engagements/${engId}/reports`),
+  aiPreflight: (engId) =>
+    request(`/engagements/${engId}/reports/ai-preflight`),
   generate: (engId, format = 'md', templateId = null, useAI = false) => {
     let url = `/engagements/${engId}/reports?format=${format}&use_ai=${useAI}`;
     if (templateId) url += `&template_id=${templateId}`;
