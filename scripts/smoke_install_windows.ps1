@@ -5,8 +5,18 @@ param(
 
 $ErrorActionPreference = "Stop"
 $bundle = (Resolve-Path -LiteralPath $BundleDirectory).Path
-$runnerTemp = (Resolve-Path -LiteralPath $env:RUNNER_TEMP).Path
-$smokeRoot = Join-Path $runnerTemp ("breachwright-install-smoke-" + $env:GITHUB_RUN_ID)
+$runnerTemp = if ($env:RUNNER_TEMP) {
+    [System.IO.Path]::GetFullPath($env:RUNNER_TEMP)
+} else {
+    [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+}
+New-Item -ItemType Directory -Force -Path $runnerTemp | Out-Null
+$runId = if ($env:GITHUB_RUN_ID) {
+    $env:GITHUB_RUN_ID
+} else {
+    "local-$PID"
+}
+$smokeRoot = Join-Path $runnerTemp ("breachwright-install-smoke-" + $runId)
 $localRoot = Join-Path $smokeRoot "local"
 $roamingRoot = Join-Path $smokeRoot "roaming"
 
@@ -56,5 +66,17 @@ if (Test-Path -LiteralPath $installDirectory) {
 if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) {
     throw "Windows uninstall did not preserve application data"
 }
+
+if (
+    -not $smokeRoot.StartsWith(
+        $runnerTemp.TrimEnd([System.IO.Path]::DirectorySeparatorChar) +
+            [System.IO.Path]::DirectorySeparatorChar,
+        [System.StringComparison]::OrdinalIgnoreCase
+    ) -or
+    (Split-Path -Leaf $smokeRoot) -notmatch "^breachwright-install-smoke-"
+) {
+    throw "Refusing to clean an unexpected test path: $smokeRoot"
+}
+Remove-Item -LiteralPath $smokeRoot -Recurse -Force
 
 Write-Host "Windows bundle install, version, uninstall, and data preservation passed"
