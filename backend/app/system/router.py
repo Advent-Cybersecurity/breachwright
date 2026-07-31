@@ -133,3 +133,27 @@ async def download_backup(
         media_type="application/zip",
         headers={"X-Content-Type-Options": "nosniff"},
     )
+
+
+@router.delete("/backups/{filename}", status_code=204)
+async def delete_backup(
+    filename: str,
+    admin: User = Depends(require_admin),
+):
+    if (
+        Path(filename).name != filename
+        or not filename.startswith("breachwright-backup-")
+        or not filename.endswith(".zip")
+    ):
+        raise HTTPException(status_code=400, detail="Invalid backup filename")
+    backup_path = (Path(settings.data_dir) / "backups" / filename).resolve()
+    expected_parent = (Path(settings.data_dir) / "backups").resolve()
+    if backup_path.parent != expected_parent or not backup_path.is_file():
+        raise HTTPException(status_code=404, detail="Backup not found")
+    try:
+        backup_path.unlink()
+    except OSError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Backup could not be deleted: {exc}",
+        ) from exc

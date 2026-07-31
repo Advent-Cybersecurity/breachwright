@@ -220,7 +220,7 @@ class UserJourneyTests(unittest.TestCase):
             },
         )
         self.assertEqual(login.status_code, 200, login.text)
-        self.assertIn("Path=/api/auth", login.headers["set-cookie"])
+        self.assertIn("Path=/;", login.headers["set-cookie"])
         refreshed = self.client.post("/api/auth/refresh")
         self.assertEqual(refreshed.status_code, 200, refreshed.text)
         token = login.json()["access_token"]
@@ -708,6 +708,18 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(
             backup_download.headers["x-content-type-options"],
             "nosniff",
+        )
+        deleted_backup = self.client.delete(
+            f"/api/system/backups/{backup_name}",
+            headers=headers,
+        )
+        self.assertEqual(deleted_backup.status_code, 204, deleted_backup.text)
+        self.assertEqual(
+            self.client.get(
+                f"/api/system/backups/{backup_name}",
+                headers=headers,
+            ).status_code,
+            404,
         )
 
         evidence_directory = self.data_dir / "evidence" / finding_id

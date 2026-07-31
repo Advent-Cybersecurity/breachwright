@@ -7,6 +7,7 @@
 - Added verified local SQLite backups for the database, evidence, uploads, and reports
 - Added offline restore with archive checksums, SQLite integrity checks, rollback, and preservation of displaced data
 - Added authenticated system diagnostics and backup management in Settings
+- Added confirmed backup deletion so long-running installations can manage disk usage
 - Fixed startup so migration failures and timeouts stop the application instead of reporting false success
 - Added cleanup for evidence records and files when findings or engagements are deleted
 
@@ -22,6 +23,7 @@
 - Split large frontend pages into on-demand bundles to reduce the initial JavaScript download
 - Added interface error recovery and predictable unknown-route handling
 - Fixed first-run validation failures so they show readable feedback instead of crashing the interface
+- Fixed session restoration after desktop WebView and browser page reloads
 
 ### Security
 

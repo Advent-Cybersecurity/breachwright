@@ -68,7 +68,7 @@ async def login(request: LoginRequest, response: Response, db: AsyncSession = De
         httponly=True,
         samesite="lax",
         max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
-        path="/api/auth",
+        path="/",
     )
 
     return TokenResponse(access_token=access_token)
@@ -100,7 +100,7 @@ async def refresh(
         httponly=True,
         samesite="lax",
         max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
-        path="/api/auth",
+        path="/",
     )
 
     return TokenResponse(access_token=access_token)
@@ -108,6 +108,8 @@ async def refresh(
 
 @router.post("/logout")
 async def logout(response: Response):
+    # Remove both the current cookie and the narrower path used by v2.0.
+    response.delete_cookie("refresh_token", path="/")
     response.delete_cookie("refresh_token", path="/api/auth")
     return {"message": "Logged out"}
 

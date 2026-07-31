@@ -21,6 +21,8 @@ export default function Settings() {
   const [diagnostics, setDiagnostics] = useState(null);
   const [backups, setBackups] = useState([]);
   const [backingUp, setBackingUp] = useState(false);
+  const [pendingBackupDelete, setPendingBackupDelete] = useState(null);
+  const [deletingBackup, setDeletingBackup] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddUser, setShowAddUser] = useState(false);
   const [toast, setToast] = useState(null);
@@ -401,6 +403,47 @@ export default function Settings() {
                     <Download size={12} />
                     Download
                   </button>
+                  {pendingBackupDelete === backup.filename ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="btn-ghost text-xs text-red-400"
+                        disabled={deletingBackup}
+                        onClick={async () => {
+                          setDeletingBackup(true);
+                          try {
+                            await system.deleteBackup(backup.filename);
+                            setBackups(prev => prev.filter(item => item.filename !== backup.filename));
+                            setPendingBackupDelete(null);
+                            setToast({ message: `Backup deleted: ${backup.filename}`, type: 'success' });
+                          } catch (err) {
+                            setToast({ message: err.message, type: 'error' });
+                          } finally {
+                            setDeletingBackup(false);
+                          }
+                        }}
+                      >
+                        {deletingBackup ? 'Deleting...' : 'Confirm delete'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost text-xs"
+                        disabled={deletingBackup}
+                        onClick={() => setPendingBackupDelete(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label={`Delete ${backup.filename}`}
+                      className="btn-ghost text-xs text-red-400"
+                      onClick={() => setPendingBackupDelete(backup.filename)}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

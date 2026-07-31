@@ -220,6 +220,8 @@ export const system = {
     request('/system/backups'),
   createBackup: () =>
     request('/system/backups', { method: 'POST' }),
+  deleteBackup: (filename) =>
+    request(`/system/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' }),
   downloadBackup: async (filename) => {
     const res = await fetch(`/api/system/backups/${encodeURIComponent(filename)}`, {
       headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
