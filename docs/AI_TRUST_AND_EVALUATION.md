@@ -41,6 +41,10 @@ AI-assisted and analyst reviewed.
   initialization. Citation IDs are accepted only when their markers survived
   the final context bound, and the interface shows the active provider and
   redaction state before a message is sent.
+- Assistant finding fields and evidence-reference lists are bounded before the
+  final prompt is assembled. Scan excerpts use bounded binary reads on a worker
+  thread, so a large stored scan is not loaded in full or read on the request
+  loop.
 
 ## Zero-cost regression baseline
 

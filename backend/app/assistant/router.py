@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import os
 import re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -22,6 +24,9 @@ MAX_ASSISTANT_FINDINGS = 200
 MAX_ASSISTANT_SCANS = 100
 MAX_ASSISTANT_PATHS = 100
 MAX_ASSISTANT_AD_PATHS = 100
+MAX_ASSISTANT_FIELD_CHARS = 4_000
+MAX_ASSISTANT_HOST_CHARS = 1_000
+MAX_ASSISTANT_SCAN_EXCERPT_BYTES = 3_000
 CITATION_PATTERN = re.compile(r"\[([A-Z_]+:[A-Za-z0-9._:-]+)\]")
 
 GENERIC_SYSTEM_PROMPT = """You are an AI assistant embedded in Breachwright, a penetration testing management tool. You help penetration testers by answering questions about their engagements, findings, attack paths, and scan data.
@@ -66,6 +71,34 @@ def citations_present_in_context(
     return [citation for citation in citations if citation["id"] in supplied_ids]
 
 
+def bounded_context_value(value, limit: int) -> str:
+    text = str(value) if value not in (None, "") else "N/A"
+    if len(text) <= limit:
+        return text
+    marker = "\n[Field truncated at the local context limit.]"
+    if limit <= len(marker):
+        return text[:limit]
+    return text[:limit - len(marker)] + marker
+
+
+def read_scan_excerpt(file_path: str) -> str | None:
+    """Read a bounded local excerpt without following a substituted symlink."""
+    if os.path.islink(file_path) or not os.path.isfile(file_path):
+        return None
+    try:
+        with open(file_path, "rb") as source:
+            content = source.read(MAX_ASSISTANT_SCAN_EXCERPT_BYTES + 1)
+    except OSError:
+        return None
+    text = content[:MAX_ASSISTANT_SCAN_EXCERPT_BYTES].decode(
+        "utf-8",
+        errors="replace",
+    )
+    if len(content) > MAX_ASSISTANT_SCAN_EXCERPT_BYTES:
+        text += "\n[Scan excerpt truncated.]"
+    return text
+
+
 def build_assistant_user_message(
     context: str,
     question: str,
@@ -107,7 +140,7 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
             context_parts.append(
                 f"[ENGAGEMENT:{eng.id}] Current Engagement: {eng.name}\n"
                 f"Client: {eng.client_name}\n"
-                f"Scope: {eng.scope or 'Not specified'}\n"
+                f"Scope: {bounded_context_value(eng.scope or 'Not specified', MAX_ASSISTANT_HOST_CHARS)}\n"
                 f"Status: {eng.status.value if hasattr(eng.status, 'value') else eng.status}\n"
                 f"Dates: {eng.start_date or 'N/A'} to {eng.end_date or 'N/A'}"
             )
@@ -137,7 +170,7 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
                 findings_text = "\n".join(
                     f"  [FINDING:{f.id}] [{f.severity.value.upper() if hasattr(f.severity, 'value') else f.severity.upper()}] "
                     f"{f.title} (CVSS: {f.cvss_score if f.cvss_score is not None else 'N/A'}) "
-                    f"Hosts: {f.affected_hosts or 'N/A'}"
+                    f"Hosts: {bounded_context_value(f.affected_hosts, MAX_ASSISTANT_HOST_CHARS)}"
                     f"{' | Retest: ' + f.retest_status if f.retest_status else ''}"
                     for f in findings
                 )
@@ -154,11 +187,11 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
                         f"[FINDING:{f.id}] Finding: {f.title}\n"
                         f"Severity: {f.severity.value.upper() if hasattr(f.severity, 'value') else f.severity.upper()}\n"
                         f"CVSS: {f.cvss_score if f.cvss_score is not None else 'N/A'}\n"
-                        f"Hosts: {f.affected_hosts or 'N/A'}\n"
-                        f"Description: {f.description or 'N/A'}\n"
-                        f"Evidence: {f.evidence or 'N/A'}\n"
-                        f"Remediation: {f.remediation or 'N/A'}\n"
-                        f"Evidence references: {', '.join('[EVIDENCE:' + str(ref.get('id')) + ']' for ref in (f.evidence_refs or []) if ref.get('id')) or 'None'}"
+                        f"Hosts: {bounded_context_value(f.affected_hosts, MAX_ASSISTANT_HOST_CHARS)}\n"
+                        f"Description: {bounded_context_value(f.description, MAX_ASSISTANT_FIELD_CHARS)}\n"
+                        f"Evidence: {bounded_context_value(f.evidence, MAX_ASSISTANT_FIELD_CHARS)}\n"
+                        f"Remediation: {bounded_context_value(f.remediation, MAX_ASSISTANT_FIELD_CHARS)}\n"
+                        f"Evidence references: {', '.join('[EVIDENCE:' + str(ref.get('id')) + ']' for ref in (f.evidence_refs or [])[:50] if ref.get('id')) or 'None'}"
                         for f in findings
                     )
                     context_parts.append(f"\nDetailed Findings:\n{detail_text}")
@@ -169,7 +202,7 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
                                 "type": "evidence",
                                 "label": ref.get("filename") or ref.get("scan_type") or ref.get("id"),
                             }
-                            for ref in (finding.evidence_refs or [])
+                            for ref in (finding.evidence_refs or [])[:50]
                             if ref.get("id")
                         )
 
@@ -195,15 +228,15 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
                     )
 
                     # Try to read scan contents for specific questions
-                    import os
                     for s in scans[:3]:  # Limit to 3 files
-                        if s.file_path and os.path.exists(s.file_path):
-                            try:
-                                with open(s.file_path, "r") as f:
-                                    content = f.read()[:3000]  # First 3000 chars
-                                context_parts.append(f"\n[SCAN:{s.id}] Scan Output ({s.filename}):\n{content}")
-                            except Exception:
-                                pass
+                        if not s.file_path:
+                            continue
+                        content = await asyncio.to_thread(
+                            read_scan_excerpt,
+                            s.file_path,
+                        )
+                        if content:
+                            context_parts.append(f"\n[SCAN:{s.id}] Scan Output ({s.filename}):\n{content}")
 
             # Include attack paths if question is about paths/chains
             if any(kw in question_lower for kw in ['attack', 'path', 'chain', 'exploit', 'lateral', 'escalat']):
@@ -216,7 +249,7 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
                 if paths:
                     path_text = "\n\n".join(
                         f"[PATH:{p.id}] Path: {p.name} (Risk: {p.risk_level or 'N/A'})\n"
-                        f"Description: {p.description or 'N/A'}"
+                        f"Description: {bounded_context_value(p.description, MAX_ASSISTANT_FIELD_CHARS)}"
                         for p in paths
                     )
                     context_parts.append(f"\nExploitation Chains:\n{path_text}")
@@ -267,7 +300,7 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
         engagements = eng_result.scalars().all()
         if engagements:
             eng_text = "\n".join(
-                f"  {e.name} (client: {e.client_name}, status: {e.status.value if hasattr(e.status, 'value') else e.status}, scope: {e.scope or 'N/A'})"
+                f"  {e.name} (client: {e.client_name}, status: {e.status.value if hasattr(e.status, 'value') else e.status}, scope: {bounded_context_value(e.scope, MAX_ASSISTANT_HOST_CHARS)})"
                 for e in engagements
             )
             context_parts.append(f"All Engagements:\n{eng_text}")
