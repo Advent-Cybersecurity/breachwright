@@ -14,6 +14,7 @@ REQUIRED_DOCUMENTS = {
     "Breachwright/LICENSE",
     "Breachwright/NOTICE",
     "Breachwright/README.md",
+    "Breachwright/ROADMAP.md",
     "Breachwright/INSTALL.md",
     "Breachwright/docs/DATA_SAFETY.md",
     "Breachwright/SECURITY.md",

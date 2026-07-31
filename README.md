@@ -157,6 +157,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system map and data flo
 
 Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change. Community support expectations are described in [SUPPORT.md](SUPPORT.md).
 
+The project direction, cross-platform release standards, and cost and privacy
+guardrails are documented in [ROADMAP.md](ROADMAP.md).
+
 ## License and attribution
 
 Breachwright is licensed under the [Apache License 2.0](LICENSE).

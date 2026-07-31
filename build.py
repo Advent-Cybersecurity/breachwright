@@ -106,6 +106,7 @@ def include_distribution_files(bundle_dir: Path) -> None:
         "SECURITY.md",
         "SUPPORT.md",
         "CHANGELOG.md",
+        "ROADMAP.md",
         "INSTALL.md",
         "icon.ico",
         "icon.png",

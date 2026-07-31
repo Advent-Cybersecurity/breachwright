@@ -90,6 +90,8 @@
   GitHub Actions
 - Isolated and cleaned logging-test data so validation runs leave no test
   secret or runtime directory in the source tree
+- Added a public roadmap with cross-platform release, privacy, compatibility,
+  community-extension, and $0 automation guardrails
 - Removed dependency test and type-checker modules from release bundles
 - Removed internal runtime-path debug output from packaged command-line operations
 - Aligned packaged and source data-directory selection on Windows and Linux
