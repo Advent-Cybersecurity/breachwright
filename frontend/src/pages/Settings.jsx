@@ -304,6 +304,17 @@ export default function Settings() {
               <>
                 <InfoRow label="Platform" value={`${diagnostics.platform} ${diagnostics.platform_release}`} mono />
                 <InfoRow label="Database" value={diagnostics.database_type} mono />
+                {diagnostics.database_integrity && (
+                  <InfoRow
+                    label="Database integrity"
+                    value={
+                      <span className={diagnostics.database_integrity === 'ok' ? 'text-green-400' : 'text-yellow-400'}>
+                        {diagnostics.database_integrity}
+                      </span>
+                    }
+                    mono
+                  />
+                )}
                 <InfoRow label="Data directory" value={diagnostics.data_directory} mono />
                 <InfoRow label="Free space" value={`${(diagnostics.free_space / (1024 ** 3)).toFixed(1)} GB`} mono />
               </>

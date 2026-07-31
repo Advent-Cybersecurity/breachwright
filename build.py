@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import platform
 from pathlib import Path
 import shutil
@@ -54,8 +55,21 @@ def build_frontend(skip_frontend: bool) -> None:
                 "--skip-frontend requires frontend/dist/index.html to exist."
             )
         return
-    run(["npm", "ci"], cwd=FRONTEND_DIR)
-    run(["npm", "run", "build"], cwd=FRONTEND_DIR)
+    npm = shutil.which("npm.cmd" if sys.platform == "win32" else "npm")
+    if not npm:
+        raise SystemExit("npm is required to build the frontend.")
+    if sys.platform == "win32":
+        command_prefix = [
+            os.environ.get("COMSPEC", "cmd.exe"),
+            "/d",
+            "/s",
+            "/c",
+            npm,
+        ]
+    else:
+        command_prefix = [npm]
+    run([*command_prefix, "ci"], cwd=FRONTEND_DIR)
+    run([*command_prefix, "run", "build"], cwd=FRONTEND_DIR)
     if not (FRONTEND_DIR / "dist" / "index.html").is_file():
         raise SystemExit("Frontend build did not produce index.html.")
 

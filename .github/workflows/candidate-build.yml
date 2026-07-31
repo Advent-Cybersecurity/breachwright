@@ -56,6 +56,5 @@ jobs:
       - name: Smoke-test Linux desktop window
         if: runner.os == 'Linux'
         run: xvfb-run -a python scripts/smoke_desktop.py dist/Breachwright/Breachwright
-      - name: Confirm candidate archive exists
-        shell: bash
-        run: test -n "$(find dist -maxdepth 1 -type f -name 'breachwright-*' -print -quit)"
+      - name: Verify candidate release archive
+        run: python scripts/verify_archive.py dist

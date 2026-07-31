@@ -18,6 +18,7 @@
 - Added accessible labels to first-run, login, engagement, and finding forms
 - Added release-candidate version visibility across the API, desktop launcher, and frontend
 - Split large frontend pages into on-demand bundles to reduce the initial JavaScript download
+- Added interface error recovery and predictable unknown-route handling
 
 ### Security
 
@@ -30,6 +31,7 @@
 - Added browser security headers and disabled API response caching
 - Made viewer accounts read-only across engagement data, reports, uploads, Tool Runner, and AI-assisted actions
 - Fixed Windows backup staging permissions in the packaged runtime
+- Added an on-demand SQLite integrity check to system diagnostics
 
 ### Testing and packaging
 
@@ -39,6 +41,7 @@
 - Added packaged API, frontend, report, backup, restore, and desktop-window smoke tests
 - Added a real v2.0.0 database upgrade smoke test
 - Added separate native Windows and Linux archives built from the same source
+- Added release-archive verification for required notices, launchers, checksums, and private-data exclusions
 
 ## v2.0.0
 

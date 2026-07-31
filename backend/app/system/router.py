@@ -1,10 +1,12 @@
 """Authenticated system diagnostics and backup endpoints."""
 
 import asyncio
+from contextlib import closing
 import os
 from pathlib import Path
 import platform
 import shutil
+import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -17,6 +19,14 @@ from app.version import APP_VERSION
 
 
 router = APIRouter(prefix="/api/system", tags=["system"])
+
+
+def _sqlite_quick_check(database_path: Path) -> str:
+    if not database_path.is_file():
+        return "missing"
+    uri = database_path.resolve().as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True, timeout=5)) as connection:
+        return str(connection.execute("PRAGMA quick_check").fetchone()[0])
 
 
 def _backup_metadata(path: Path) -> dict:
@@ -40,10 +50,18 @@ async def diagnostics(current_user: User = Depends(get_current_user)):
     )
     database_exists = None
     database_size = None
+    database_integrity = None
     if database_type == "sqlite":
         database_path = sqlite_database_path(settings.resolved_database_url)
         database_exists = database_path.is_file()
         database_size = database_path.stat().st_size if database_exists else 0
+        try:
+            database_integrity = await asyncio.to_thread(
+                _sqlite_quick_check,
+                database_path,
+            )
+        except sqlite3.Error:
+            database_integrity = "error"
 
     backup_dir = data_path / "backups"
     return {
@@ -57,6 +75,7 @@ async def diagnostics(current_user: User = Depends(get_current_user)):
         "database_type": database_type,
         "database_exists": database_exists,
         "database_size": database_size,
+        "database_integrity": database_integrity,
         "free_space": usage.free,
         "backup_count": len(list(backup_dir.glob("breachwright-backup-*.zip"))),
     }

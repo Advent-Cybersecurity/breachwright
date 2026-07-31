@@ -311,6 +311,7 @@ class UserJourneyTests(unittest.TestCase):
         diagnostics = self.client.get("/api/system/diagnostics", headers=headers)
         self.assertEqual(diagnostics.status_code, 200, diagnostics.text)
         self.assertEqual(diagnostics.json()["database_type"], "sqlite")
+        self.assertEqual(diagnostics.json()["database_integrity"], "ok")
         self.assertTrue(diagnostics.json()["data_directory_writable"])
 
         unsafe_logo = self.client.post(

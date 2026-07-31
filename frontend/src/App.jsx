@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { Component, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth';
 import { ThemeProvider } from './theme';
@@ -12,6 +12,44 @@ const ToolRunner = lazy(() => import('./pages/ToolRunner'));
 const Assistant = lazy(() => import('./pages/Assistant'));
 const Settings = lazy(() => import('./pages/Settings'));
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error, details) {
+    console.error('Breachwright interface error', error, details);
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="min-h-screen bg-surface-900 flex items-center justify-center p-6">
+        <div className="card max-w-md p-6 text-center" role="alert">
+          <h1 className="text-xl font-semibold themed-text-primary mb-2">
+            The interface could not finish loading
+          </h1>
+          <p className="text-sm themed-text-muted mb-5">
+            Your saved data is unaffected. Reload the application to try again.
+          </p>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => window.location.reload()}
+          >
+            Reload Breachwright
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
 
 function PageLoader() {
   return (
@@ -91,6 +129,15 @@ function AppRoutes() {
           <Route path="settings" element={<Settings />} />
           <Route path="knowledge" element={<KnowledgeBase />} />
         </Route>
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to={user ? '/' : needsSetup ? '/setup' : '/login'}
+              replace
+            />
+          }
+        />
       </Routes>
     </Suspense>
   );
@@ -98,12 +145,14 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <ThemeProvider>
-        <AuthProvider>
-          <AppRoutes />
-        </AuthProvider>
-      </ThemeProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <ThemeProvider>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </ThemeProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

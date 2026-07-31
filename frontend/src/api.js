@@ -42,13 +42,22 @@ async function request(path, options = {}) {
 
   if (res.status === 204) return null;
 
-  const data = await res.json();
+  const contentType = res.headers.get('content-type') || '';
+  let data;
+  if (contentType.includes('application/json')) {
+    data = await res.json();
+  } else {
+    const text = await res.text();
+    data = text ? { detail: text.slice(0, 500) } : {};
+  }
 
   if (!res.ok) {
     const detail = Array.isArray(data.detail)
       ? data.detail.map(item => item.msg || String(item)).join('; ')
       : data.detail;
-    throw new Error(detail || `Request failed: ${res.status}`);
+    const error = new Error(detail || `Request failed: ${res.status}`);
+    error.status = res.status;
+    throw error;
   }
 
   return data;
