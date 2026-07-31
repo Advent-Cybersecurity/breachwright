@@ -87,7 +87,7 @@ export default function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 ml-60">
+      <main className="min-w-0 flex-1 ml-60">
         {updateInfo && (
           <div className="flex items-center justify-between gap-3 px-8 py-2.5"
             style={{ backgroundColor: 'rgba(6,182,212,0.1)', borderBottom: '1px solid rgba(6,182,212,0.2)' }}>

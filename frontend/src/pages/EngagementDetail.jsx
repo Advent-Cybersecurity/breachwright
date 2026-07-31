@@ -85,7 +85,7 @@ function SeverityChart({ findings }) {
             </PieChart>
           </ResponsiveContainer>
         </div>
-        <div className="flex-1 h-40">
+        <div className="flex-1 min-w-0 h-40">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={barData} layout="vertical" margin={{ left: 10, right: 20 }}>
               <XAxis type="number" allowDecimals={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
@@ -2076,7 +2076,7 @@ export default function EngagementDetail() {
         <ArrowLeft size={16} /> Back to Engagements
       </button>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div>
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold themed-text-primary">{engagement.name}</h1>
@@ -2087,7 +2087,7 @@ export default function EngagementDetail() {
             {engagement.scope && <span className="opacity-60"> // {engagement.scope}</span>}
           </p>
         </div>
-        <div className="flex items-center gap-2 self-start">
+        <div className="flex flex-wrap items-center gap-2 self-start">
           {/* Status transitions */}
           {canEdit && engagement.status === 'active' && (
             <button onClick={async () => {
@@ -2168,7 +2168,7 @@ export default function EngagementDetail() {
       <SeverityChart findings={findingsList} />
 
       {/* Tabs */}
-      <div className="flex mb-6" style={{ borderBottom: '1px solid var(--border)' }}>
+      <div className="flex mb-6 overflow-x-auto" style={{ borderBottom: '1px solid var(--border)' }}>
         <Tab active={activeTab === 'findings'} label="Findings" icon={Target}
           count={findingsList.length} onClick={() => setActiveTab('findings')} />
         <Tab active={activeTab === 'checklists'} label="Checklists" icon={ClipboardList}

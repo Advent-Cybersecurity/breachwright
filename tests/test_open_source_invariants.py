@@ -140,6 +140,21 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("base: '/'", vite_config)
         self.assertNotIn("base: './'", vite_config)
 
+    def test_fixed_sidebar_does_not_force_horizontal_overflow(self):
+        layout = (
+            ROOT / "frontend" / "src" / "components" / "Layout.jsx"
+        ).read_text(encoding="utf-8")
+        engagement_page = (
+            ROOT / "frontend" / "src" / "pages" / "EngagementDetail.jsx"
+        ).read_text(encoding="utf-8")
+        self.assertIn('className="min-w-0 flex-1 ml-60"', layout)
+        self.assertIn('className="flex mb-6 overflow-x-auto"', engagement_page)
+        self.assertIn('className="flex-1 min-w-0 h-40"', engagement_page)
+        self.assertIn(
+            'className="flex flex-col lg:flex-row lg:items-center justify-between',
+            engagement_page,
+        )
+
     def test_docker_application_data_is_persistent(self):
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         self.assertIn("- DATA_DIR=/app/data", compose)
