@@ -29,9 +29,10 @@
   Markdown, CSV, and JSON files in addition to supported images and PDF.
 - Added spreadsheet-safe findings CSV export with local secret redaction on by
   default, plus optional redaction for SARIF output.
-- Added a visible local secret-redaction control for AI context and complete
-  Settings forms for Anthropic, OpenAI, Azure OpenAI, AWS Bedrock, and local
-  OpenAI-compatible providers.
+- Added a visible local secret-redaction control for scanner analysis,
+  assistant questions, and other AI context, plus complete Settings forms for
+  Anthropic, OpenAI, Azure OpenAI, AWS Bedrock, and local OpenAI-compatible
+  providers.
 - Completed Nmap and Nuclei Tool Runner output can be added directly to Scans.
   Any finished Tool Runner output can be preserved in the Evidence Notebook,
   and captured structured artifacts remain bounded.

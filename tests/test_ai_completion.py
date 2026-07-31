@@ -14,6 +14,7 @@ from app.ai.context import (
     build_bounded_untrusted_context,
     redact_sensitive_text,
 )
+from app.assistant.router import build_assistant_user_message
 
 
 class FakeProvider:
@@ -82,6 +83,26 @@ class AICompletionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("<untrusted_scan_data>", message)
         self.assertIn("evidence only", message)
 
+        redacted_analysis = build_untrusted_analysis_message(
+            engagement_name="Lab",
+            client_name="Example",
+            scope="https://app.example.test/?token=scan-secret",
+            chunk="Authorization: Bearer scan-secret",
+            chunk_index=1,
+            chunk_count=1,
+        )
+        self.assertNotIn("scan-secret", redacted_analysis)
+        raw_analysis = build_untrusted_analysis_message(
+            engagement_name="Lab",
+            client_name="Example",
+            scope=None,
+            chunk="Authorization: Bearer local-only-secret",
+            chunk_index=1,
+            chunk_count=1,
+            redact_sensitive=False,
+        )
+        self.assertIn("local-only-secret", raw_analysis)
+
         bounded = build_bounded_untrusted_context(
             "untrusted_test_data",
             "reviewed evidence",
@@ -125,6 +146,21 @@ class AICompletionTests(unittest.IsolatedAsyncioTestCase):
             redact_sensitive=False,
         )
         self.assertIn("preserve-for-local-test", unchanged)
+
+        assistant_message = build_assistant_user_message(
+            "Finding evidence\nCookie: session=assistant-secret",
+            "Can you review Authorization: Bearer assistant-secret?",
+            redact_sensitive=True,
+        )
+        self.assertNotIn("assistant-secret", assistant_message)
+        self.assertIn("Finding evidence", assistant_message)
+        self.assertIn("<untrusted_engagement_data>", assistant_message)
+        local_assistant_message = build_assistant_user_message(
+            "Authorization: Bearer local-assistant-secret",
+            "Review the evidence",
+            redact_sensitive=False,
+        )
+        self.assertIn("local-assistant-secret", local_assistant_message)
 
 
 if __name__ == "__main__":
