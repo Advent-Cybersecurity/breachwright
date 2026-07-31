@@ -1,0 +1,5 @@
+# Legacy authentication packages needed only to start the v2.0 baseline.
+# They are removed before the v2.1 candidate is built.
+PyJWT==2.13.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
