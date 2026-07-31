@@ -61,48 +61,60 @@ def parse_sharphound_zip(zip_data: bytes) -> ParseResult:
     except zipfile.BadZipFile:
         raise ValueError("Invalid ZIP file")
 
-    infos = zf.infolist()
-    if len(infos) > MAX_ZIP_ENTRIES:
-        raise ValueError("ZIP contains too many files")
-    json_infos = [info for info in infos if info.filename.lower().endswith(".json")]
-    total_size = sum(info.file_size for info in json_infos)
-    if total_size > MAX_TOTAL_JSON_SIZE:
-        raise ValueError("ZIP expands beyond the 500MB safety limit")
+    with zf:
+        infos = zf.infolist()
+        if len(infos) > MAX_ZIP_ENTRIES:
+            raise ValueError("ZIP contains too many files")
+        json_infos = [info for info in infos if info.filename.lower().endswith(".json")]
+        total_size = sum(info.file_size for info in json_infos)
+        if total_size > MAX_TOTAL_JSON_SIZE:
+            raise ValueError("ZIP expands beyond the 500MB safety limit")
 
-    for info in json_infos:
-        name = info.filename
-        lower = name.lower()
-        if info.file_size > MAX_JSON_MEMBER_SIZE:
-            raise ValueError(f"ZIP member is too large: {name}")
-        if (
-            info.file_size > 0
-            and info.compress_size > 0
-            and info.file_size / info.compress_size > MAX_COMPRESSION_RATIO
-        ):
-            raise ValueError(f"ZIP member has an unsafe compression ratio: {name}")
+        actual_total = 0
+        for info in json_infos:
+            lower = info.filename.lower()
+            if info.file_size > MAX_JSON_MEMBER_SIZE:
+                raise ValueError("A JSON file in the ZIP exceeds the 100MB safety limit")
+            if (
+                info.file_size > 0
+                and info.compress_size > 0
+                and info.file_size / info.compress_size > MAX_COMPRESSION_RATIO
+            ):
+                raise ValueError("A JSON file in the ZIP has an unsafe compression ratio")
 
-        try:
-            raw = zf.read(info)
-            data = json.loads(raw)
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning("Could not parse %s: %s", name, e)
-            continue
+            try:
+                with zf.open(info, "r") as member:
+                    raw = member.read(MAX_JSON_MEMBER_SIZE + 1)
+                if len(raw) > MAX_JSON_MEMBER_SIZE:
+                    raise ValueError("A JSON file in the ZIP exceeds the 100MB safety limit")
+                actual_total += len(raw)
+                if actual_total > MAX_TOTAL_JSON_SIZE:
+                    raise ValueError("ZIP expands beyond the 500MB safety limit")
+                data = json.loads(raw)
+            except (json.JSONDecodeError, UnicodeDecodeError, OSError, RuntimeError) as exc:
+                logger.warning(
+                    "Skipped unreadable SharpHound JSON member (%s)",
+                    type(exc).__name__,
+                )
+                continue
+            except ValueError:
+                raise
 
-        # Determine file type from filename
-        if "computer" in lower:
-            _parse_computers(data, result)
-        elif "user" in lower:
-            _parse_users(data, result)
-        elif "group" in lower:
-            _parse_groups(data, result)
-        elif "domain" in lower:
-            _parse_domains(data, result)
-        elif "session" in lower:
-            _parse_sessions(data, result)
-        elif "ou" in lower:
-            _parse_ous(data, result)
-        elif "gpo" in lower:
-            _parse_gpos(data, result)
+            # Determine file type from filename
+            if "computer" in lower:
+                _parse_computers(data, result)
+            elif "user" in lower:
+                _parse_users(data, result)
+            elif "group" in lower:
+                _parse_groups(data, result)
+            elif "domain" in lower:
+                _parse_domains(data, result)
+            elif "session" in lower:
+                _parse_sessions(data, result)
+            elif "ou" in lower:
+                _parse_ous(data, result)
+            elif "gpo" in lower:
+                _parse_gpos(data, result)
 
     result.stats["relationships"] = len(result.relationships)
     logger.info(
@@ -401,6 +413,11 @@ def _parse_aces(item: dict, target_id: str, result: ParseResult):
 
 def build_ad_summary(result: ParseResult) -> str:
     """Build a text summary of AD data for AI analysis."""
+    objects_by_id = {
+        item["object_id"]: item
+        for item in result.objects
+        if item.get("object_id")
+    }
     lines = [f"Active Directory Domain: {result.domain or 'Unknown'}"]
     lines.append(f"Objects: {len(result.objects)} ({result.stats})")
     lines.append(f"Relationships: {len(result.relationships)}")
@@ -419,7 +436,7 @@ def build_ad_summary(result: ParseResult) -> str:
     if kerb:
         kerb_users = []
         for r in kerb:
-            u = next((o for o in result.objects if o["object_id"] == r["source_id"]), None)
+            u = objects_by_id.get(r["source_id"])
             if u:
                 kerb_users.append(u["name"])
         if kerb_users:
@@ -432,7 +449,7 @@ def build_ad_summary(result: ParseResult) -> str:
     if asrep:
         asrep_users = []
         for r in asrep:
-            u = next((o for o in result.objects if o["object_id"] == r["source_id"]), None)
+            u = objects_by_id.get(r["source_id"])
             if u:
                 asrep_users.append(u["name"])
         if asrep_users:
@@ -459,8 +476,8 @@ def build_ad_summary(result: ParseResult) -> str:
         for rtype, rels in sorted(by_type.items(), key=lambda x: -len(x[1])):
             lines.append(f"\n  {rtype} ({len(rels)}):")
             for r in rels[:10]:
-                src = next((o for o in result.objects if o["object_id"] == r["source_id"]), None)
-                tgt = next((o for o in result.objects if o["object_id"] == r["target_id"]), None)
+                src = objects_by_id.get(r["source_id"])
+                tgt = objects_by_id.get(r["target_id"])
                 src_name = src["name"] if src else r["source_id"][:20]
                 tgt_name = tgt["name"] if tgt else r["target_id"][:20]
                 lines.append(f"    {src_name} -> {tgt_name}")
@@ -474,7 +491,7 @@ def build_ad_summary(result: ParseResult) -> str:
             if members:
                 lines.append(f"\n  {g['name']} ({len(members)} members):")
                 for m in members[:15]:
-                    src = next((o for o in result.objects if o["object_id"] == m["source_id"]), None)
+                    src = objects_by_id.get(m["source_id"])
                     if src:
                         lines.append(f"    {src['name']} ({src['object_type']})")
 
@@ -483,8 +500,8 @@ def build_ad_summary(result: ParseResult) -> str:
     if admin_rels:
         lines.append(f"\n== Local Admin Access ({len(admin_rels)}) ==")
         for r in admin_rels[:20]:
-            src = next((o for o in result.objects if o["object_id"] == r["source_id"]), None)
-            tgt = next((o for o in result.objects if o["object_id"] == r["target_id"]), None)
+            src = objects_by_id.get(r["source_id"])
+            tgt = objects_by_id.get(r["target_id"])
             if src and tgt:
                 lines.append(f"  {src['name']} -> AdminTo -> {tgt['name']}")
 

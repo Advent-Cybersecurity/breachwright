@@ -2718,9 +2718,14 @@ function ADTab({ engId, toast, onFindingsCreated }) {
       const result = await adApi.import(engId, file);
       toast({ message: `Imported ${result.object_count} objects, ${result.relationship_count} relationships from ${result.domain || 'unknown domain'}`, type: 'success' });
       // Reload
-      const [imp, sum] = await Promise.all([adApi.listImports(engId), adApi.summary(engId)]);
+      const [imp, sum, currentPaths] = await Promise.all([
+        adApi.listImports(engId),
+        adApi.summary(engId),
+        adApi.paths(engId),
+      ]);
       setImports(imp);
       setSummary(sum);
+      setPaths(currentPaths);
     } catch (err) {
       toast({ message: err.message, type: 'error' });
     } finally {
@@ -2750,13 +2755,22 @@ function ADTab({ engId, toast, onFindingsCreated }) {
     }
   };
 
-  const handleDeleteImport = async (importId) => {
+  const handleDeleteImport = async (adImport) => {
+    const confirmed = window.confirm(
+      `Delete ${adImport.filename} and its ${adImport.object_count} objects, ` +
+      `${adImport.relationship_count} relationships, and generated attack paths? This cannot be undone.`,
+    );
+    if (!confirmed) return;
     try {
-      await adApi.deleteImport(engId, importId);
-      setImports(prev => prev.filter(i => i.id !== importId));
-      const sum = await adApi.summary(engId);
+      await adApi.deleteImport(engId, adImport.id);
+      const [remainingImports, sum, currentPaths] = await Promise.all([
+        adApi.listImports(engId),
+        adApi.summary(engId),
+        adApi.paths(engId),
+      ]);
+      setImports(remainingImports);
       setSummary(sum);
-      setPaths([]);
+      setPaths(currentPaths);
       toast({ message: 'Import deleted', type: 'success' });
     } catch (err) {
       toast({ message: err.message, type: 'error' });
@@ -2806,7 +2820,9 @@ function ADTab({ engId, toast, onFindingsCreated }) {
                     ({imp.domain || 'unknown'}, {imp.object_count} objects, {imp.relationship_count} relationships)
                   </span>
                 </span>
-                <button onClick={() => handleDeleteImport(imp.id)}
+                <button onClick={() => handleDeleteImport(imp)}
+                  aria-label={`Delete Active Directory import ${imp.filename}`}
+                  title="Delete import and related attack paths"
                   className="themed-text-muted hover:text-red-400 transition-colors p-1">
                   <Trash2 size={13} />
                 </button>

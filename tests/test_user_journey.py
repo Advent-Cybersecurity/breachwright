@@ -716,7 +716,7 @@ class UserJourneyTests(unittest.TestCase):
             headers=headers,
             files={
                 "file": (
-                    "sharphound.zip",
+                    "..\\collection\\sharphound.zip",
                     sharphound_buffer.getvalue(),
                     "application/zip",
                 )
@@ -731,6 +731,7 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(ad_imports.status_code, 200, ad_imports.text)
         self.assertEqual(len(ad_imports.json()), 1)
         self.assertEqual(ad_imports.json()[0]["id"], ad_import.json()["id"])
+        self.assertEqual(ad_imports.json()[0]["filename"], "sharphound.zip")
         ad_summary = self.client.get(
             f"/api/engagements/{engagement_id}/ad/summary",
             headers=headers,

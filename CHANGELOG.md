@@ -132,6 +132,13 @@
 - Report, finding-evidence, and Notebook-attachment deletion now confirms the
   stored-file impact and preserves the database record with a retryable conflict
   when the underlying file cannot be removed.
+- Active Directory imports now refresh the currently selected dataset's paths
+  after upload or deletion, require confirmation before cascade deletion, and
+  normalize uploaded display names. SharpHound ZIP members use bounded reads
+  and parser failures no longer expose raw exception details. Large summaries
+  now resolve relationship endpoints through a single object index instead of
+  repeatedly scanning the full imported object list. Sub-second import
+  timestamps and deterministic ties keep the newest dataset selected.
 
 ## v2.2.0 (2026-07-31)
 
