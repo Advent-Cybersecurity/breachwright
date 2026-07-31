@@ -435,6 +435,30 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn(".limit(MAX_CORRELATION_SCANS + 1)", router)
         self.assertNotIn("raw = f.read()", router)
 
+    def test_active_directory_import_refreshes_current_paths_and_confirms_deletion(self):
+        page = (ROOT / "frontend" / "src" / "pages" / "EngagementDetail.jsx").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Delete ${adImport.filename}", page)
+        self.assertIn("adApi.deleteImport(engId, adImport.id)", page)
+        self.assertGreaterEqual(page.count("adApi.paths(engId)"), 3)
+        self.assertIn("setPaths(currentPaths)", page)
+
+        parser = (ROOT / "backend" / "app" / "ad" / "parser.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("objects_by_id = {", parser)
+        self.assertNotIn("next((o for o in result.objects", parser)
+
+        router = (ROOT / "backend" / "app" / "ad" / "router.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("created_at=datetime.now(timezone.utc)", router)
+        self.assertEqual(
+            router.count("ADImport.created_at.desc(), ADImport.id.desc()"),
+            4,
+        )
+
     def test_zero_cvss_is_not_treated_as_missing(self):
         for path in (ROOT / "backend" / "app").rglob("*.py"):
             source = path.read_text(encoding="utf-8")

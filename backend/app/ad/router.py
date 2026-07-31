@@ -22,6 +22,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/engagements/{engagement_id}/ad", tags=["active_directory"])
 
 
+def _safe_upload_name(filename: str | None) -> str:
+    name = (filename or "sharphound.zip").replace("\\", "/").rsplit("/", 1)[-1]
+    if name in {"", ".", ".."}:
+        return "sharphound.zip"
+    return name[:500]
+
+
 @router.get("/imports")
 async def list_ad_imports(
     engagement_id: str,
@@ -31,7 +38,7 @@ async def list_ad_imports(
     result = await db.execute(
         select(ADImport)
         .where(ADImport.engagement_id == engagement_id)
-        .order_by(ADImport.created_at.desc())
+        .order_by(ADImport.created_at.desc(), ADImport.id.desc())
     )
     imports = result.scalars().all()
     return [
@@ -59,7 +66,8 @@ async def import_sharphound(
     )
     if not engagement_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Engagement not found")
-    if not (file.filename or "").lower().endswith(".zip"):
+    display_name = _safe_upload_name(file.filename)
+    if not display_name.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Expected a ZIP file (SharpHound/BloodHound output)")
 
     content = await file.read(100 * 1024 * 1024 + 1)
@@ -71,9 +79,12 @@ async def import_sharphound(
         result = parse_sharphound_zip(content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error("SharpHound parse error: %s", e)
-        raise HTTPException(status_code=400, detail=f"Failed to parse SharpHound data: {e}")
+    except Exception as exc:
+        logger.error("SharpHound parse failed (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to parse the SharpHound data. Verify the ZIP and try again.",
+        ) from exc
 
     if not result.objects:
         raise HTTPException(status_code=400, detail="No AD objects found in the ZIP file")
@@ -81,11 +92,12 @@ async def import_sharphound(
     # Create import record
     ad_import = ADImport(
         engagement_id=engagement_id,
-        filename=file.filename,
+        filename=display_name,
         domain=result.domain,
         object_count=len(result.objects),
         relationship_count=len(result.relationships),
         imported_by=current_user.id,
+        created_at=datetime.now(timezone.utc),
     )
     db.add(ad_import)
     await db.flush()
@@ -159,7 +171,7 @@ async def get_ad_summary(
     result = await db.execute(
         select(ADImport)
         .where(ADImport.engagement_id == engagement_id)
-        .order_by(ADImport.created_at.desc())
+        .order_by(ADImport.created_at.desc(), ADImport.id.desc())
         .limit(1)
     )
     latest = result.scalar_one_or_none()
@@ -212,7 +224,7 @@ async def list_ad_attack_paths(
     result = await db.execute(
         select(ADImport)
         .where(ADImport.engagement_id == engagement_id)
-        .order_by(ADImport.created_at.desc())
+        .order_by(ADImport.created_at.desc(), ADImport.id.desc())
         .limit(1)
     )
     latest = result.scalar_one_or_none()
@@ -222,7 +234,7 @@ async def list_ad_attack_paths(
     path_result = await db.execute(
         select(ADAttackPath)
         .where(ADAttackPath.import_id == latest.id)
-        .order_by(ADAttackPath.created_at.desc())
+        .order_by(ADAttackPath.created_at.desc(), ADAttackPath.id.desc())
     )
     paths = path_result.scalars().all()
     return [
@@ -249,7 +261,7 @@ async def analyze_ad_paths(
     result = await db.execute(
         select(ADImport)
         .where(ADImport.engagement_id == engagement_id)
-        .order_by(ADImport.created_at.desc())
+        .order_by(ADImport.created_at.desc(), ADImport.id.desc())
         .limit(1)
     )
     latest = result.scalar_one_or_none()
