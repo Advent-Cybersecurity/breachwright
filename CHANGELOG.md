@@ -147,6 +147,8 @@
   inputs, quote their single target, and reject shell-control characters.
   Intentionally custom commands remain available behind an explicit local-shell
   confirmation, and command text is no longer copied into application logs.
+  Packaged Windows and Linux journeys verify that injection-shaped preset
+  targets are rejected before process creation.
 
 ## v2.2.0 (2026-07-31)
 
