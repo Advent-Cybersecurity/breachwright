@@ -2,6 +2,8 @@ from pathlib import Path
 import sys
 import unittest
 import uuid
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -22,6 +24,7 @@ from app.workflow.router import (
     _read_snapshot_payload,
     _search_pattern,
 )
+from app.analysis.router import delete_scan
 
 
 class SnapshotInputLimitTests(unittest.TestCase):
@@ -74,6 +77,42 @@ class SnapshotInputLimitTests(unittest.TestCase):
 
     def test_search_pattern_treats_sql_wildcards_as_literal_text(self):
         self.assertEqual(_search_pattern(r"rate_100%\done"), r"%rate\_100\%\\done%")
+
+
+class StoredScanDeletionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_file_removal_failure_returns_retryable_conflict(self):
+        scan = SimpleNamespace(file_path="private-target-scan.xml")
+
+        class Result:
+            def scalar_one_or_none(self):
+                return scan
+
+        class FakeDB:
+            def __init__(self):
+                self.deleted = None
+                self.flushed = False
+
+            async def execute(self, statement):
+                return Result()
+
+            async def delete(self, record):
+                self.deleted = record
+
+            async def flush(self):
+                self.flushed = True
+
+        db = FakeDB()
+        with (
+            patch("app.analysis.router.os.path.exists", return_value=True),
+            patch("app.analysis.router.os.remove", side_effect=OSError("private-target-scan.xml")),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await delete_scan("engagement", "scan", db=db, current_user=None)
+
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertNotIn("private-target-scan.xml", raised.exception.detail)
+        self.assertIs(db.deleted, scan)
+        self.assertTrue(db.flushed)
 
 
 

@@ -110,6 +110,21 @@
 - Generative workflows now return one user-safe provider failure message and
   log only the exception type, preventing provider response text from being
   copied into the interface or application log.
+- Assistant, exploitation-chain, narrative, Active Directory, coverage-review,
+  and Tool Runner AI actions now show provider, redaction, and potential cost
+  state before use. These actions remain disabled if the local privacy check
+  fails, and disabling redaction requires explicit confirmation.
+- Scanner analysis now clears stale preflight state while a new selection is
+  checked and after preflight failures, preventing a prior valid scan set from
+  leaving the action enabled for an unchecked selection.
+- Exploitation-chain generation now rejects engagements above its explicit
+  200-finding input limit before provider initialization, bounds large scope,
+  host, and description fields before context assembly, and caps model output
+  at 25 grounded chains. Active Directory model output is capped at 100 paths.
+- Scan deletion now returns a retryable conflict when its stored file cannot be
+  removed, so the database record remains available instead of leaving an
+  orphan. Stored-file deletion errors no longer expose raw operating-system
+  paths in the interface.
 - Report, finding-evidence, and Notebook-attachment deletion now confirms the
   stored-file impact and preserves the database record with a retryable conflict
   when the underlying file cannot be removed.

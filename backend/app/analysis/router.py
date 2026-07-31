@@ -370,8 +370,14 @@ async def delete_scan(
     if file_path and os.path.exists(file_path):
         try:
             os.remove(file_path)
-        except Exception as e:
-            logger.warning("Could not delete scan file %s: %s", file_path, e)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Scan file could not be removed. Review file permissions "
+                    "and retry."
+                ),
+            ) from exc
 
 
 @router.post("/upload-scan")

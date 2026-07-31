@@ -20,6 +20,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}/attack-paths", tags=["attack_paths"])
 
+MAX_ATTACK_PATH_FINDINGS = 200
+MAX_ATTACK_PATH_DESCRIPTION_CHARS = 2_000
+MAX_ATTACK_PATH_HOST_CHARS = 2_000
+MAX_ATTACK_PATH_SCOPE_CHARS = 10_000
+
+
+def _bounded_text(value, max_chars: int) -> str:
+    text = str(value or "")
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "\n[Field truncated at the local AI context limit.]"
+
 
 @router.get("", response_model=list[AttackPathResponse])
 async def list_attack_paths(
@@ -49,9 +61,21 @@ async def generate_attack_paths(
 
     # Get findings
     finding_result = await db.execute(
-        select(Finding).where(Finding.engagement_id == engagement_id)
+        select(Finding)
+        .where(Finding.engagement_id == engagement_id)
+        .order_by(Finding.created_at, Finding.id)
+        .limit(MAX_ATTACK_PATH_FINDINGS + 1)
     )
     findings = finding_result.scalars().all()
+    if len(findings) > MAX_ATTACK_PATH_FINDINGS:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "Exploitation-chain analysis supports up to "
+                f"{MAX_ATTACK_PATH_FINDINGS} findings. Archive or split the "
+                "engagement before using this AI action."
+            ),
+        )
     if len(findings) < 2:
         raise HTTPException(status_code=400, detail="Need at least 2 findings to generate attack paths")
 
@@ -59,14 +83,15 @@ async def generate_attack_paths(
     findings_text = "\n".join(
         f"- finding_id={f.id} [{f.severity.upper()}] {f.title} "
         f"(CVSS: {f.cvss_score if f.cvss_score is not None else 'N/A'}) "
-        f"Hosts: {f.affected_hosts or 'N/A'}\n  Description: {f.description or 'N/A'}"
+        f"Hosts: {_bounded_text(f.affected_hosts, MAX_ATTACK_PATH_HOST_CHARS) or 'N/A'}\n  "
+        f"Description: {_bounded_text(f.description, MAX_ATTACK_PATH_DESCRIPTION_CHARS) or 'N/A'}"
         for f in findings
     )
 
     finding_context = (
         f"Engagement: {engagement.name}\n"
         f"Client: {engagement.client_name}\n"
-        f"Scope: {engagement.scope or 'Not specified'}\n\n"
+        f"Scope: {_bounded_text(engagement.scope, MAX_ATTACK_PATH_SCOPE_CHARS) or 'Not specified'}\n\n"
         f"Findings:\n{findings_text}\n"
     )
     try:

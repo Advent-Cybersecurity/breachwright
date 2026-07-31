@@ -35,6 +35,9 @@ Third-party AI services may charge for API usage. Local model support does not r
 - Explicit per-scan AI selection plus a provider-free preflight for input size,
   provider choice, local redaction state, and readiness
 - AI-assisted finding drafts with severity, CVSS, evidence, and remediation
+- Provider, local-redaction, and potential-cost notices before every
+  generative action, with fail-closed privacy checks and explicit confirmation
+  when redaction is disabled
 - Evidence-grounded AI review with source excerpts, confidence, create/update
   diffs, and accept, edit, reject, or bulk review controls
 - Versioned scan snapshots with deterministic retest comparison

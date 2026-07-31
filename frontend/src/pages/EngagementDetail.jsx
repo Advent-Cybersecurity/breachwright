@@ -13,6 +13,7 @@ import ChecklistsTab from '../components/ChecklistsTab';
 import GapAnalysisTab from '../components/GapAnalysisTab';
 import EvidenceNotebookTab from '../components/EvidenceNotebookTab';
 import WorkspaceOverviewTab from '../components/WorkspaceOverviewTab';
+import AIProviderNotice, { confirmAIAction } from '../components/AIProviderNotice';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   ArrowLeft, Plus, Upload, Zap, Route, FileText, Trash2, Download,
@@ -1701,9 +1702,15 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
 
   useEffect(() => {
     let cancelled = false;
+    setAnalysisPreview(null);
     analysisApi.preview(engId, [...analysisScanIds])
       .then(preview => { if (!cancelled) setAnalysisPreview(preview); })
-      .catch(err => { if (!cancelled) toast({ message: `AI input preflight failed: ${err.message}`, type: 'error' }); });
+      .catch(err => {
+        if (!cancelled) {
+          setAnalysisPreview(null);
+          toast({ message: `AI input preflight failed: ${err.message}`, type: 'error' });
+        }
+      });
     return () => { cancelled = true; };
   }, [engId, analysisScanIds, toast]);
 
@@ -1737,6 +1744,12 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
   };
 
   const handleAnalyze = async () => {
+    if (analysisPreview && !analysisPreview.redaction_enabled) {
+      const confirmed = window.confirm(
+        `Sensitive-data redaction is off. Selected scan context will be sent to ${analysisPreview.provider}. Continue?`
+      );
+      if (!confirmed) return;
+    }
     setAnalyzing(true);
     try {
       const result = await analysisApi.run(engId, [...analysisScanIds]);
@@ -2048,6 +2061,7 @@ function AttackPathsTab({ engId, toast, fullNarrative, setFullNarrative }) {
   const [generating, setGenerating] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
   const [generatingNarrative, setGeneratingNarrative] = useState(false);
+  const [aiProviderConfig, setAiProviderConfig] = useState(null);
 
   const toggleExpanded = (id) => {
     setExpanded(prev => {
@@ -2075,6 +2089,7 @@ function AttackPathsTab({ engId, toast, fullNarrative, setFullNarrative }) {
   }, [engId, setFullNarrative, toast]);
 
   const handleGenerate = async () => {
+    if (!confirmAIAction(aiProviderConfig, 'exploitation-chain analysis')) return;
     if (paths.length > 0) {
       const confirmed = window.confirm(
         `This will replace the existing ${paths.length} exploitation chain(s) with a fresh analysis based on current findings. Continue?`
@@ -2104,6 +2119,9 @@ function AttackPathsTab({ engId, toast, fullNarrative, setFullNarrative }) {
 
   return (
     <div>
+      <div className="mb-4">
+        <AIProviderNotice actionLabel="exploitation-chain or narrative generation" onConfigChange={setAiProviderConfig} />
+      </div>
       <div className="flex items-center justify-between mb-4">
         <div>
           {lastGenerated && (
@@ -2130,13 +2148,14 @@ function AttackPathsTab({ engId, toast, fullNarrative, setFullNarrative }) {
               <Trash2 size={14} /> Clear
             </button>
           )}
-          <button onClick={handleGenerate} disabled={generating}
+          <button onClick={handleGenerate} disabled={generating || !aiProviderConfig}
             className="btn-primary flex items-center gap-2 text-sm">
             {generating ? <Spinner className="w-4 h-4" /> : <Route size={14} />}
             {generating ? 'Generating...' : paths.length > 0 ? 'Regenerate Chains' : 'Generate Exploitation Chains'}
           </button>
           {paths.length > 0 && (
             <button onClick={async () => {
+              if (!confirmAIAction(aiProviderConfig, 'attack narrative generation')) return;
               setGeneratingNarrative(true);
               try {
                 const result = await narrativeApi.generateFull(engId);
@@ -2145,7 +2164,7 @@ function AttackPathsTab({ engId, toast, fullNarrative, setFullNarrative }) {
                 toast({ message: 'Attack narrative generated and saved', type: 'success' });
               } catch (err) { toast({ message: err.message, type: 'error' }); }
               finally { setGeneratingNarrative(false); }
-            }} disabled={generatingNarrative}
+            }} disabled={generatingNarrative || !aiProviderConfig}
               className="btn-secondary flex items-center gap-2 text-sm">
               {generatingNarrative ? <Spinner className="w-4 h-4" /> : <BookOpen size={14} />}
               {generatingNarrative ? 'Writing...' : 'Generate Narrative'}
@@ -2662,6 +2681,7 @@ function ADTab({ engId, toast, onFindingsCreated }) {
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
+  const [aiProviderConfig, setAiProviderConfig] = useState(null);
 
   const toggleExpanded = (id) => {
     setExpanded(prev => {
@@ -2710,6 +2730,7 @@ function ADTab({ engId, toast, onFindingsCreated }) {
   };
 
   const handleAnalyze = async () => {
+    if (!confirmAIAction(aiProviderConfig, 'Active Directory path analysis')) return;
     if (paths.length > 0) {
       const confirmed = window.confirm(`This will replace the existing ${paths.length} AD attack path(s). Continue?`);
       if (!confirmed) return;
@@ -2827,6 +2848,9 @@ function ADTab({ engId, toast, onFindingsCreated }) {
       {/* AI Analysis */}
       {summary?.has_data && (
         <div className="card p-6">
+          <div className="mb-4">
+            <AIProviderNotice actionLabel="Active Directory path analysis" onConfigChange={setAiProviderConfig} />
+          </div>
           <div className="flex flex-col sm:flex-row items-center gap-4">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
@@ -2837,7 +2861,7 @@ function ADTab({ engId, toast, onFindingsCreated }) {
                 AI analyzes the imported AD data to identify critical attack paths to Domain Admin and other high-value targets.
               </p>
             </div>
-            <button onClick={handleAnalyze} disabled={analyzing}
+            <button onClick={handleAnalyze} disabled={analyzing || !aiProviderConfig}
               className="btn-primary flex items-center gap-2 whitespace-nowrap">
               {analyzing ? <Spinner className="w-4 h-4" /> : <Zap size={16} />}
               {analyzing ? 'Analyzing...' : paths.length > 0 ? 'Reanalyze Paths' : 'Analyze AD Paths'}

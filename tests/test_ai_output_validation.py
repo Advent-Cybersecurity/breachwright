@@ -1,6 +1,14 @@
 import unittest
+from pathlib import Path
+import sys
+
+BACKEND = Path(__file__).resolve().parents[1] / "backend"
+if str(BACKEND) not in sys.path:
+    sys.path.insert(0, str(BACKEND))
 
 from app.ai.output_validation import (
+    MAX_AI_AD_PATHS,
+    MAX_AI_ATTACK_PATHS,
     MAX_AI_RECORDS,
     validate_ai_ad_paths,
     validate_ai_attack_paths,
@@ -38,6 +46,11 @@ class AIOutputValidationTests(unittest.TestCase):
             )
 
     def test_attack_path_requires_valid_risk_and_bounded_steps(self):
+        with self.assertRaisesRegex(ValueError, f"more than {MAX_AI_ATTACK_PATHS}"):
+            validate_ai_attack_paths(
+                [{"name": f"Path {index}"} for index in range(MAX_AI_ATTACK_PATHS + 1)]
+            )
+
         with self.assertRaisesRegex(ValueError, "invalid attack path record 1"):
             validate_ai_attack_paths(
                 [
@@ -61,6 +74,11 @@ class AIOutputValidationTests(unittest.TestCase):
             )
 
     def test_ad_nodes_are_bounded_and_normalized(self):
+        with self.assertRaisesRegex(ValueError, f"more than {MAX_AI_AD_PATHS}"):
+            validate_ai_ad_paths(
+                [{"name": f"AD path {index}"} for index in range(MAX_AI_AD_PATHS + 1)]
+            )
+
         paths = validate_ai_ad_paths(
             [
                 {
