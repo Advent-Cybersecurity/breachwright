@@ -86,6 +86,7 @@ class Settings(BaseSettings):
 
     # AI Provider
     ai_provider: str = "anthropic"
+    ai_redact_sensitive_data: bool = True
 
     # Anthropic
     anthropic_api_key: Optional[str] = None

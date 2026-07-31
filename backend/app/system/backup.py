@@ -15,7 +15,7 @@ from sqlalchemy.engine import make_url
 
 
 BACKUP_FORMAT_VERSION = 1
-DATA_FOLDERS = ("evidence", "uploads", "reports", "templates", "jobs")
+DATA_FOLDERS = ("evidence", "notebook", "uploads", "reports", "templates", "jobs")
 MAX_BACKUP_ENTRIES = 10000
 MAX_BACKUP_MEMBER_SIZE = 2 * 1024 * 1024 * 1024
 MAX_BACKUP_TOTAL_SIZE = 10 * 1024 * 1024 * 1024

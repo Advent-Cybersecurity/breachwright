@@ -129,6 +129,9 @@ from app.correlation.router import router as correlation_router
 from app.narrative.router import router as narrative_router
 from app.system.router import router as system_router
 from app.workflow.router import router as workflow_router
+from app.workflow.template_router import router as assessment_template_router
+from app.findings.template_router import router as finding_template_router
+from app.findings.notebook_router import router as notebook_router
 
 app.include_router(engagements_router)
 app.include_router(findings_router)
@@ -149,6 +152,9 @@ app.include_router(correlation_router)
 app.include_router(narrative_router)
 app.include_router(system_router)
 app.include_router(workflow_router)
+app.include_router(assessment_template_router)
+app.include_router(finding_template_router)
+app.include_router(notebook_router)
 
 
 @app.get("/api/health")

@@ -61,6 +61,17 @@ in CI. Local models can be evaluated without API charges.
 
 ## Privacy and cost
 
+Common API keys, bearer tokens, authorization headers, passwords, private-key
+blocks, and JWT-shaped values are redacted locally from AI context by default.
+The operator can change this behavior in Settings. Pattern-based redaction
+reduces accidental disclosure but cannot identify every secret or sensitive
+business value, so operators must still inspect the source material and the
+selected provider's terms.
+
+The same local redaction helper is available for deterministic findings CSV
+and SARIF exports. CSV export also prefixes formula-shaped cell values so a
+spreadsheet application does not interpret finding content as a formula.
+
 Operators decide which provider receives assessment data and must review that
 provider's data-handling and pricing terms. Local OpenAI-compatible endpoints
 can keep model traffic on operator-controlled systems. Breachwright's project

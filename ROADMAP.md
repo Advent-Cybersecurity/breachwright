@@ -55,8 +55,9 @@ assessment workflow:
 
 ## 2.3: evidence workspace and asset coverage
 
-The next product release should make the assessment workspace faster to use
-during active testing:
+Development on the 2.3 branch is implementing the following active-assessment
+workspace improvements. They are not a published release until the native
+Windows and Linux gates pass and a release is deliberately approved:
 
 - build an asset and service inventory from normalized scan observations
 - link assets, services, findings, retests, and evidence without duplicating data

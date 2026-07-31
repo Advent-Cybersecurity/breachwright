@@ -105,8 +105,25 @@ export default function Settings() {
                 onChange={(e) => setProviderForm(prev => ({ ...prev, ai_provider: e.target.value }))}>
                 <option value="anthropic">Anthropic (Claude)</option>
                 <option value="openai">OpenAI (GPT)</option>
+                <option value="azure">Azure OpenAI</option>
+                <option value="bedrock">Amazon Bedrock</option>
                 <option value="local">Local Model (Ollama / vLLM / LM Studio)</option>
               </select>
+            </div>
+            <div className="flex items-start justify-between gap-4 px-4 py-3 rounded-lg" style={{ backgroundColor: 'var(--bg-700)' }}>
+              <div>
+                <p className="text-sm themed-text-primary">Redact common secrets before AI requests</p>
+                <p className="text-xs themed-text-muted mt-1">
+                  Filters authorization and cookie headers, token fields, API keys, JWTs, and private keys locally. Original evidence remains unchanged.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={providerForm.ai_redact_sensitive_data !== false}
+                onChange={event => setProviderForm(previous => ({ ...previous, ai_redact_sensitive_data: event.target.checked }))}
+                aria-label="Redact common secrets before AI requests"
+              />
             </div>
             {(providerForm.ai_provider || 'anthropic') === 'anthropic' && (
               <>
@@ -120,13 +137,10 @@ export default function Settings() {
                 </div>
                 <div>
                   <label htmlFor="anthropic-model" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Model</label>
-                  <select id="anthropic-model" className="input-field text-sm" style={{ maxWidth: 350 }}
+                  <input id="anthropic-model" className="input-field text-sm font-mono"
                     value={providerForm.anthropic_model || 'claude-sonnet-4-20250514'}
-                    onChange={(e) => setProviderForm(prev => ({ ...prev, anthropic_model: e.target.value }))}>
-                    <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-                    <option value="claude-opus-4-6">Claude Opus 4.6</option>
-                    <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
-                  </select>
+                    onChange={(e) => setProviderForm(prev => ({ ...prev, anthropic_model: e.target.value }))}
+                    placeholder="Provider model identifier" />
                 </div>
               </>
             )}
@@ -146,6 +160,64 @@ export default function Settings() {
                     value={providerForm.openai_model || 'gpt-4o'}
                     onChange={(e) => setProviderForm(prev => ({ ...prev, openai_model: e.target.value }))}
                     placeholder="gpt-4o" />
+                </div>
+              </>
+            )}
+            {providerForm.ai_provider === 'azure' && (
+              <>
+                <div>
+                  <label htmlFor="azure-openai-key" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
+                    Azure OpenAI API Key {provider.has_azure_openai_key && <span className="text-green-500 ml-1">(configured)</span>}
+                  </label>
+                  <input id="azure-openai-key" className="input-field text-sm font-mono" type="password"
+                    placeholder={provider.has_azure_openai_key ? 'Key is set (enter new to replace)' : 'Enter API key'}
+                    onChange={(e) => setProviderForm(prev => ({ ...prev, azure_openai_api_key: e.target.value }))} />
+                </div>
+                <div>
+                  <label htmlFor="azure-openai-endpoint" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Endpoint</label>
+                  <input id="azure-openai-endpoint" className="input-field text-sm font-mono"
+                    value={providerForm.azure_openai_endpoint || ''}
+                    onChange={(e) => setProviderForm(prev => ({ ...prev, azure_openai_endpoint: e.target.value }))}
+                    placeholder="https://resource.openai.azure.com" />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="azure-openai-deployment" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Deployment</label>
+                    <input id="azure-openai-deployment" className="input-field text-sm font-mono"
+                      value={providerForm.azure_openai_deployment || ''}
+                      onChange={(e) => setProviderForm(prev => ({ ...prev, azure_openai_deployment: e.target.value }))}
+                      placeholder="Deployment name" />
+                  </div>
+                  <div>
+                    <label htmlFor="azure-openai-version" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">API version</label>
+                    <input id="azure-openai-version" className="input-field text-sm font-mono"
+                      value={providerForm.azure_openai_api_version || ''}
+                      onChange={(e) => setProviderForm(prev => ({ ...prev, azure_openai_api_version: e.target.value }))}
+                      placeholder="Azure API version" />
+                  </div>
+                </div>
+              </>
+            )}
+            {providerForm.ai_provider === 'bedrock' && (
+              <>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="aws-region" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">AWS region</label>
+                    <input id="aws-region" className="input-field text-sm font-mono"
+                      value={providerForm.aws_region || 'us-east-1'}
+                      onChange={(e) => setProviderForm(prev => ({ ...prev, aws_region: e.target.value }))}
+                      placeholder="us-east-1" />
+                  </div>
+                  <div>
+                    <label htmlFor="bedrock-model-id" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Model ID</label>
+                    <input id="bedrock-model-id" className="input-field text-sm font-mono"
+                      value={providerForm.bedrock_model_id || ''}
+                      onChange={(e) => setProviderForm(prev => ({ ...prev, bedrock_model_id: e.target.value }))}
+                      placeholder="Bedrock inference profile or model ID" />
+                  </div>
+                </div>
+                <div className="px-4 py-3 rounded-lg text-xs themed-text-muted" style={{ backgroundColor: 'var(--bg-700)' }}>
+                  Bedrock uses the standard AWS credential chain. Provider usage may incur AWS charges; Breachwright does not call it until you run an AI action.
                 </div>
               </>
             )}
@@ -260,10 +332,17 @@ export default function Settings() {
                   if (providerForm.openai_api_key) update.openai_api_key = providerForm.openai_api_key;
                   if (providerForm.anthropic_model) update.anthropic_model = providerForm.anthropic_model;
                   if (providerForm.openai_model) update.openai_model = providerForm.openai_model;
+                  if (providerForm.azure_openai_api_key) update.azure_openai_api_key = providerForm.azure_openai_api_key;
+                  if (providerForm.azure_openai_endpoint) update.azure_openai_endpoint = providerForm.azure_openai_endpoint;
+                  if (providerForm.azure_openai_deployment) update.azure_openai_deployment = providerForm.azure_openai_deployment;
+                  if (providerForm.azure_openai_api_version) update.azure_openai_api_version = providerForm.azure_openai_api_version;
+                  if (providerForm.aws_region) update.aws_region = providerForm.aws_region;
+                  if (providerForm.bedrock_model_id) update.bedrock_model_id = providerForm.bedrock_model_id;
                   if (providerForm.local_model_url) update.local_model_url = providerForm.local_model_url;
                   if (providerForm.local_model_name) update.local_model_name = providerForm.local_model_name;
                   if (providerForm.local_model_api_key) update.local_model_api_key = providerForm.local_model_api_key;
                   if (providerForm.local_model_timeout) update.local_model_timeout = providerForm.local_model_timeout;
+                  if (providerForm.ai_redact_sensitive_data !== undefined) update.ai_redact_sensitive_data = providerForm.ai_redact_sensitive_data;
                   await appSettings.updateProvider(update);
                   setToast({ message: 'Provider settings saved. Restart Breachwright for changes to take effect.', type: 'success' });
                 } catch (err) { setToast({ message: err.message, type: 'error' }); }

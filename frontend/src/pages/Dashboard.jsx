@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { engagements as engApi, exportImport } from '../api';
+import { engagements as engApi, exportImport, assessmentTemplates as templateApi } from '../api';
 import { Modal, StatusBadge, SeverityBadge, EmptyState, SectionHeader, Toast } from '../components/UI';
-import { Plus, Search, Crosshair, ChevronRight, FolderOpen, Calendar, Building2, Upload, Trash2, BarChart3 } from 'lucide-react';
+import { Plus, Search, Crosshair, ChevronRight, FolderOpen, Calendar, Building2, Upload, Trash2, BarChart3, Layers, Download } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 function EngagementRow({ engagement, onClick, onDelete }) {
@@ -53,6 +53,11 @@ export default function Dashboard() {
   const [form, setForm] = useState({ name: '', client_name: '', scope: '', start_date: '', end_date: '', template_key: '' });
   const [creating, setCreating] = useState(false);
   const [analytics, setAnalytics] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [methodologies, setMethodologies] = useState({});
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateForm, setTemplateForm] = useState({ name: '', description: '', methodologies: [] });
 
   const loadEngagements = async () => {
     try { setEngagementList(await engApi.list()); }
@@ -65,7 +70,34 @@ export default function Dashboard() {
     engApi.analytics().then(setAnalytics).catch((err) => {
       setToast({ message: `Could not load engagement analytics: ${err.message}`, type: 'error' });
     });
+    Promise.all([templateApi.list(), templateApi.methodologies()])
+      .then(([loadedTemplates, loadedMethodologies]) => {
+        setTemplates(loadedTemplates);
+        setMethodologies(loadedMethodologies);
+      })
+      .catch(err => setToast({ message: `Could not load assessment templates: ${err.message}`, type: 'error' }));
   }, []);
+
+  const reloadTemplates = async () => {
+    const loaded = await templateApi.list();
+    setTemplates(loaded);
+    return loaded;
+  };
+
+  const handleCreateTemplate = async (event) => {
+    event.preventDefault();
+    setSavingTemplate(true);
+    try {
+      const created = await templateApi.create(templateForm);
+      await reloadTemplates();
+      setTemplateForm({ name: '', description: '', methodologies: [] });
+      setToast({ message: `Assessment template "${created.name}" created`, type: 'success' });
+    } catch (err) {
+      setToast({ message: err.message, type: 'error' });
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -103,6 +135,9 @@ export default function Dashboard() {
         description={`${stats.total} total, ${stats.active} active, ${stats.completed} completed, ${stats.totalFindings} findings`}
         action={canEdit ? (
           <div className="flex items-center gap-2">
+            <button onClick={() => setShowTemplates(true)} className="btn-secondary flex items-center gap-2">
+              <Layers size={16} /> Templates
+            </button>
             <label className="btn-secondary flex items-center gap-2 cursor-pointer">
               <Upload size={16} /> Import
               <input type="file" className="hidden" accept=".json"
@@ -260,12 +295,11 @@ export default function Dashboard() {
             <select id="engagement-template" className="input-field text-sm" value={form.template_key}
               onChange={(e) => setForm({ ...form, template_key: e.target.value })}>
               <option value="">Blank engagement</option>
-              <option value="web">Web Application</option>
-              <option value="api">API Security</option>
-              <option value="external">External Network</option>
-              <option value="internal">Internal Network</option>
-              <option value="active_directory">Active Directory</option>
-              <option value="cloud">Cloud Environment</option>
+              {templates.map(template => (
+                <option key={template.key} value={template.key}>
+                  {template.name}{template.built_in ? '' : ' (custom)'}
+                </option>
+              ))}
             </select>
             <p className="text-xs themed-text-muted mt-1">Templates automatically add the most relevant built-in methodology checklist.</p>
           </div>
@@ -289,6 +323,83 @@ export default function Dashboard() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal open={showTemplates} onClose={() => setShowTemplates(false)} title="Assessment Templates" wide>
+        <div className="space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm themed-text-muted">Compose reusable engagement starts from the built-in methodology checklists.</p>
+            <label className="btn-secondary flex items-center gap-2 text-sm cursor-pointer shrink-0">
+              <Upload size={14} /> Import
+              <input type="file" accept=".json" className="hidden" onChange={async event => {
+                const file = event.target.files[0];
+                if (!file) return;
+                try {
+                  const imported = await templateApi.import(file);
+                  await reloadTemplates();
+                  setToast({ message: `Imported assessment template "${imported.name}"`, type: 'success' });
+                } catch (err) {
+                  setToast({ message: err.message, type: 'error' });
+                }
+                event.target.value = '';
+              }} />
+            </label>
+          </div>
+          <div className="space-y-2 max-h-56 overflow-y-auto">
+            {templates.map(template => (
+              <div key={template.key} className="rounded border p-3 flex items-start gap-3" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm themed-text-primary">{template.name}</div>
+                  <div className="text-xs themed-text-muted mt-1">{template.methodologies.map(key => methodologies[key]?.name || key).join(' · ')}</div>
+                  {template.description && <p className="text-xs themed-text-secondary mt-1">{template.description}</p>}
+                </div>
+                <span className="badge border themed-text-muted">{template.built_in ? 'Built in' : 'Custom'}</span>
+                <button className="btn-ghost p-1" title="Export template" onClick={async () => {
+                  try { await templateApi.export(template.key); }
+                  catch (err) { setToast({ message: err.message, type: 'error' }); }
+                }}><Download size={14} /></button>
+                {!template.built_in && <button className="btn-ghost p-1 text-red-400" title="Delete template" onClick={async () => {
+                  if (!window.confirm(`Delete assessment template "${template.name}"? Existing engagements keep their checklists.`)) return;
+                  try {
+                    await templateApi.delete(template.key);
+                    setTemplates(previous => previous.filter(item => item.key !== template.key));
+                    setToast({ message: `Assessment template "${template.name}" deleted`, type: 'success' });
+                  } catch (err) { setToast({ message: err.message, type: 'error' }); }
+                }}><Trash2 size={14} /></button>}
+              </div>
+            ))}
+          </div>
+          <form onSubmit={handleCreateTemplate} className="card p-4 space-y-3">
+            <h3 className="text-sm font-semibold themed-text-primary">New custom template</h3>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <input className="input-field text-sm" value={templateForm.name}
+                onChange={event => setTemplateForm(previous => ({ ...previous, name: event.target.value }))}
+                placeholder="Template name" required />
+              <input className="input-field text-sm" value={templateForm.description}
+                onChange={event => setTemplateForm(previous => ({ ...previous, description: event.target.value }))}
+                placeholder="Short description" />
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {Object.entries(methodologies).map(([key, methodology]) => (
+                <label key={key} className="flex items-start gap-2 rounded border p-2 text-xs themed-text-secondary" style={{ borderColor: 'var(--border)' }}>
+                  <input type="checkbox" className="mt-0.5" checked={templateForm.methodologies.includes(key)}
+                    onChange={event => setTemplateForm(previous => ({
+                      ...previous,
+                      methodologies: event.target.checked
+                        ? [...previous.methodologies, key]
+                        : previous.methodologies.filter(item => item !== key),
+                    }))} />
+                  <span><span className="themed-text-primary block">{methodology.name}</span>{methodology.item_count} items</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-end">
+              <button type="submit" className="btn-primary text-sm" disabled={savingTemplate || templateForm.methodologies.length === 0}>
+                {savingTemplate ? 'Creating...' : 'Create Template'}
+              </button>
+            </div>
+          </form>
+        </div>
       </Modal>
 
       {toast && <Toast {...toast} onDismiss={() => setToast(null)} />}

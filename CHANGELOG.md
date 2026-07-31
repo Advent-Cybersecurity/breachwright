@@ -1,5 +1,50 @@
 # Changelog
 
+## Unreleased
+
+### Active assessment workspace
+
+- Added an engagement Overview with current finding, asset, retest,
+  methodology, scan-snapshot, notebook, and readiness summaries.
+- Added a latest-snapshot asset and service inventory with aliases, operating
+  system details, linked findings, evidence, retests, and deterministic change
+  states.
+- Added fast local engagement search across findings, checklist items, assets,
+  finding evidence metadata, notebook notes and attachments, and exploitation
+  chains.
+- Added an Evidence Notebook for bounded analyst notes, asset references, tags,
+  and validated attachments. Reviewed notes can become non-AI findings while
+  retaining immutable note and attachment provenance.
+- Added due, overdue, scheduled, and recently remediated retest work views,
+  finding and retest filters, and risk-first deterministic ordering.
+- Scanner observations can be explicitly reviewed into findings without an AI
+  provider. Duplicate promotion is prevented and provenance is retained.
+
+### Reuse, interoperability, and privacy
+
+- Added local CRUD plus strict versioned import and export for user-created
+  assessment templates and finding templates. Finding templates exclude
+  target-specific hosts and evidence.
+- Expanded evidence validation to HTTP, request, response, HAR, text,
+  Markdown, CSV, and JSON files in addition to supported images and PDF.
+- Added spreadsheet-safe findings CSV export with local secret redaction on by
+  default, plus optional redaction for SARIF output.
+- Added a visible local secret-redaction control for AI context and complete
+  Settings forms for Anthropic, OpenAI, Azure OpenAI, AWS Bedrock, and local
+  OpenAI-compatible providers.
+- Completed Nmap and Nuclei Tool Runner output can be added directly to Scans.
+  Any finished Tool Runner output can be preserved in the Evidence Notebook,
+  and captured structured artifacts remain bounded.
+- Verified backups now include Evidence Notebook attachments.
+
+### Reliability and validation
+
+- Fixed finding-list ordering so client-side filters do not disturb the
+  backend's deterministic risk-first order.
+- Added migration, API, backup and restore, bounded-output, redaction,
+  provenance, duplicate-prevention, and complete local user-journey coverage
+  for the new workflows.
+
 ## v2.2.0 (2026-07-31)
 
 ### Repeatable assessment workflows

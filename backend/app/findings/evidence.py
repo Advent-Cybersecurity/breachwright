@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -19,13 +20,39 @@ router = APIRouter(
     tags=["evidence"],
 )
 
-ALLOWED_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"}
+ALLOWED_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "application/pdf",
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "application/json",
+    "application/har+json",
+}
 CANONICAL_EXTENSIONS = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
     "image/gif": ".gif",
     "image/webp": ".webp",
     "application/pdf": ".pdf",
+    "text/plain": ".txt",
+    "text/markdown": ".md",
+    "text/csv": ".csv",
+    "application/json": ".json",
+    "application/har+json": ".har",
+}
+TEXT_EXTENSION_TYPES = {
+    ".txt": "text/plain",
+    ".http": "text/plain",
+    ".req": "text/plain",
+    ".resp": "text/plain",
+    ".md": "text/markdown",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".har": "application/har+json",
 }
 MAX_SIZE = 10 * 1024 * 1024  # 10MB
 
@@ -42,7 +69,30 @@ def _matches_declared_type(content_type: str, content: bytes) -> bool:
         ),
         "application/pdf": lambda data: data.startswith(b"%PDF-"),
     }
-    return signatures[content_type](content)
+    if content_type in signatures:
+        return signatures[content_type](content)
+    try:
+        decoded = content.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    if "\x00" in decoded:
+        return False
+    if content_type in {"application/json", "application/har+json"}:
+        try:
+            parsed = json.loads(decoded)
+        except (json.JSONDecodeError, RecursionError):
+            return False
+        return isinstance(parsed, (dict, list))
+    return True
+
+
+def _resolved_content_type(filename: str | None, declared: str | None) -> str | None:
+    if declared in ALLOWED_TYPES:
+        return declared
+    extension = os.path.splitext(filename or "")[1].lower()
+    if declared in {None, "", "application/octet-stream"}:
+        return TEXT_EXTENSION_TYPES.get(extension)
+    return None
 
 
 def _safe_display_name(filename: str | None, fallback: str) -> str:
@@ -107,16 +157,20 @@ async def upload_evidence(
     # Verify finding exists
     await _require_finding(engagement_id, finding_id, db)
 
-    if file.content_type not in ALLOWED_TYPES:
+    content_type = _resolved_content_type(file.filename, file.content_type)
+    if not content_type:
         raise HTTPException(
             status_code=415,
-            detail="Unsupported evidence type. Use PNG, JPEG, GIF, WebP, or PDF.",
+            detail=(
+                "Unsupported evidence type. Use PNG, JPEG, GIF, WebP, PDF, "
+                "plain text, Markdown, CSV, JSON, or HAR."
+            ),
         )
 
     content = await file.read(MAX_SIZE + 1)
     if len(content) > MAX_SIZE:
         raise HTTPException(status_code=413, detail="File too large (max 10MB)")
-    if not _matches_declared_type(file.content_type, content):
+    if not _matches_declared_type(content_type, content):
         raise HTTPException(
             status_code=415,
             detail="Evidence content does not match its declared file type",
@@ -128,7 +182,7 @@ async def upload_evidence(
 
     display_name = _safe_display_name(file.filename, "evidence")
     stored_name = (
-        f"{uuid.uuid4().hex}{CANONICAL_EXTENSIONS[file.content_type]}"
+        f"{uuid.uuid4().hex}{CANONICAL_EXTENSIONS[content_type]}"
     )
     file_path = os.path.join(evidence_dir, stored_name)
 
@@ -139,7 +193,7 @@ async def upload_evidence(
         finding_id=finding_id,
         filename=display_name,
         file_path=file_path,
-        content_type=file.content_type,
+        content_type=content_type,
         file_size=len(content),
         uploaded_by=current_user.id,
     )
@@ -182,7 +236,10 @@ async def download_evidence(
         att.file_path,
         filename=att.filename,
         media_type=att.content_type or "application/octet-stream",
-        headers={"X-Content-Type-Options": "nosniff"},
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
     )
 
 

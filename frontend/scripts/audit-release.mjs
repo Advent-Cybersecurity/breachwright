@@ -7,13 +7,22 @@ const allowedPackages = new Set(['react-router', 'react-router-dom']);
 
 const auditArguments = ['audit', '--omit=dev', '--json'];
 const npmExecPath = process.env.npm_execpath;
-const result = npmExecPath
-  ? spawnSync(process.execPath, [npmExecPath, ...auditArguments], { encoding: 'utf8' })
-  : spawnSync(
-      process.platform === 'win32' ? 'npm.cmd' : 'npm',
-      auditArguments,
-      { encoding: 'utf8' },
-    );
+let result;
+if (npmExecPath) {
+  result = spawnSync(
+    process.execPath,
+    [npmExecPath, ...auditArguments],
+    { encoding: 'utf8' },
+  );
+} else if (process.platform === 'win32') {
+  result = spawnSync(
+    process.env.ComSpec || 'cmd.exe',
+    ['/d', '/s', '/c', 'npm.cmd', ...auditArguments],
+    { encoding: 'utf8' },
+  );
+} else {
+  result = spawnSync('npm', auditArguments, { encoding: 'utf8' });
+}
 
 if (!result.stdout) {
   process.stderr.write(

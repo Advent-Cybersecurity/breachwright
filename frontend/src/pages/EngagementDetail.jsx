@@ -4,18 +4,21 @@ import {
   engagements as engApi, findings as findingsApi, analysis as analysisApi,
   attackPaths as apApi, reports as reportsApi, evidence as evidenceApi,
   narratives as narrativeApi,
-  exportImport, ad as adApi, reportTemplates as templatesApi, workflow as workflowApi
+  exportImport, ad as adApi, reportTemplates as templatesApi, workflow as workflowApi,
+  findingTemplates as findingTemplatesApi
 } from '../api';
 import { Modal, SeverityBadge, StatusBadge, EmptyState, SectionHeader, Toast, Spinner } from '../components/UI';
 import ADPathGraph from '../components/ADPathGraph';
 import ChecklistsTab from '../components/ChecklistsTab';
 import GapAnalysisTab from '../components/GapAnalysisTab';
+import EvidenceNotebookTab from '../components/EvidenceNotebookTab';
+import WorkspaceOverviewTab from '../components/WorkspaceOverviewTab';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   ArrowLeft, Plus, Upload, Zap, Route, FileText, Trash2, Download,
   Search, AlertTriangle, Target, ChevronDown, ChevronRight, ExternalLink,
   Brain, Crosshair, Shield, Edit3, Check, RotateCcw, Image, Paperclip,
-  Share2, Network, Users, ClipboardList, Palette, ShieldAlert, BookOpen
+  Share2, Network, Users, ClipboardList, Palette, ShieldAlert, BookOpen, Server, Link2, Calendar, LayoutDashboard
 } from 'lucide-react';
 
 const SEV_COLORS = {
@@ -36,6 +39,11 @@ const RETEST_COLORS = {
   remediated: 'bg-green-500/15 text-green-500 border-green-500/30',
   retest_needed: 'bg-yellow-500/15 text-yellow-500 border-yellow-500/30',
   accepted_risk: 'bg-blue-500/15 text-blue-500 border-blue-500/30',
+};
+
+const EMPTY_FINDING_TEMPLATE_FORM = {
+  name: '', category: '', title: '', description: '', severity: 'medium',
+  cvss_score: '', remediation: '',
 };
 
 function RetestBadge({ status }) {
@@ -218,11 +226,128 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
     affected_hosts: '', evidence: '', remediation: '', retest_status: null, retest_due_date: null
   });
   const [saving, setSaving] = useState(false);
+  const [findingQuery, setFindingQuery] = useState('');
+  const [severityFilter, setSeverityFilter] = useState('all');
+  const [retestFilter, setRetestFilter] = useState('all');
+  const [findingTemplates, setFindingTemplates] = useState([]);
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [templateForm, setTemplateForm] = useState(EMPTY_FINDING_TEMPLATE_FORM);
+  const [editingTemplateId, setEditingTemplateId] = useState(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
+  const loadFindingTemplates = useCallback(async () => {
+    const templates = await findingTemplatesApi.list();
+    setFindingTemplates(templates);
+    return templates;
+  }, []);
+
+  useEffect(() => {
+    loadFindingTemplates().catch(err => toast({
+      message: `Finding templates could not be loaded: ${err.message}`,
+      type: 'error',
+    }));
+  }, [loadFindingTemplates, toast]);
+
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const dueSoonDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
+  const dueSoon = `${dueSoonDate.getFullYear()}-${String(dueSoonDate.getMonth() + 1).padStart(2, '0')}-${String(dueSoonDate.getDate()).padStart(2, '0')}`;
+  const normalizedFindingQuery = findingQuery.trim().toLowerCase();
+  const displayedFindings = findingsList.filter(finding => {
+    if (severityFilter !== 'all' && finding.severity !== severityFilter) return false;
+    if (retestFilter === 'overdue' && !(finding.retest_due_date && finding.retest_due_date < today && ['open', 'retest_needed'].includes(finding.retest_status))) return false;
+    if (retestFilter === 'due_soon' && !(finding.retest_due_date && finding.retest_due_date >= today && finding.retest_due_date <= dueSoon && ['open', 'retest_needed'].includes(finding.retest_status))) return false;
+    if (retestFilter === 'none' && finding.retest_status) return false;
+    if (!['all', 'overdue', 'due_soon', 'none'].includes(retestFilter) && finding.retest_status !== retestFilter) return false;
+    if (!normalizedFindingQuery) return true;
+    return [
+      finding.title,
+      finding.description,
+      finding.affected_hosts,
+      finding.evidence,
+      finding.remediation,
+      JSON.stringify(finding.evidence_refs || []),
+    ].some(value => String(value || '').toLowerCase().includes(normalizedFindingQuery));
+  });
+  const displayedIds = new Set(displayedFindings.map(finding => finding.id));
+  const allDisplayedSelected = displayedFindings.length > 0 && displayedFindings.every(finding => selected.has(finding.id));
+  const overdueCount = findingsList.filter(finding => (
+    finding.retest_due_date && finding.retest_due_date < today && ['open', 'retest_needed'].includes(finding.retest_status)
+  )).length;
+  const dueSoonCount = findingsList.filter(finding => (
+    finding.retest_due_date && finding.retest_due_date >= today && finding.retest_due_date <= dueSoon && ['open', 'retest_needed'].includes(finding.retest_status)
+  )).length;
 
   const resetForm = () => setForm({
     title: '', description: '', severity: 'medium', cvss_score: '',
     affected_hosts: '', evidence: '', remediation: '', retest_status: null, retest_due_date: null
   });
+
+  const applyFindingTemplate = (templateId) => {
+    const template = findingTemplates.find(item => item.id === templateId);
+    if (!template) return;
+    setForm(previous => ({
+      ...previous,
+      title: template.title || '',
+      description: template.description || '',
+      severity: template.severity || 'info',
+      cvss_score: template.cvss_score != null ? String(template.cvss_score) : '',
+      remediation: template.remediation || '',
+    }));
+  };
+
+  const openTemplateManager = (finding = null) => {
+    setEditingTemplateId(null);
+    setTemplateForm(finding ? {
+      name: finding.title || '',
+      category: '',
+      title: finding.title || '',
+      description: finding.description || '',
+      severity: finding.severity || 'info',
+      cvss_score: finding.cvss_score != null ? String(finding.cvss_score) : '',
+      remediation: finding.remediation || '',
+    } : EMPTY_FINDING_TEMPLATE_FORM);
+    setShowTemplateManager(true);
+  };
+
+  const editTemplate = (template) => {
+    setEditingTemplateId(template.id);
+    setTemplateForm({
+      name: template.name || '',
+      category: template.category || '',
+      title: template.title || '',
+      description: template.description || '',
+      severity: template.severity || 'info',
+      cvss_score: template.cvss_score != null ? String(template.cvss_score) : '',
+      remediation: template.remediation || '',
+    });
+  };
+
+  const handleSaveTemplate = async (event) => {
+    event.preventDefault();
+    setSavingTemplate(true);
+    const body = {
+      ...templateForm,
+      category: templateForm.category || null,
+      cvss_score: templateForm.cvss_score === '' ? null : parseFloat(templateForm.cvss_score),
+    };
+    try {
+      if (editingTemplateId) {
+        await findingTemplatesApi.update(editingTemplateId, body);
+        toast({ message: `Finding template "${body.name}" updated`, type: 'success' });
+      } else {
+        await findingTemplatesApi.create(body);
+        toast({ message: `Finding template "${body.name}" created`, type: 'success' });
+      }
+      await loadFindingTemplates();
+      setEditingTemplateId(null);
+      setTemplateForm(EMPTY_FINDING_TEMPLATE_FORM);
+    } catch (err) {
+      toast({ message: err.message, type: 'error' });
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
 
   const openEdit = (finding) => {
     setForm({
@@ -243,11 +368,12 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
     e.preventDefault();
     setSaving(true);
     try {
-      const finding = await findingsApi.create(engId, {
+      await findingsApi.create(engId, {
         ...form,
         cvss_score: form.cvss_score ? parseFloat(form.cvss_score) : null,
       });
-      setFindingsList(prev => [...prev, finding]);
+      const ordered = await findingsApi.list(engId);
+      setFindingsList(ordered);
       setShowAdd(false);
       resetForm();
       toast({ message: 'Finding added', type: 'success' });
@@ -293,8 +419,12 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
     return next;
   });
   const toggleAll = () => {
-    if (selected.size === findingsList.length) setSelected(new Set());
-    else setSelected(new Set(findingsList.map(f => f.id)));
+    setSelected(previous => {
+      const next = new Set(previous);
+      if (allDisplayedSelected) displayedIds.forEach(id => next.delete(id));
+      else displayedIds.forEach(id => next.add(id));
+      return next;
+    });
   };
   const handleBulk = async (action, value) => {
     if (selected.size === 0) return;
@@ -320,13 +450,48 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
           title="No findings yet"
           description="Add findings manually or upload scan data and run AI analysis."
           action={
-            <button onClick={() => { resetForm(); setShowAdd(true); }} className="btn-primary flex items-center gap-2">
-              <Plus size={16} /> Add Finding
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => openTemplateManager()} className="btn-secondary flex items-center gap-2">
+                <BookOpen size={16} /> Finding Templates
+              </button>
+              <button onClick={() => { resetForm(); setShowAdd(true); }} className="btn-primary flex items-center gap-2">
+                <Plus size={16} /> Add Finding
+              </button>
+            </div>
           }
         />
       ) : (
         <>
+          <div className="grid sm:grid-cols-[minmax(0,1fr)_10rem_12rem] gap-3 mb-4">
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 themed-text-muted" />
+              <input
+                className="input w-full pl-9"
+                value={findingQuery}
+                onChange={event => setFindingQuery(event.target.value)}
+                placeholder="Filter accepted findings"
+                aria-label="Filter accepted findings"
+              />
+            </div>
+            <select className="input" value={severityFilter} onChange={event => setSeverityFilter(event.target.value)} aria-label="Filter findings by severity">
+              <option value="all">All severities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="info">Informational</option>
+            </select>
+            <select className="input" value={retestFilter} onChange={event => setRetestFilter(event.target.value)} aria-label="Filter findings by retest state">
+              <option value="all">All retest states</option>
+              <option value="overdue">Overdue ({overdueCount})</option>
+              <option value="due_soon">Due in 7 days ({dueSoonCount})</option>
+              <option value="retest_needed">Retest needed</option>
+              <option value="open">Open</option>
+              <option value="remediated">Remediated</option>
+              <option value="accepted_risk">Accepted risk</option>
+              <option value="none">No retest state</option>
+            </select>
+          </div>
           <div className="flex items-center justify-between mb-4">
             <div>
               {selected.size > 0 && (
@@ -360,9 +525,24 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
                 </div>
               )}
             </div>
-            <button onClick={() => { resetForm(); setShowAdd(true); }} className="btn-secondary flex items-center gap-2 text-sm">
-              <Plus size={14} /> Add Finding
-            </button>
+            <div className="flex gap-2">
+              <button onClick={async () => {
+                try {
+                  await workflowApi.downloadFindingsCsv(engId, true);
+                  toast({ message: 'Redacted findings CSV downloaded', type: 'success' });
+                } catch (err) {
+                  toast({ message: err.message, type: 'error' });
+                }
+              }} className="btn-secondary flex items-center gap-2 text-sm" title="Export a spreadsheet-safe CSV with common secrets redacted">
+                <Download size={14} /> CSV
+              </button>
+              <button onClick={() => openTemplateManager()} className="btn-secondary flex items-center gap-2 text-sm">
+                <BookOpen size={14} /> Templates
+              </button>
+              <button onClick={() => { resetForm(); setShowAdd(true); }} className="btn-secondary flex items-center gap-2 text-sm">
+                <Plus size={14} /> Add Finding
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -370,7 +550,7 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
                 <tr className="text-xs font-mono themed-text-muted uppercase tracking-wider"
                   style={{ borderBottom: '1px solid var(--border)' }}>
                   <th className="py-3 px-2 w-8">
-                    <input type="checkbox" checked={selected.size === findingsList.length && findingsList.length > 0}
+                    <input type="checkbox" checked={allDisplayedSelected}
                       onChange={toggleAll} />
                   </th>
                   <th className="text-left py-3 px-4">Severity</th>
@@ -383,22 +563,41 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
                 </tr>
               </thead>
               <tbody>
-                {findingsList.map(f => (
+                {displayedFindings.map(f => (
                   <FindingRow key={f.id} finding={f} engId={engId}
                     selected={selected.has(f.id)}
                     onToggleSelect={() => toggleSelect(f.id)}
                     onEdit={() => openEdit(f)}
+                    onSaveTemplate={() => openTemplateManager(f)}
                     onDelete={() => handleDelete(f.id)}
                     toast={toast} />
                 ))}
               </tbody>
             </table>
           </div>
+          {displayedFindings.length === 0 && (
+            <div className="py-10 text-center text-sm themed-text-muted">No findings match the current filters.</div>
+          )}
         </>
       )}
 
       {/* Add modal */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Finding" wide>
+        {findingTemplates.length > 0 && (
+          <div className="mb-4">
+            <label htmlFor="finding-template-picker" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Start from a template</label>
+            <select id="finding-template-picker" className="input-field text-sm" defaultValue=""
+              onChange={event => applyFindingTemplate(event.target.value)}>
+              <option value="">Blank finding</option>
+              {findingTemplates.map(template => (
+                <option key={template.id} value={template.id}>
+                  {template.category ? `${template.category}: ` : ''}{template.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs themed-text-muted mt-1">Templates fill reusable wording and scoring. Target-specific hosts and evidence stay blank.</p>
+          </div>
+        )}
         <FindingForm form={form} setForm={setForm} onSubmit={handleAdd} saving={saving} submitLabel="Save Finding" />
       </Modal>
 
@@ -406,12 +605,104 @@ function FindingsTab({ engId, findingsList, setFindingsList, toast }) {
       <Modal open={!!editFinding} onClose={() => setEditFinding(null)} title="Edit Finding" wide>
         <FindingForm form={form} setForm={setForm} onSubmit={handleEdit} saving={saving} submitLabel="Update Finding" />
       </Modal>
+
+      <Modal open={showTemplateManager} onClose={() => setShowTemplateManager(false)} title="Finding Templates" wide>
+        <div className="space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm themed-text-muted">Reuse finding language without carrying target-specific hosts or evidence into another assessment.</p>
+            <label className="btn-secondary flex items-center gap-2 text-sm cursor-pointer shrink-0">
+              <Upload size={14} /> Import
+              <input type="file" accept=".json" className="hidden" onChange={async event => {
+                const file = event.target.files[0];
+                if (!file) return;
+                try {
+                  const imported = await findingTemplatesApi.import(file);
+                  await loadFindingTemplates();
+                  toast({ message: `Imported finding template "${imported.name}"`, type: 'success' });
+                } catch (err) {
+                  toast({ message: err.message, type: 'error' });
+                }
+                event.target.value = '';
+              }} />
+            </label>
+          </div>
+          {findingTemplates.length > 0 && (
+            <div className="space-y-2 max-h-52 overflow-y-auto">
+              {findingTemplates.map(template => (
+                <div key={template.id} className="rounded border p-3 flex items-start gap-3" style={{ borderColor: 'var(--border)' }}>
+                  <SeverityBadge severity={template.severity} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm themed-text-primary">{template.name}</div>
+                    <div className="text-xs themed-text-muted mt-1">{[template.category, template.title, template.cvss_score != null && `CVSS ${template.cvss_score}`].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  <button className="btn-ghost p-1" title="Edit template" onClick={() => editTemplate(template)}><Edit3 size={14} /></button>
+                  <button className="btn-ghost p-1" title="Export template" onClick={async () => {
+                    try { await findingTemplatesApi.export(template.id); }
+                    catch (err) { toast({ message: err.message, type: 'error' }); }
+                  }}><Download size={14} /></button>
+                  <button className="btn-ghost p-1 text-red-400" title="Delete template" onClick={async () => {
+                    if (!window.confirm(`Delete finding template "${template.name}"?`)) return;
+                    try {
+                      await findingTemplatesApi.delete(template.id);
+                      setFindingTemplates(previous => previous.filter(item => item.id !== template.id));
+                      if (editingTemplateId === template.id) {
+                        setEditingTemplateId(null);
+                        setTemplateForm(EMPTY_FINDING_TEMPLATE_FORM);
+                      }
+                      toast({ message: `Finding template "${template.name}" deleted`, type: 'success' });
+                    } catch (err) { toast({ message: err.message, type: 'error' }); }
+                  }}><Trash2 size={14} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          <form onSubmit={handleSaveTemplate} className="card p-4 space-y-3">
+            <h3 className="text-sm font-semibold themed-text-primary">{editingTemplateId ? 'Edit template' : 'New template'}</h3>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <input className="input-field text-sm" value={templateForm.name}
+                onChange={event => setTemplateForm(previous => ({ ...previous, name: event.target.value }))}
+                placeholder="Template name" aria-label="Finding template name" required />
+              <input className="input-field text-sm" value={templateForm.category}
+                onChange={event => setTemplateForm(previous => ({ ...previous, category: event.target.value }))}
+                placeholder="Category, such as Network" aria-label="Finding template category" />
+            </div>
+            <input className="input-field text-sm" value={templateForm.title}
+              onChange={event => setTemplateForm(previous => ({ ...previous, title: event.target.value }))}
+              placeholder="Finding title" aria-label="Finding template title" required />
+            <div className="grid grid-cols-2 gap-3">
+              <select className="input-field text-sm" value={templateForm.severity}
+                onChange={event => setTemplateForm(previous => ({ ...previous, severity: event.target.value }))}
+                aria-label="Finding template severity">
+                {['critical', 'high', 'medium', 'low', 'info'].map(severity => <option key={severity} value={severity}>{severity[0].toUpperCase() + severity.slice(1)}</option>)}
+              </select>
+              <input type="number" min="0" max="10" step="0.1" className="input-field text-sm" value={templateForm.cvss_score}
+                onChange={event => setTemplateForm(previous => ({ ...previous, cvss_score: event.target.value }))}
+                placeholder="CVSS score" aria-label="Finding template CVSS score" />
+            </div>
+            <textarea className="input-field text-sm resize-none" rows={3} value={templateForm.description}
+              onChange={event => setTemplateForm(previous => ({ ...previous, description: event.target.value }))}
+              placeholder="Reusable description" aria-label="Finding template description" />
+            <textarea className="input-field text-sm resize-none" rows={3} value={templateForm.remediation}
+              onChange={event => setTemplateForm(previous => ({ ...previous, remediation: event.target.value }))}
+              placeholder="Reusable remediation" aria-label="Finding template remediation" />
+            <div className="flex justify-end gap-2">
+              {editingTemplateId && <button type="button" className="btn-secondary text-sm" onClick={() => {
+                setEditingTemplateId(null);
+                setTemplateForm(EMPTY_FINDING_TEMPLATE_FORM);
+              }}>Cancel edit</button>}
+              <button type="submit" className="btn-primary text-sm" disabled={savingTemplate}>
+                {savingTemplate ? 'Saving...' : editingTemplateId ? 'Update Template' : 'Create Template'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 // Finding row with evidence support
-function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete, toast }) {
+function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onSaveTemplate, onDelete, toast }) {
   const [expanded, setExpanded] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [loadingEvidence, setLoadingEvidence] = useState(false);
@@ -529,7 +820,15 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
         </td>
         <td className="py-3 px-4">
           <span className={`text-xs font-mono ${finding.ai_inference ? 'text-cyan-400' : 'themed-text-muted'}`}>
-            {finding.ai_inference ? `AI reviewed${finding.ai_confidence != null ? ` ${Math.round(finding.ai_confidence * 100)}%` : ''}` : finding.source === 'imported' ? 'Imported' : 'Manual'}
+            {finding.ai_inference
+              ? `AI reviewed${finding.ai_confidence != null ? ` ${Math.round(finding.ai_confidence * 100)}%` : ''}`
+              : finding.source === 'imported'
+              ? 'Imported'
+              : finding.source === 'scan_reviewed'
+              ? 'Scan reviewed'
+              : finding.source === 'notebook_reviewed'
+              ? 'Notebook reviewed'
+              : 'Manual'}
           </span>
         </td>
         <td className="py-3 px-4">
@@ -537,6 +836,10 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
             <button onClick={(e) => { e.stopPropagation(); onEdit(); }}
               className="themed-text-muted hover:text-blue-400 transition-colors p-1" title="Edit">
               <Edit3 size={14} />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onSaveTemplate(); }}
+              className="themed-text-muted hover:text-cyan-400 transition-colors p-1" title="Save as template">
+              <BookOpen size={14} />
             </button>
             <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
               className="themed-text-muted hover:text-red-400 transition-colors p-1" title="Delete">
@@ -612,7 +915,7 @@ function FindingRow({ finding, engId, selected, onToggleSelect, onEdit, onDelete
                   </span>
                   <label className="btn-ghost flex items-center gap-1 text-xs cursor-pointer">
                     <Image size={12} /> Attach
-                    <input type="file" className="hidden" accept="image/*,.pdf" onChange={handleUploadEvidence} />
+                    <input type="file" className="hidden" accept="image/*,.pdf,.txt,.http,.req,.resp,.md,.csv,.json,.har" onChange={handleUploadEvidence} />
                   </label>
                 </div>
                 {loadingEvidence && <Spinner className="w-4 h-4 themed-text-muted" />}
@@ -862,6 +1165,433 @@ function AIDraftWorkbench({ engId, drafts, setDrafts, toast, onFindingsChanged }
   );
 }
 
+const ASSET_STATUS_STYLES = {
+  regressed: 'bg-severity-critical/15 text-severity-critical border-severity-critical/30',
+  new: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+  persistent: 'bg-yellow-500/15 text-yellow-500 border-yellow-500/30',
+};
+
+function RetestsTab({ engId, toast, onFindingsChanged, onOpenFindings }) {
+  const [overview, setOverview] = useState(null);
+  const [loadingRetests, setLoadingRetests] = useState(true);
+  const [updatingId, setUpdatingId] = useState(null);
+
+  const loadOverview = useCallback(async () => {
+    const data = await workflowApi.retestOverview(engId);
+    setOverview(data);
+    return data;
+  }, [engId]);
+
+  useEffect(() => {
+    loadOverview()
+      .catch(err => toast({ message: `Retest work view could not be loaded: ${err.message}`, type: 'error' }))
+      .finally(() => setLoadingRetests(false));
+  }, [loadOverview, toast]);
+
+  const changeStatus = async (finding, status) => {
+    setUpdatingId(finding.id);
+    try {
+      await findingsApi.update(engId, finding.id, { retest_status: status });
+      await Promise.all([loadOverview(), onFindingsChanged()]);
+      toast({ message: `${finding.title} marked ${status.replace('_', ' ')}`, type: 'success' });
+    } catch (err) {
+      toast({ message: err.message, type: 'error' });
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  if (loadingRetests) return <div className="flex justify-center py-16"><Spinner className="w-6 h-6 themed-text-muted" /></div>;
+  if (!overview) return null;
+  const sections = [
+    ['overdue', 'Overdue', 'Past the recorded due date', 'text-red-400'],
+    ['due_soon', 'Due in 7 days', 'Scheduled for the next seven days', 'text-yellow-400'],
+    ['unscheduled', 'Needs scheduling', 'Open retests without a due date', 'text-blue-400'],
+    ['scheduled', 'Scheduled later', 'Due beyond the next seven days', 'themed-text-secondary'],
+    ['recently_resolved', 'Recently remediated', 'Closed during the last 30 days', 'text-green-400'],
+  ];
+  const activeCount = overview.summary.overdue + overview.summary.due_soon + overview.summary.unscheduled + overview.summary.scheduled;
+
+  return (
+    <div>
+      <SectionHeader title="Retest Work" description={`Local work view as of ${overview.as_of}`} action={<button className="btn-secondary text-sm" onClick={onOpenFindings}>Open Findings</button>} />
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+        {sections.map(([key, label]) => (
+          <div key={key} className="card p-4">
+            <div className="text-2xl font-mono themed-text-primary">{overview.summary[key]}</div>
+            <div className="text-xs themed-text-muted mt-1">{label}</div>
+          </div>
+        ))}
+      </div>
+      {activeCount === 0 && overview.summary.recently_resolved === 0 ? (
+        <EmptyState icon={RotateCcw} title="No retest work" description="Add an open or retest-needed status to a finding to track it here." />
+      ) : (
+        <div className="space-y-4">
+          {sections.filter(([key]) => overview[key].length > 0).map(([key, label, description, color]) => (
+            <div key={key} className="card overflow-hidden">
+              <div className="px-4 py-3 border-b flex items-center gap-2" style={{ borderColor: 'var(--border)' }}>
+                <Calendar size={15} className={color} />
+                <div className="flex-1">
+                  <h3 className={`text-sm font-semibold ${color}`}>{label}</h3>
+                  <p className="text-xs themed-text-muted">{description}</p>
+                </div>
+                <span className="font-mono text-sm themed-text-secondary">{overview[key].length}</span>
+              </div>
+              <div>
+                {overview[key].map(finding => (
+                  <div key={finding.id} className="px-4 py-3 border-b last:border-b-0 flex flex-col sm:flex-row sm:items-center gap-3" style={{ borderColor: 'var(--border)' }}>
+                    <SeverityBadge severity={finding.severity} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm themed-text-primary">{finding.title}</div>
+                      <div className="text-xs themed-text-muted mt-1">
+                        {[finding.affected_hosts, finding.retest_due_date && `due ${finding.retest_due_date}`, finding.retest_status.replace('_', ' ')].filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                    {key === 'recently_resolved' ? (
+                      <button className="btn-secondary text-xs" disabled={updatingId === finding.id} onClick={() => changeStatus(finding, 'retest_needed')}>Reopen</button>
+                    ) : (
+                      <button className="btn-secondary text-xs" disabled={updatingId === finding.id} onClick={() => changeStatus(finding, 'remediated')}>Mark remediated</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {overview.summary.accepted_risk > 0 && <p className="text-xs themed-text-muted mt-4">{overview.summary.accepted_risk} accepted-risk finding{overview.summary.accepted_risk === 1 ? '' : 's'} remain visible in Findings but are not active retest work.</p>}
+    </div>
+  );
+}
+
+function WorkspaceSearch({ engId, onOpenTab, toast }) {
+  const [query, setQuery] = useState('');
+  const [searchState, setSearchState] = useState({ loading: false, data: null });
+  const requestSequence = useRef(0);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    const sequence = ++requestSequence.current;
+    if (trimmed.length < 2) {
+      setSearchState({ loading: false, data: null });
+      return undefined;
+    }
+    setSearchState(previous => ({ ...previous, loading: true }));
+    const timer = setTimeout(() => {
+      workflowApi.search(engId, trimmed, 50)
+        .then(data => {
+          if (requestSequence.current === sequence) setSearchState({ loading: false, data });
+        })
+        .catch(err => {
+          if (requestSequence.current !== sequence) return;
+          setSearchState({ loading: false, data: null });
+          toast({ message: `Workspace search failed: ${err.message}`, type: 'error' });
+        });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [engId, query, toast]);
+
+  const results = searchState.data?.results || [];
+  return (
+    <div className="relative mb-5 z-20">
+      <div className="relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 themed-text-muted" />
+        <input
+          className="input w-full pl-10 pr-10"
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Escape') setQuery('');
+            if (event.key === 'Enter' && results[0]) {
+              onOpenTab(results[0].tab);
+              setQuery('');
+            }
+          }}
+          placeholder="Search this engagement: findings, assets, evidence, checklists, and exploitation chains"
+          aria-label="Search this engagement"
+        />
+        {searchState.loading && <Spinner className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 themed-text-muted" />}
+      </div>
+      {query.trim().length >= 2 && !searchState.loading && searchState.data && (
+        <div className="absolute top-full left-0 right-0 mt-1 card shadow-xl max-h-[28rem] overflow-y-auto">
+          <div className="px-3 py-2 border-b text-xs themed-text-muted" style={{ borderColor: 'var(--border)' }}>
+            {searchState.data.count} local result{searchState.data.count === 1 ? '' : 's'}
+            {searchState.data.limited ? ' · Refine your search to see more' : ''}
+          </div>
+          {results.map((result, index) => (
+            <button
+              key={`${result.type}-${result.id}-${index}`}
+              className="w-full text-left px-4 py-3 border-b hover:bg-white/[0.03] last:border-b-0"
+              style={{ borderColor: 'var(--border)' }}
+              onClick={() => {
+                onOpenTab(result.tab);
+                setQuery('');
+              }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm themed-text-primary truncate">{result.title}</div>
+                  <div className="text-xs themed-text-muted mt-0.5">{result.subtitle}</div>
+                </div>
+                <span className="badge border themed-text-muted shrink-0">{result.type}</span>
+              </div>
+              {result.snippet && <p className="text-xs themed-text-secondary mt-2 line-clamp-2">{result.snippet}</p>}
+            </button>
+          ))}
+          {results.length === 0 && <div className="px-4 py-8 text-sm text-center themed-text-muted">No matching workspace records.</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssetStatusBadge({ status }) {
+  return (
+    <span className={`badge border ${ASSET_STATUS_STYLES[status] || 'themed-text-muted'}`}>
+      {status}
+    </span>
+  );
+}
+
+function AssetsTab({ engId, toast, onOpenScans, onOpenFindings, onFindingsChanged }) {
+  const [inventory, setInventory] = useState(null);
+  const [loadingAssets, setLoadingAssets] = useState(true);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [expanded, setExpanded] = useState(new Set());
+  const [promoting, setPromoting] = useState(new Set());
+
+  const loadInventory = useCallback(async () => {
+    const data = await workflowApi.assets(engId);
+    setInventory(data);
+    return data;
+  }, [engId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingAssets(true);
+    loadInventory()
+      .then(data => { if (!cancelled) setInventory(data); })
+      .catch(err => { if (!cancelled) toast({ message: `Asset inventory could not be loaded: ${err.message}`, type: 'error' }); })
+      .finally(() => { if (!cancelled) setLoadingAssets(false); });
+    return () => { cancelled = true; };
+  }, [loadInventory, toast]);
+
+  const acceptObservation = async (observation) => {
+    setPromoting(previous => new Set([...previous, observation.fingerprint]));
+    try {
+      const finding = await workflowApi.acceptObservation(engId, inventory.snapshot.id, observation.fingerprint);
+      await Promise.all([loadInventory(), onFindingsChanged()]);
+      toast({ message: `Added ${finding.title} to Findings for review`, type: 'success' });
+    } catch (err) {
+      toast({ message: err.message, type: 'error' });
+    } finally {
+      setPromoting(previous => {
+        const next = new Set(previous);
+        next.delete(observation.fingerprint);
+        return next;
+      });
+    }
+  };
+
+  if (loadingAssets) {
+    return <div className="flex justify-center py-16"><Spinner className="w-6 h-6 themed-text-muted" /></div>;
+  }
+  if (!inventory?.snapshot) {
+    return (
+      <EmptyState
+        icon={Server}
+        title="No versioned assets yet"
+        description="Upload a supported scan and create a snapshot. Breachwright will build this inventory locally from the normalized results."
+        action={<button className="btn-primary text-sm" onClick={onOpenScans}>Open Scans</button>}
+      />
+    );
+  }
+
+  const needle = query.trim().toLowerCase();
+  const assets = inventory.assets.filter(asset => {
+    if (statusFilter !== 'all' && asset.status !== statusFilter) return false;
+    if (!needle) return true;
+    return [
+      asset.host,
+      ...asset.display_hosts,
+      ...(asset.aliases || []),
+      ...(asset.operating_systems || []),
+      ...asset.services.flatMap(item => [item.title, item.tool, item.evidence_ref?.service, item.evidence_ref?.product, item.evidence_ref?.version]),
+      ...asset.vulnerabilities.flatMap(item => [item.title, item.tool, item.evidence_ref?.cve]),
+      ...asset.findings.flatMap(item => [item.title, item.severity, item.retest_status]),
+    ].some(value => String(value || '').toLowerCase().includes(needle));
+  });
+  const summaryCards = [
+    ['Assets', inventory.summary.assets],
+    ['Open services', inventory.summary.services],
+    ['Scanner observations', inventory.summary.vulnerabilities],
+    ['Linked findings', inventory.summary.linked_findings],
+  ];
+
+  return (
+    <div>
+      <SectionHeader
+        title="Assets & Services"
+        description={`Current view: ${inventory.snapshot.label}${inventory.baseline ? ` compared with ${inventory.baseline.label}` : ' (initial baseline)'}`}
+        action={<button className="btn-secondary text-sm" onClick={onOpenScans}>Manage snapshots</button>}
+      />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        {summaryCards.map(([label, value]) => (
+          <div key={label} className="card p-4">
+            <div className="text-2xl font-mono font-semibold themed-text-primary">{value}</div>
+            <div className="text-xs uppercase tracking-wider themed-text-muted mt-1">{label}</div>
+          </div>
+        ))}
+      </div>
+      {(inventory.summary.limited || inventory.summary.unlinked_findings > 0) && (
+        <div className="card p-3 mb-4 text-sm themed-text-secondary flex items-start gap-2">
+          <AlertTriangle size={16} className="text-yellow-500 mt-0.5 shrink-0" />
+          <span>
+            {inventory.summary.limited && 'The inventory is displaying the first 2,000 normalized hosts. '}
+            {inventory.summary.unlinked_findings > 0 && `${inventory.summary.unlinked_findings} finding(s) do not exactly match a scanned host and remain available in Findings.`}
+          </span>
+        </div>
+      )}
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 themed-text-muted" />
+          <input
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            className="input w-full pl-9"
+            placeholder="Search hosts, ports, products, CVEs, and findings"
+            aria-label="Search asset inventory"
+          />
+        </div>
+        <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="input sm:w-44" aria-label="Filter asset status">
+          <option value="all">All change states</option>
+          <option value="regressed">Regressed</option>
+          <option value="new">New</option>
+          <option value="persistent">Persistent</option>
+        </select>
+      </div>
+      <div className="space-y-3">
+        {assets.map(asset => {
+          const isExpanded = expanded.has(asset.host);
+          return (
+            <div key={asset.host} className="card overflow-hidden">
+              <button
+                className="w-full p-4 flex items-center gap-3 text-left hover:bg-white/[0.02]"
+                onClick={() => setExpanded(previous => {
+                  const next = new Set(previous);
+                  if (next.has(asset.host)) next.delete(asset.host); else next.add(asset.host);
+                  return next;
+                })}
+                aria-expanded={isExpanded}
+              >
+                {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                <Server size={17} className="themed-text-muted shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-mono text-sm themed-text-primary truncate">{asset.host}</div>
+                  <div className="text-xs themed-text-muted mt-1">
+                    Seen in {asset.snapshot_count} snapshot{asset.snapshot_count === 1 ? '' : 's'} · {asset.service_count} service{asset.service_count === 1 ? '' : 's'} · {asset.vulnerability_count} observation{asset.vulnerability_count === 1 ? '' : 's'}
+                  </div>
+                  {(asset.aliases?.length > 0 || asset.operating_systems?.length > 0) && (
+                    <div className="text-xs themed-text-muted mt-1 truncate">
+                      {[...(asset.aliases || []), ...(asset.operating_systems || [])].join(' · ')}
+                    </div>
+                  )}
+                </div>
+                <div className="hidden sm:flex items-center gap-2 shrink-0">
+                  <SeverityBadge severity={asset.highest_severity} />
+                  <AssetStatusBadge status={asset.status} />
+                  {asset.findings.length > 0 && <span className="badge border themed-text-secondary"><Link2 size={10} className="mr-1" />{asset.findings.length}</span>}
+                </div>
+              </button>
+              {isExpanded && (
+                <div className="px-4 pb-4 border-t" style={{ borderColor: 'var(--border)' }}>
+                  <div className="sm:hidden flex items-center gap-2 py-3">
+                    <SeverityBadge severity={asset.highest_severity} />
+                    <AssetStatusBadge status={asset.status} />
+                  </div>
+                  <div className="grid lg:grid-cols-2 gap-5 pt-4">
+                    <div>
+                      <h4 className="text-xs font-mono uppercase tracking-wider themed-text-muted mb-2">Open services</h4>
+                      {asset.services.length === 0 && <p className="text-sm themed-text-muted">No service observations in this snapshot.</p>}
+                      <div className="space-y-2">
+                        {asset.services.map(service => (
+                          <div key={service.fingerprint} className="rounded border p-3" style={{ borderColor: 'var(--border)' }}>
+                            <div className="flex justify-between gap-2">
+                              <span className="font-mono text-sm themed-text-primary">{service.port ?? '?'} / {service.evidence_ref?.protocol || 'unknown'}</span>
+                              <AssetStatusBadge status={service.status} />
+                            </div>
+                            <div className="text-sm themed-text-secondary mt-1">
+                              {[service.evidence_ref?.service, service.evidence_ref?.product, service.evidence_ref?.version].filter(Boolean).join(' · ') || service.title}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-mono uppercase tracking-wider themed-text-muted mb-2">Vulnerability observations</h4>
+                      {asset.vulnerabilities.length === 0 && <p className="text-sm themed-text-muted">No vulnerability observations in this snapshot.</p>}
+                      <div className="space-y-2">
+                        {asset.vulnerabilities.map(observation => (
+                          <div key={observation.fingerprint} className="rounded border p-3" style={{ borderColor: 'var(--border)' }}>
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-sm themed-text-primary">{observation.title}</span>
+                              <SeverityBadge severity={observation.severity} />
+                            </div>
+                            <div className="text-xs themed-text-muted mt-1">
+                              {[observation.evidence_ref?.cve, observation.port && `port ${observation.port}`, observation.tool].filter(Boolean).join(' · ')}
+                            </div>
+                            <div className="mt-2">
+                              {observation.finding_id ? (
+                                <button className="btn-ghost text-xs" onClick={onOpenFindings}><Link2 size={11} className="inline mr-1" />In Findings</button>
+                              ) : (
+                                <button
+                                  className="btn-secondary text-xs"
+                                  disabled={promoting.has(observation.fingerprint)}
+                                  onClick={() => acceptObservation(observation)}
+                                >
+                                  {promoting.has(observation.fingerprint) ? 'Adding...' : 'Add to Findings'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  {asset.findings.length > 0 && (
+                    <div className="mt-5">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-xs font-mono uppercase tracking-wider themed-text-muted">Linked findings</h4>
+                        <button className="btn-ghost text-xs" onClick={onOpenFindings}>Open Findings</button>
+                      </div>
+                      <div className="grid lg:grid-cols-2 gap-2">
+                        {asset.findings.map(finding => (
+                          <div key={finding.id} className="rounded border p-3 flex items-start justify-between gap-3" style={{ borderColor: 'var(--border)' }}>
+                            <div>
+                              <div className="text-sm themed-text-primary">{finding.title}</div>
+                              <div className="text-xs themed-text-muted mt-1">{finding.evidence_attachment_count} attachment{finding.evidence_attachment_count === 1 ? '' : 's'}{finding.retest_status ? ` · ${finding.retest_status.replace('_', ' ')}` : ''}</div>
+                            </div>
+                            <SeverityBadge severity={finding.severity} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {asset.details_limited && <p className="text-xs text-yellow-500 mt-4">This host has more than 500 entries of one type. Refine the source scans before reviewing every detail.</p>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {assets.length === 0 && (
+          <EmptyState icon={Search} title="No matching assets" description="Adjust the search text or change-state filter." />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Scans tab
 function ScansTab({ engId, toast, onFindingsChanged }) {
   const [uploading, setUploading] = useState(false);
@@ -1086,7 +1816,7 @@ function ScansTab({ engId, toast, onFindingsChanged }) {
               <h3 className="text-sm font-semibold themed-text-primary">AI Analysis</h3>
             </div>
             <p className="text-xs themed-text-muted">
-              Analyze uploaded scans and generate findings with severity ratings, CVSS scores, and remediation guidance.
+              Analyze uploaded scans and generate review proposals. Common credentials are redacted locally by default, and nothing enters Findings until you accept it.
             </p>
           </div>
           <button onClick={handleAnalyze} disabled={analyzing || scans.length === 0}
@@ -1429,6 +2159,7 @@ function ReportsTab({ engId, toast }) {
   const [logoFile, setLogoFile] = useState(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [readiness, setReadiness] = useState(null);
+  const [redactSarif, setRedactSarif] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -1526,7 +2257,7 @@ function ReportsTab({ engId, toast }) {
   return (
     <div>
       {readiness && <div className="card p-5 mb-5">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="text-2xl font-mono themed-text-primary">{readiness.score}</div>
           <div className="flex-1">
             <div className="text-sm font-semibold themed-text-primary">Report readiness</div>
@@ -1534,8 +2265,12 @@ function ReportsTab({ engId, toast }) {
               {readiness.ready ? 'Ready to generate. Review warnings before delivery.' : `${readiness.blockers.length} blocker${readiness.blockers.length === 1 ? '' : 's'} should be resolved.`}
             </div>
           </div>
+          <label className="flex items-center gap-2 text-xs themed-text-muted">
+            <input type="checkbox" checked={redactSarif} onChange={event => setRedactSarif(event.target.checked)} />
+            Redact common secrets
+          </label>
           <button className="btn-secondary text-xs flex items-center gap-1" onClick={async () => {
-            try { await workflowApi.downloadSarif(engId); toast({ message: 'SARIF export downloaded', type: 'success' }); }
+            try { await workflowApi.downloadSarif(engId, redactSarif); toast({ message: `${redactSarif ? 'Redacted ' : ''}SARIF export downloaded`, type: 'success' }); }
             catch (err) { toast({ message: err.message, type: 'error' }); }
           }}><Download size={12} /> Export SARIF</button>
         </div>
@@ -2071,6 +2806,7 @@ export default function EngagementDetail() {
 
   const sevCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
   findingsList.forEach(f => { sevCounts[f.severity] = (sevCounts[f.severity] || 0) + 1; });
+  const activeRetestCount = findingsList.filter(f => ['open', 'retest_needed'].includes(f.retest_status)).length;
 
   return (
     <div className="animate-fade-in">
@@ -2169,17 +2905,28 @@ export default function EngagementDetail() {
         {findingsList.length === 0 && <span className="text-sm themed-text-muted">No findings yet</span>}
       </div>
 
+      {/* Local workspace search */}
+      <WorkspaceSearch engId={id} onOpenTab={setActiveTab} toast={toast} />
+
       {/* Severity chart */}
       <SeverityChart findings={findingsList} />
 
       {/* Tabs */}
       <div className="flex mb-6 overflow-x-auto" style={{ borderBottom: '1px solid var(--border)' }}>
+        <Tab active={activeTab === 'overview'} label="Overview" icon={LayoutDashboard}
+          count={0} onClick={() => setActiveTab('overview')} />
         <Tab active={activeTab === 'findings'} label="Findings" icon={Target}
           count={findingsList.length} onClick={() => setActiveTab('findings')} />
+        <Tab active={activeTab === 'retests'} label="Retests" icon={RotateCcw}
+          count={activeRetestCount} onClick={() => setActiveTab('retests')} />
         <Tab active={activeTab === 'checklists'} label="Checklists" icon={ClipboardList}
           count={0} onClick={() => setActiveTab('checklists')} />
         <Tab active={activeTab === 'scans'} label="Scans" icon={Upload}
           count={0} onClick={() => setActiveTab('scans')} />
+        <Tab active={activeTab === 'assets'} label="Assets" icon={Server}
+          count={0} onClick={() => setActiveTab('assets')} />
+        <Tab active={activeTab === 'notebook'} label="Notebook" icon={BookOpen}
+          count={0} onClick={() => setActiveTab('notebook')} />
         <Tab active={activeTab === 'attack_paths'} label="Exploitation Chains" icon={Route}
           count={0} onClick={() => setActiveTab('attack_paths')} />
         <Tab active={activeTab === 'ad'} label="Active Directory" icon={Network}
@@ -2190,6 +2937,9 @@ export default function EngagementDetail() {
           count={0} onClick={() => setActiveTab('reports')} />
       </div>
 
+      {activeTab === 'overview' && (
+        <WorkspaceOverviewTab engId={id} findings={findingsList} toast={toast} onOpenTab={setActiveTab} />
+      )}
       {activeTab === 'findings' && (
         <FindingsTab engId={id} findingsList={findingsList} setFindingsList={setFindingsList} toast={toast} />
       )}
@@ -2198,6 +2948,15 @@ export default function EngagementDetail() {
       )}
       {activeTab === 'scans' && (
         <ScansTab engId={id} toast={toast} onFindingsChanged={handleFindingsChanged} />
+      )}
+      {activeTab === 'retests' && (
+        <RetestsTab engId={id} toast={toast} onFindingsChanged={handleFindingsChanged} onOpenFindings={() => setActiveTab('findings')} />
+      )}
+      {activeTab === 'assets' && (
+        <AssetsTab engId={id} toast={toast} onOpenScans={() => setActiveTab('scans')} onOpenFindings={() => setActiveTab('findings')} onFindingsChanged={handleFindingsChanged} />
+      )}
+      {activeTab === 'notebook' && (
+        <EvidenceNotebookTab engId={id} toast={toast} onFindingsChanged={handleFindingsChanged} onOpenFindings={() => setActiveTab('findings')} />
       )}
       {activeTab === 'attack_paths' && (
         <AttackPathsTab engId={id} toast={toast} fullNarrative={fullNarrative} setFullNarrative={setFullNarrative} />

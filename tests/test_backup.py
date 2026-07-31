@@ -39,6 +39,9 @@ class BackupTests(unittest.TestCase):
         evidence_dir = self.data_dir / "evidence" / "finding-1"
         evidence_dir.mkdir(parents=True)
         (evidence_dir / "proof.txt").write_text("evidence", encoding="utf-8")
+        notebook_dir = self.data_dir / "notebook" / "engagement-1" / "note-1"
+        notebook_dir.mkdir(parents=True)
+        (notebook_dir / "response.http").write_text("HTTP/1.1 403", encoding="utf-8")
         template_dir = self.data_dir / "templates" / "template-1"
         template_dir.mkdir(parents=True)
         (template_dir / "logo.png").write_bytes(b"template-logo")
@@ -64,6 +67,7 @@ class BackupTests(unittest.TestCase):
             members = archive.namelist()
             self.assertIn("database/breachwright.db", members)
             self.assertIn("data/evidence/finding-1/proof.txt", members)
+            self.assertIn("data/notebook/engagement-1/note-1/response.http", members)
             self.assertIn("data/templates/template-1/logo.png", members)
             self.assertIn("data/jobs/job-1/output.txt", members)
             self.assertNotIn(".env", members)
@@ -103,6 +107,8 @@ class BackupTests(unittest.TestCase):
             connection.commit()
         proof = self.data_dir / "evidence" / "finding-1" / "proof.txt"
         proof.write_text("modified evidence", encoding="utf-8")
+        notebook_file = self.data_dir / "notebook" / "engagement-1" / "note-1" / "response.http"
+        notebook_file.write_text("HTTP/1.1 200", encoding="utf-8")
         logo = self.data_dir / "templates" / "template-1" / "logo.png"
         logo.write_bytes(b"modified logo")
         job_output = self.data_dir / "jobs" / "job-1" / "output.txt"
@@ -118,6 +124,7 @@ class BackupTests(unittest.TestCase):
             value = connection.execute("SELECT value FROM sample").fetchone()[0]
         self.assertEqual(value, "original")
         self.assertEqual(proof.read_text(encoding="utf-8"), "evidence")
+        self.assertEqual(notebook_file.read_text(encoding="utf-8"), "HTTP/1.1 403")
         self.assertEqual(logo.read_bytes(), b"template-logo")
         self.assertEqual(job_output.read_text(encoding="utf-8"), "tool output")
         self.assertTrue(
