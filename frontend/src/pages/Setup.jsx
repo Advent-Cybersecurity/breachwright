@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth';
 import { auth as authApi } from '../api';
 import { ArrowRight, AlertCircle, Check, Shield } from 'lucide-react';
 
 export default function Setup() {
   const navigate = useNavigate();
+  const { markSetupComplete } = useAuth();
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
@@ -21,14 +23,15 @@ export default function Setup() {
       setError('Passwords do not match.');
       return;
     }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
+    if (password.length < 12) {
+      setError('Password must be at least 12 characters.');
       return;
     }
 
     setLoading(true);
     try {
       await authApi.setup(email, password, displayName || email.split('@')[0]);
+      markSetupComplete();
       setDone(true);
       setTimeout(() => navigate('/login'), 2000);
     } catch (err) {
@@ -101,23 +104,23 @@ export default function Setup() {
               </div>
             )}
             <div>
-              <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Admin Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              <label htmlFor="setup-email" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Admin Email</label>
+              <input id="setup-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                 className="input-field font-mono text-sm" placeholder="admin@example.com" autoFocus required />
             </div>
             <div>
-              <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Display Name</label>
-              <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
+              <label htmlFor="setup-display-name" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Display Name</label>
+              <input id="setup-display-name" type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)}
                 className="input-field font-mono text-sm" placeholder="Optional" />
             </div>
             <div>
-              <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                className="input-field font-mono text-sm" placeholder="Min 8 characters" required />
+              <label htmlFor="setup-password" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Password</label>
+              <input id="setup-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                className="input-field font-mono text-sm" placeholder="Min 12 characters" minLength={12} maxLength={128} required />
             </div>
             <div>
-              <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Confirm Password</label>
-              <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)}
+              <label htmlFor="setup-confirm-password" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Confirm Password</label>
+              <input id="setup-confirm-password" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)}
                 className="input-field font-mono text-sm" required />
             </div>
             <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 mt-2">

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.reports.template_model import ReportTemplate
 from app.config import settings
@@ -15,6 +15,22 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/report-templates", tags=["report_templates"])
+
+MAX_LOGO_SIZE = 5 * 1024 * 1024
+
+
+def _validated_logo(logo: UploadFile, content: bytes) -> tuple[str, str]:
+    ext = os.path.splitext(logo.filename or "")[1].lower()
+    if len(content) > MAX_LOGO_SIZE:
+        raise HTTPException(status_code=413, detail="Logo too large (max 5MB)")
+    if ext == ".png" and content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ext, "image/png"
+    if ext in (".jpg", ".jpeg") and content.startswith(b"\xff\xd8\xff"):
+        return ext, "image/jpeg"
+    raise HTTPException(
+        status_code=400,
+        detail="Logo must be a valid PNG or JPG image",
+    )
 
 
 @router.get("")
@@ -29,16 +45,16 @@ async def list_templates(
 
 @router.post("", status_code=201)
 async def create_template(
-    name: str = Form(...),
-    company_name: str = Form(default=""),
-    primary_color: str = Form(default="#dc2626"),
-    secondary_color: str = Form(default="#1a1a25"),
-    header_text: str = Form(default=""),
-    footer_text: str = Form(default=""),
+    name: str = Form(..., min_length=1, max_length=120),
+    company_name: str = Form(default="", max_length=120),
+    primary_color: str = Form(default="#dc2626", pattern=r"^#[0-9A-Fa-f]{6}$"),
+    secondary_color: str = Form(default="#1a1a25", pattern=r"^#[0-9A-Fa-f]{6}$"),
+    header_text: str = Form(default="", max_length=500),
+    footer_text: str = Form(default="", max_length=500),
     is_default: bool = Form(default=False),
     logo: Optional[UploadFile] = File(default=None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     template = ReportTemplate(
         name=name,
@@ -55,17 +71,11 @@ async def create_template(
 
     # Handle logo upload
     if logo and logo.filename:
+        content = await logo.read()
+        ext, _ = _validated_logo(logo, content)
         logo_dir = os.path.join(settings.data_dir, "templates", template.id)
         os.makedirs(logo_dir, exist_ok=True)
-
-        ext = os.path.splitext(logo.filename)[1].lower()
-        if ext not in (".png", ".jpg", ".jpeg", ".svg"):
-            raise HTTPException(status_code=400, detail="Logo must be PNG, JPG, or SVG")
-
         logo_path = os.path.join(logo_dir, f"logo{ext}")
-        content = await logo.read()
-        if len(content) > 5 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="Logo too large (max 5MB)")
 
         with open(logo_path, "wb") as f:
             f.write(content)
@@ -83,16 +93,16 @@ async def create_template(
 @router.put("/{template_id}")
 async def update_template(
     template_id: str,
-    name: str = Form(...),
-    company_name: str = Form(default=""),
-    primary_color: str = Form(default="#dc2626"),
-    secondary_color: str = Form(default="#1a1a25"),
-    header_text: str = Form(default=""),
-    footer_text: str = Form(default=""),
+    name: str = Form(..., min_length=1, max_length=120),
+    company_name: str = Form(default="", max_length=120),
+    primary_color: str = Form(default="#dc2626", pattern=r"^#[0-9A-Fa-f]{6}$"),
+    secondary_color: str = Form(default="#1a1a25", pattern=r"^#[0-9A-Fa-f]{6}$"),
+    header_text: str = Form(default="", max_length=500),
+    footer_text: str = Form(default="", max_length=500),
     is_default: bool = Form(default=False),
     logo: Optional[UploadFile] = File(default=None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     result = await db.execute(select(ReportTemplate).where(ReportTemplate.id == template_id))
     template = result.scalar_one_or_none()
@@ -107,16 +117,17 @@ async def update_template(
     template.footer_text = footer_text or None
 
     if logo and logo.filename:
+        content = await logo.read()
+        ext, _ = _validated_logo(logo, content)
         logo_dir = os.path.join(settings.data_dir, "templates", template.id)
         os.makedirs(logo_dir, exist_ok=True)
-        ext = os.path.splitext(logo.filename)[1].lower()
-        if ext not in (".png", ".jpg", ".jpeg", ".svg"):
-            raise HTTPException(status_code=400, detail="Logo must be PNG, JPG, or SVG")
         logo_path = os.path.join(logo_dir, f"logo{ext}")
-        content = await logo.read()
+        previous_logo = template.logo_path
         with open(logo_path, "wb") as f:
             f.write(content)
         template.logo_path = logo_path
+        if previous_logo and previous_logo != logo_path and os.path.exists(previous_logo):
+            os.remove(previous_logo)
 
     if is_default:
         await _set_as_default(db, template.id)
@@ -130,7 +141,7 @@ async def update_template(
 async def delete_template(
     template_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     result = await db.execute(select(ReportTemplate).where(ReportTemplate.id == template_id))
     template = result.scalar_one_or_none()
@@ -158,7 +169,13 @@ async def get_template_logo(
         raise HTTPException(status_code=404, detail="Logo not found")
 
     from fastapi.responses import FileResponse
-    return FileResponse(template.logo_path)
+    extension = os.path.splitext(template.logo_path)[1].lower()
+    media_type = "image/png" if extension == ".png" else "image/jpeg"
+    return FileResponse(
+        template.logo_path,
+        media_type=media_type,
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
 
 
 async def _set_as_default(db: AsyncSession, template_id: str):

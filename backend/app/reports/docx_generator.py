@@ -268,7 +268,7 @@ def generate_docx_report(
                     for tech in ap.mitre_techniques:
                         tid = tech.get("technique_id", "")
                         tname = tech.get("technique_name", "")
-                        doc.add_paragraph(f"{tid} — {tname}", style="List Bullet")
+                        doc.add_paragraph(f"{tid}: {tname}", style="List Bullet")
             else:
                 # Fallback to structured steps
                 if ap.description:

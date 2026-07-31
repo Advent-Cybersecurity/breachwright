@@ -1,24 +1,34 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 from datetime import date, datetime
 from app.engagements.models import EngagementStatus, Severity
 
 
 class EngagementCreate(BaseModel):
-    name: str
-    client_name: str
-    scope: Optional[str] = None
+    name: str = Field(min_length=1, max_length=255)
+    client_name: str = Field(min_length=1, max_length=255)
+    scope: Optional[str] = Field(default=None, max_length=50000)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+
+    model_config = {"str_strip_whitespace": True}
+
+    @model_validator(mode="after")
+    def dates_are_ordered(self):
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("End date cannot be before start date")
+        return self
 
 
 class EngagementUpdate(BaseModel):
-    name: Optional[str] = None
-    client_name: Optional[str] = None
-    scope: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    client_name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    scope: Optional[str] = Field(default=None, max_length=50000)
     status: Optional[EngagementStatus] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+
+    model_config = {"str_strip_whitespace": True}
 
 
 class EngagementResponse(BaseModel):
@@ -36,24 +46,28 @@ class EngagementResponse(BaseModel):
 
 
 class FindingCreate(BaseModel):
-    title: str
-    description: Optional[str] = None
+    title: str = Field(min_length=1, max_length=500)
+    description: Optional[str] = Field(default=None, max_length=200000)
     severity: Severity = Severity.info
-    cvss_score: Optional[float] = None
-    affected_hosts: Optional[str] = None
-    evidence: Optional[str] = None
-    remediation: Optional[str] = None
+    cvss_score: Optional[float] = Field(default=None, ge=0, le=10)
+    affected_hosts: Optional[str] = Field(default=None, max_length=50000)
+    evidence: Optional[str] = Field(default=None, max_length=200000)
+    remediation: Optional[str] = Field(default=None, max_length=200000)
+
+    model_config = {"str_strip_whitespace": True}
 
 
 class FindingUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=500)
+    description: Optional[str] = Field(default=None, max_length=200000)
     severity: Optional[Severity] = None
-    cvss_score: Optional[float] = None
-    affected_hosts: Optional[str] = None
-    evidence: Optional[str] = None
-    remediation: Optional[str] = None
-    retest_status: Optional[str] = None
+    cvss_score: Optional[float] = Field(default=None, ge=0, le=10)
+    affected_hosts: Optional[str] = Field(default=None, max_length=50000)
+    evidence: Optional[str] = Field(default=None, max_length=200000)
+    remediation: Optional[str] = Field(default=None, max_length=200000)
+    retest_status: Optional[str] = Field(default=None, max_length=50)
+
+    model_config = {"str_strip_whitespace": True}
 
 
 class FindingResponse(BaseModel):

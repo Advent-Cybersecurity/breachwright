@@ -72,8 +72,12 @@ export default function Layout() {
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-1">
           <SidebarLink to="/" icon={LayoutDashboard} label="Engagements" end />
-          <SidebarLink to="/tools" icon={Terminal} label="Tool Runner" />
-          <SidebarLink to="/assistant" icon={Bot} label="AI Assistant" />
+          {user?.role !== 'viewer' && (
+            <>
+              <SidebarLink to="/tools" icon={Terminal} label="Tool Runner" />
+              <SidebarLink to="/assistant" icon={Bot} label="AI Assistant" />
+            </>
+          )}
           <SidebarLink to="/knowledge" icon={Brain} label="Knowledge Base" />
           <SidebarLink to="/settings" icon={Settings} label="Settings" />
         </nav>

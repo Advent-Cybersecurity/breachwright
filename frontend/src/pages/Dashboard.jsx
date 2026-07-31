@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { engagements as engApi, exportImport } from '../api';
+import { useAuth } from '../auth';
 import { Modal, StatusBadge, SeverityBadge, EmptyState, SectionHeader, Toast } from '../components/UI';
 import { Plus, Search, Crosshair, ChevronRight, FolderOpen, Calendar, Building2, Upload, Trash2, BarChart3 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -31,16 +32,20 @@ function EngagementRow({ engagement, onClick, onDelete }) {
         </div>
         <ChevronRight size={16} className="themed-text-muted shrink-0" />
       </button>
-      <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        className="themed-text-muted hover:text-red-400 transition-colors p-2 shrink-0" title="Delete engagement">
-        <Trash2 size={15} />
-      </button>
+      {onDelete && (
+        <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="themed-text-muted hover:text-red-400 transition-colors p-2 shrink-0" title="Delete engagement">
+          <Trash2 size={15} />
+        </button>
+      )}
     </div>
   );
 }
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canEdit = user?.role !== 'viewer';
   const [engagementList, setEngagementList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -96,7 +101,7 @@ export default function Dashboard() {
       <SectionHeader
         title="Engagements"
         description={`${stats.total} total, ${stats.active} active, ${stats.completed} completed, ${stats.totalFindings} findings`}
-        action={
+        action={canEdit ? (
           <div className="flex items-center gap-2">
             <label className="btn-secondary flex items-center gap-2 cursor-pointer">
               <Upload size={16} /> Import
@@ -120,7 +125,7 @@ export default function Dashboard() {
               <Plus size={16} /> New Engagement
             </button>
           </div>
-        }
+        ) : null}
       />
 
       {/* Analytics */}
@@ -194,8 +199,12 @@ export default function Dashboard() {
         ) : filtered.length === 0 ? (
           <EmptyState icon={FolderOpen}
             title={search ? 'No matches' : 'No engagements yet'}
-            description={search ? 'Try a different search term.' : 'Create your first engagement to get started.'}
-            action={!search && (
+            description={search
+              ? 'Try a different search term.'
+              : canEdit
+                ? 'Create your first engagement to get started.'
+                : 'No engagement data is available to view.'}
+            action={!search && canEdit && (
               <button onClick={() => setShowCreate(true)} className="btn-primary flex items-center gap-2">
                 <Plus size={16} /> New Engagement
               </button>
@@ -204,7 +213,7 @@ export default function Dashboard() {
         ) : filtered.map(eng => (
           <EngagementRow key={eng.id} engagement={eng}
             onClick={() => navigate(`/engagements/${eng.id}`)}
-            onDelete={async () => {
+            onDelete={canEdit ? async () => {
               const confirmed = window.confirm(`Delete engagement "${eng.name}" and all its data? This cannot be undone.`);
               if (!confirmed) return;
               try {
@@ -214,7 +223,7 @@ export default function Dashboard() {
               } catch (err) {
                 setToast({ message: err.message, type: 'error' });
               }
-            }}
+            } : null}
           />
         ))}
       </div>
@@ -222,32 +231,32 @@ export default function Dashboard() {
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="New Engagement">
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
-            <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Name</label>
-            <input className="input-field text-sm" value={form.name}
+            <label htmlFor="engagement-name" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Name</label>
+            <input id="engagement-name" className="input-field text-sm" value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="External Pentest Q1 2026" required autoFocus />
           </div>
           <div>
-            <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Client</label>
-            <input className="input-field text-sm" value={form.client_name}
+            <label htmlFor="engagement-client" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Client</label>
+            <input id="engagement-client" className="input-field text-sm" value={form.client_name}
               onChange={(e) => setForm({ ...form, client_name: e.target.value })}
               placeholder="Acme Corp" required />
           </div>
           <div>
-            <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Scope</label>
-            <textarea className="input-field text-sm resize-none" rows={3} value={form.scope}
+            <label htmlFor="engagement-scope" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Scope</label>
+            <textarea id="engagement-scope" className="input-field text-sm resize-none" rows={3} value={form.scope}
               onChange={(e) => setForm({ ...form, scope: e.target.value })}
               placeholder="10.10.10.0/24, *.example.com" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Start</label>
-              <input type="date" className="input-field text-sm" value={form.start_date}
+              <label htmlFor="engagement-start" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Start</label>
+              <input id="engagement-start" type="date" className="input-field text-sm" value={form.start_date}
                 onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
             </div>
             <div>
-              <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">End</label>
-              <input type="date" className="input-field text-sm" value={form.end_date}
+              <label htmlFor="engagement-end" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">End</label>
+              <input id="engagement-end" type="date" className="input-field text-sm" value={form.end_date}
                 onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
             </div>
           </div>

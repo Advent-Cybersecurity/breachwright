@@ -24,6 +24,9 @@ wire_*.py
 harden.py
 patch_*.py
 CODEX_SESSION.md
+.breachwright-*
+.ui-test-data/
+.upgrade-baseline/
 
 # Sensitive local credentials
 *.pem

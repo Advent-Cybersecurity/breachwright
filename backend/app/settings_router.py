@@ -2,8 +2,9 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field, field_validator
+from typing import Literal, Optional
+from urllib.parse import urlparse
 
 from app.db.session import get_db
 from app.auth.dependencies import get_current_user, require_admin
@@ -27,7 +28,7 @@ DEFAULTS = {
 
 
 class SettingUpdate(BaseModel):
-    value: str
+    value: str = Field(max_length=200000)
 
 
 @router.get("/prompts")
@@ -84,15 +85,44 @@ async def reset_prompt(
 
 
 class ProviderUpdate(BaseModel):
-    ai_provider: Optional[str] = None
-    anthropic_api_key: Optional[str] = None
-    openai_api_key: Optional[str] = None
-    anthropic_model: Optional[str] = None
-    openai_model: Optional[str] = None
-    local_model_url: Optional[str] = None
-    local_model_name: Optional[str] = None
-    local_model_api_key: Optional[str] = None
-    local_model_timeout: Optional[int] = None
+    ai_provider: Optional[
+        Literal[
+            "anthropic",
+            "openai",
+            "azure",
+            "bedrock",
+            "local",
+            "ollama",
+            "vllm",
+            "llamacpp",
+            "lmstudio",
+        ]
+    ] = None
+    anthropic_api_key: Optional[str] = Field(default=None, max_length=1000)
+    openai_api_key: Optional[str] = Field(default=None, max_length=1000)
+    anthropic_model: Optional[str] = Field(default=None, max_length=255)
+    openai_model: Optional[str] = Field(default=None, max_length=255)
+    local_model_url: Optional[str] = Field(default=None, max_length=2000)
+    local_model_name: Optional[str] = Field(default=None, max_length=255)
+    local_model_api_key: Optional[str] = Field(default=None, max_length=1000)
+    local_model_timeout: Optional[int] = Field(default=None, ge=10, le=600)
+
+    @field_validator("*")
+    @classmethod
+    def reject_env_control_characters(cls, value):
+        if isinstance(value, str) and any(char in value for char in ("\r", "\n", "\x00")):
+            raise ValueError("Configuration values cannot contain line breaks or null bytes")
+        return value
+
+    @field_validator("local_model_url")
+    @classmethod
+    def validate_local_model_url(cls, value):
+        if value is None:
+            return value
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("Local model URL must be an HTTP or HTTPS URL")
+        return value
 
 
 @router.get("/provider")
@@ -120,6 +150,7 @@ async def update_provider_config(
 ):
     """Update AI provider settings in the .env file."""
     import os
+    import tempfile
     from pathlib import Path
     from app.config import settings as cfg, find_env_file
 
@@ -161,7 +192,7 @@ async def update_provider_config(
     for line in env_lines:
         key = line.split("=")[0].strip() if "=" in line else ""
         if key in updates:
-            new_lines.append(f"{key}={updates[key]}\n")
+            new_lines.append(f"{key}={json.dumps(str(updates[key]))}\n")
             existing_keys.add(key)
         else:
             new_lines.append(line)
@@ -169,10 +200,30 @@ async def update_provider_config(
     # Add new keys
     for key, val in updates.items():
         if key not in existing_keys:
-            new_lines.append(f"{key}={val}\n")
+            new_lines.append(f"{key}={json.dumps(str(val))}\n")
 
-    with open(env_path, "w") as f:
-        f.writelines(new_lines)
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            newline="\n",
+            dir=os.path.dirname(env_path),
+            prefix=".env.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary.writelines(new_lines)
+            temporary_path = temporary.name
+        try:
+            os.chmod(temporary_path, 0o600)
+        except OSError:
+            pass
+        os.replace(temporary_path, env_path)
+        temporary_path = None
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.remove(temporary_path)
 
     return {"status": "updated", "note": "Restart Breachwright for changes to take effect"}
 

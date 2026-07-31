@@ -6,6 +6,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [needsSetup, setNeedsSetup] = useState(null);
 
   const logout = useCallback(async () => {
     try {
@@ -25,8 +26,14 @@ export function AuthProvider({ children }) {
         setToken(tokens.access_token);
         const me = await authApi.me();
         setUser(me);
+        setNeedsSetup(false);
       } catch (e) {
-        // No valid session
+        try {
+          const setupState = await authApi.needsSetup();
+          setNeedsSetup(Boolean(setupState.needs_setup));
+        } catch {
+          setNeedsSetup(null);
+        }
       } finally {
         setLoading(false);
       }
@@ -38,11 +45,21 @@ export function AuthProvider({ children }) {
     setToken(tokens.access_token);
     const me = await authApi.me();
     setUser(me);
+    setNeedsSetup(false);
     return me;
   };
 
+  const markSetupComplete = useCallback(() => setNeedsSetup(false), []);
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{
+      user,
+      login,
+      logout,
+      loading,
+      needsSetup,
+      markSetupComplete,
+    }}>
       {children}
     </AuthContext.Provider>
   );

@@ -7,10 +7,11 @@ from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.checklists.models import ChecklistItem
 from app.checklists.methodologies import get_methodology_items, get_available_methodologies
+from app.engagements.models import Engagement
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +65,14 @@ async def populate_checklist(
     engagement_id: str,
     methodology: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     """Populate an engagement with a methodology checklist."""
+    engagement_result = await db.execute(
+        select(Engagement.id).where(Engagement.id == engagement_id)
+    )
+    if not engagement_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Engagement not found")
     items = get_methodology_items(methodology)
     if not items:
         raise HTTPException(status_code=404, detail=f"Methodology '{methodology}' not found")
@@ -111,7 +117,7 @@ async def update_checklist_item(
     item_id: str,
     body: ChecklistStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     """Update a checklist item's status and notes."""
     result = await db.execute(
@@ -144,7 +150,7 @@ async def clear_checklist(
     engagement_id: str,
     methodology: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     """Clear all checklist items for a methodology on an engagement."""
     await db.execute(

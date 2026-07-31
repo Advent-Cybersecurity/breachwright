@@ -3,7 +3,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.engagements.models import Engagement, Finding
 from app.engagements.schemas import EngagementCreate, EngagementUpdate, EngagementResponse
@@ -32,7 +32,7 @@ async def list_engagements(
 async def create_engagement(
     request: EngagementCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     engagement = Engagement(
         name=request.name,
@@ -112,7 +112,7 @@ async def update_engagement(
     engagement_id: str,
     request: EngagementUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     result = await db.execute(select(Engagement).where(Engagement.id == engagement_id))
     engagement = result.scalar_one_or_none()
@@ -123,6 +123,16 @@ async def update_engagement(
     for field, value in update_data.items():
         setattr(engagement, field, value)
 
+    if (
+        engagement.start_date
+        and engagement.end_date
+        and engagement.end_date < engagement.start_date
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="End date cannot be before start date",
+        )
+
     await db.flush()
     return EngagementResponse.model_validate(engagement)
 
@@ -131,33 +141,53 @@ async def update_engagement(
 async def delete_engagement(
     engagement_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     result = await db.execute(select(Engagement).where(Engagement.id == engagement_id))
     engagement = result.scalar_one_or_none()
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
 
-    # Delete related data (findings, attack paths, reports, scans, AD data, jobs)
-    from app.engagements.models import Finding, AttackPath, Report, ScanUpload
-    await db.execute(select(Finding).where(Finding.engagement_id == engagement_id))
+    # Delete related data (findings, evidence, attack paths, reports, scans, AD data, jobs)
+    from app.engagements.models import (
+        Finding,
+        EvidenceAttachment,
+        AttackPath,
+        Report,
+        ScanUpload,
+        AppSetting,
+    )
+    from app.ad.models import ADImport
+    from app.jobs.models import Job
+    from app.jobs.runner import cleanup_job, stop_job
     from sqlalchemy import delete
+
+    finding_result = await db.execute(
+        select(Finding.id).where(Finding.engagement_id == engagement_id)
+    )
+    finding_ids = list(finding_result.scalars().all())
+    if finding_ids:
+        await db.execute(
+            delete(EvidenceAttachment).where(
+                EvidenceAttachment.finding_id.in_(finding_ids)
+            )
+        )
     await db.execute(delete(Finding).where(Finding.engagement_id == engagement_id))
     await db.execute(delete(AttackPath).where(AttackPath.engagement_id == engagement_id))
     await db.execute(delete(Report).where(Report.engagement_id == engagement_id))
     await db.execute(delete(ScanUpload).where(ScanUpload.engagement_id == engagement_id))
-
-    try:
-        from app.ad.models import ADImport
-        await db.execute(delete(ADImport).where(ADImport.engagement_id == engagement_id))
-    except Exception:
-        pass
-
-    try:
-        from app.jobs.models import Job
-        await db.execute(delete(Job).where(Job.engagement_id == engagement_id))
-    except Exception:
-        pass
+    await db.execute(delete(ADImport).where(ADImport.engagement_id == engagement_id))
+    job_result = await db.execute(
+        select(Job.id).where(Job.engagement_id == engagement_id)
+    )
+    job_ids = list(job_result.scalars().all())
+    for job_id in job_ids:
+        stop_job(job_id)
+        cleanup_job(job_id)
+    await db.execute(delete(Job).where(Job.engagement_id == engagement_id))
+    await db.execute(
+        delete(AppSetting).where(AppSetting.key == f"narrative_{engagement_id}")
+    )
 
     await db.delete(engagement)
 
@@ -166,5 +196,13 @@ async def delete_engagement(
     from app.config import settings
     for subdir in ["uploads", "reports"]:
         path = os.path.join(settings.data_dir, subdir, engagement_id)
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+    for finding_id in finding_ids:
+        path = os.path.join(settings.data_dir, "evidence", finding_id)
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+    for job_id in job_ids:
+        path = os.path.join(settings.data_dir, "jobs", job_id)
         if os.path.isdir(path):
             shutil.rmtree(path, ignore_errors=True)

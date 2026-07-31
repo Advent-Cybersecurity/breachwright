@@ -1,5 +1,45 @@
 # Changelog
 
+## v2.1.0 (unreleased)
+
+### Reliability and data safety
+
+- Added verified local SQLite backups for the database, evidence, uploads, and reports
+- Added offline restore with archive checksums, SQLite integrity checks, rollback, and preservation of displaced data
+- Added authenticated system diagnostics and backup management in Settings
+- Fixed startup so migration failures and timeouts stop the application instead of reporting false success
+- Added cleanup for evidence records and files when findings or engagements are deleted
+
+### Reporting and usability
+
+- Added complete Markdown and DOCX reporting without an AI provider
+- Made AI report enhancement an explicit opt-in
+- Added semantic version precedence so older releases are not presented as updates
+- Added accessible labels to first-run, login, engagement, and finding forms
+- Added release-candidate version visibility across the API, desktop launcher, and frontend
+- Split large frontend pages into on-demand bundles to reduce the initial JavaScript download
+
+### Security
+
+- Added password length, email, duplicate-user, CVSS, date, and import validation
+- Prevented scan filename and frontend fallback path traversal
+- Added scan and import size limits
+- Removed SVG report-template uploads and added PNG and JPEG signature checks
+- Added SharpHound ZIP entry, expansion, member-size, and compression-ratio limits
+- Prevented environment-file line injection and made provider updates atomic
+- Added browser security headers and disabled API response caching
+- Made viewer accounts read-only across engagement data, reports, uploads, Tool Runner, and AI-assisted actions
+- Fixed Windows backup staging permissions in the packaged runtime
+
+### Testing and packaging
+
+- Added a real first-run user journey against Uvicorn and SQLite
+- Added Windows and Linux CI coverage on standard public GitHub runners
+- Replaced the broken legacy builder with one cross-platform candidate pipeline
+- Added packaged API, frontend, report, backup, restore, and desktop-window smoke tests
+- Added a real v2.0.0 database upgrade smoke test
+- Added separate native Windows and Linux archives built from the same source
+
 ## v2.0.0
 
 ### Open-source release

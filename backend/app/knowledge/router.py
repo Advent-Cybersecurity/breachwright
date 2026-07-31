@@ -15,7 +15,7 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user, require_admin
+from app.auth.dependencies import get_current_user, require_admin, require_editor
 from app.auth.models import User
 from app.knowledge.models import KnowledgeEntry, FindingKnowledgeLink
 from app.knowledge.service import (
@@ -289,7 +289,7 @@ async def engagement_recommendations(
 async def index_engagement_endpoint(
     engagement_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     """Index (or re-index) all findings from an engagement into the knowledge base."""
     result = await index_engagement(db, engagement_id)

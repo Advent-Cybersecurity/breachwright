@@ -14,6 +14,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ALGORITHM = "HS256"
 
 
+class DuplicateEmailError(ValueError):
+    """Raised when a user account already exists for an email address."""
+
+
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
@@ -52,7 +56,13 @@ def decode_token(token: str) -> Optional[dict]:
 
 
 async def authenticate_user(db: AsyncSession, email: str, password: str) -> Optional[User]:
-    result = await db.execute(select(User).where(User.email == email, User.is_active == True))
+    normalized_email = email.strip().lower()
+    result = await db.execute(
+        select(User).where(
+            User.email == normalized_email,
+            User.is_active == True,
+        )
+    )
     user = result.scalar_one_or_none()
     if user and verify_password(password, user.password_hash):
         user.last_login = datetime.now(timezone.utc)
@@ -73,8 +83,12 @@ async def get_active_user_count(db: AsyncSession) -> int:
 async def create_user(
     db: AsyncSession, email: str, password: str, display_name: str, role: UserRole = UserRole.analyst
 ) -> User:
+    normalized_email = str(email).strip().lower()
+    existing = await db.execute(select(User.id).where(User.email == normalized_email))
+    if existing.scalar_one_or_none():
+        raise DuplicateEmailError("A user with this email already exists")
     user = User(
-        email=email,
+        email=normalized_email,
         password_hash=hash_password(password),
         display_name=display_name,
         role=role,

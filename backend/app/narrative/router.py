@@ -12,9 +12,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
-from app.engagements.models import AttackPath
+from app.engagements.models import AttackPath, Engagement
 from app.narrative.service import (
     generate_all_narratives,
     generate_engagement_narrative,
@@ -23,13 +23,22 @@ from app.narrative.service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}/narrative", tags=["narrative"])
+MAX_SAVED_NARRATIVE_SIZE = 2 * 1024 * 1024
+
+
+async def _require_engagement(engagement_id: str, db: AsyncSession) -> None:
+    result = await db.execute(
+        select(Engagement.id).where(Engagement.id == engagement_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Engagement not found")
 
 
 @router.post("/paths")
 async def generate_path_narratives(
     engagement_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     """Generate narratives for each attack path in the engagement.
 
@@ -55,7 +64,7 @@ async def generate_path_narratives(
 async def generate_full_narrative(
     engagement_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     """Generate a unified narrative covering the entire engagement.
 
@@ -80,6 +89,7 @@ async def get_path_narratives(
     current_user: User = Depends(get_current_user),
 ):
     """Retrieve previously generated narratives for all attack paths."""
+    await _require_engagement(engagement_id, db)
     result = await db.execute(
         select(AttackPath)
         .where(AttackPath.engagement_id == engagement_id)
@@ -104,17 +114,20 @@ async def save_full_narrative(
     engagement_id: str,
     body: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     """Save a generated full narrative to the database."""
     from app.engagements.models import AppSetting
     import json
+    await _require_engagement(engagement_id, db)
     key = f"narrative_{engagement_id}"
     result = await db.execute(
         select(AppSetting).where(AppSetting.key == key)
     )
     setting = result.scalar_one_or_none()
     value = json.dumps(body)
+    if len(value.encode("utf-8")) > MAX_SAVED_NARRATIVE_SIZE:
+        raise HTTPException(status_code=413, detail="Narrative is too large")
     if setting:
         setting.value = value
     else:
@@ -133,6 +146,7 @@ async def get_saved_narrative(
     """Retrieve a previously saved full narrative."""
     from app.engagements.models import AppSetting
     import json
+    await _require_engagement(engagement_id, db)
     key = f"narrative_{engagement_id}"
     result = await db.execute(
         select(AppSetting).where(AppSetting.key == key)
@@ -149,10 +163,11 @@ async def get_saved_narrative(
 async def delete_full_narrative(
     engagement_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     """Delete the saved full narrative for an engagement."""
     from app.engagements.models import AppSetting
+    await _require_engagement(engagement_id, db)
     key = f"narrative_{engagement_id}"
     result = await db.execute(
         select(AppSetting).where(AppSetting.key == key)

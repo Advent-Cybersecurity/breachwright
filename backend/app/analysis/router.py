@@ -1,12 +1,13 @@
 import json
 import os
 import logging
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.engagements.models import Engagement, Finding, ScanUpload
 from app.engagements.schemas import FindingResponse
@@ -20,6 +21,14 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}", tags=["analysis"])
+
+ALLOWED_SCAN_TYPES = {"nmap", "nessus", "burp", "custom"}
+MAX_SCAN_SIZE = 50 * 1024 * 1024
+
+
+def _safe_upload_name(filename: str | None, fallback: str) -> str:
+    name = (filename or fallback).replace("\\", "/").rsplit("/", 1)[-1]
+    return name if name not in {"", ".", ".."} else fallback
 
 
 @router.get("/scans")
@@ -40,7 +49,7 @@ async def delete_scan(
     engagement_id: str,
     scan_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     result = await db.execute(
         select(ScanUpload).where(ScanUpload.id == scan_id, ScanUpload.engagement_id == engagement_id)
@@ -65,25 +74,30 @@ async def upload_scan(
     file: UploadFile = File(...),
     scan_type: str = "nmap",
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     # Verify engagement exists
     result = await db.execute(select(Engagement).where(Engagement.id == engagement_id))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Engagement not found")
+    if scan_type not in ALLOWED_SCAN_TYPES:
+        raise HTTPException(status_code=400, detail="Unsupported scan type")
 
     # Save file
     upload_dir = os.path.join(settings.data_dir, "uploads", engagement_id)
     os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, file.filename)
-
+    display_name = _safe_upload_name(file.filename, "scan.txt")
+    extension = os.path.splitext(display_name)[1][:20]
+    file_path = os.path.join(upload_dir, f"{uuid.uuid4().hex}{extension}")
     content = await file.read()
+    if len(content) > MAX_SCAN_SIZE:
+        raise HTTPException(status_code=413, detail="Scan file too large (max 50MB)")
     with open(file_path, "wb") as f:
         f.write(content)
 
     scan = ScanUpload(
         engagement_id=engagement_id,
-        filename=file.filename,
+        filename=display_name,
         file_path=file_path,
         scan_type=scan_type,
         uploaded_by=current_user.id,
@@ -98,7 +112,7 @@ async def upload_scan(
 async def analyze_scans(
     engagement_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     # Get engagement
     result = await db.execute(select(Engagement).where(Engagement.id == engagement_id))

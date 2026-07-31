@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.gap_detection.service import analyze_gaps
 from app.checklists.methodologies import get_available_methodologies
@@ -26,7 +26,7 @@ async def run_gap_analysis(
     engagement_id: str,
     methodology: str = Query("ptes", description="Methodology to review against: ptes, owasp_top10, nist_800_115, network_pentest"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     """Run AI-powered methodology gap detection.
 

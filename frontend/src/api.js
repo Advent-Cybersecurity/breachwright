@@ -45,7 +45,10 @@ async function request(path, options = {}) {
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(data.detail || `Request failed: ${res.status}`);
+    const detail = Array.isArray(data.detail)
+      ? data.detail.map(item => item.msg || String(item)).join('; ')
+      : data.detail;
+    throw new Error(detail || `Request failed: ${res.status}`);
   }
 
   return data;
@@ -141,8 +144,8 @@ export const attackPaths = {
 export const reports = {
   list: (engId) =>
     request(`/engagements/${engId}/reports`),
-  generate: (engId, format = 'md', templateId = null) => {
-    let url = `/engagements/${engId}/reports?format=${format}`;
+  generate: (engId, format = 'md', templateId = null, useAI = false) => {
+    let url = `/engagements/${engId}/reports?format=${format}&use_ai=${useAI}`;
     if (templateId) url += `&template_id=${templateId}`;
     return request(url, { method: 'POST' });
   },
@@ -198,6 +201,33 @@ export const system = {
     request('/health', { noAuth: true }),
   versionCheck: () =>
     request('/version-check'),
+  diagnostics: () =>
+    request('/system/diagnostics'),
+  listBackups: () =>
+    request('/system/backups'),
+  createBackup: () =>
+    request('/system/backups', { method: 'POST' }),
+  downloadBackup: async (filename) => {
+    const res = await fetch(`/api/system/backups/${encodeURIComponent(filename)}`, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || 'Backup download failed');
+    }
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = blobUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(blobUrl);
+    }, 1000);
+  },
 };
 
 // Evidence Attachments

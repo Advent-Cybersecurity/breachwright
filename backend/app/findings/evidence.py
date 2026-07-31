@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.engagements.models import Finding, EvidenceAttachment
 from app.config import settings
@@ -23,6 +23,28 @@ ALLOWED_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "applicat
 MAX_SIZE = 10 * 1024 * 1024  # 10MB
 
 
+def _safe_display_name(filename: str | None, fallback: str) -> str:
+    name = (filename or fallback).replace("\\", "/").rsplit("/", 1)[-1]
+    return name if name not in {"", ".", ".."} else fallback
+
+
+async def _require_finding(
+    engagement_id: str,
+    finding_id: str,
+    db: AsyncSession,
+) -> Finding:
+    result = await db.execute(
+        select(Finding).where(
+            Finding.id == finding_id,
+            Finding.engagement_id == engagement_id,
+        )
+    )
+    finding = result.scalar_one_or_none()
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    return finding
+
+
 @router.get("")
 async def list_evidence(
     engagement_id: str,
@@ -30,6 +52,7 @@ async def list_evidence(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await _require_finding(engagement_id, finding_id, db)
     result = await db.execute(
         select(EvidenceAttachment)
         .where(EvidenceAttachment.finding_id == finding_id)
@@ -57,14 +80,10 @@ async def upload_evidence(
     finding_id: str,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     # Verify finding exists
-    result = await db.execute(
-        select(Finding).where(Finding.id == finding_id, Finding.engagement_id == engagement_id)
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Finding not found")
+    await _require_finding(engagement_id, finding_id, db)
 
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
@@ -80,7 +99,8 @@ async def upload_evidence(
     evidence_dir = os.path.join(settings.data_dir, "evidence", finding_id)
     os.makedirs(evidence_dir, exist_ok=True)
 
-    ext = os.path.splitext(file.filename)[1] if file.filename else ""
+    display_name = _safe_display_name(file.filename, "evidence")
+    ext = os.path.splitext(display_name)[1]
     stored_name = f"{uuid.uuid4().hex}{ext}"
     file_path = os.path.join(evidence_dir, stored_name)
 
@@ -89,7 +109,7 @@ async def upload_evidence(
 
     attachment = EvidenceAttachment(
         finding_id=finding_id,
-        filename=file.filename or stored_name,
+        filename=display_name,
         file_path=file_path,
         content_type=file.content_type,
         file_size=len(content),
@@ -118,14 +138,7 @@ async def download_evidence(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    finding_result = await db.execute(
-        select(Finding).where(
-            Finding.id == finding_id,
-            Finding.engagement_id == engagement_id,
-        )
-    )
-    if not finding_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Finding not found")
+    await _require_finding(engagement_id, finding_id, db)
 
     result = await db.execute(
         select(EvidenceAttachment).where(
@@ -151,8 +164,9 @@ async def delete_evidence(
     finding_id: str,
     attachment_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
+    await _require_finding(engagement_id, finding_id, db)
     result = await db.execute(
         select(EvidenceAttachment).where(
             EvidenceAttachment.id == attachment_id,

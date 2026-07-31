@@ -5,7 +5,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.engagements.models import Engagement, Finding, AttackPath
 from app.engagements.schemas import AttackPathResponse
@@ -35,7 +35,7 @@ async def list_attack_paths(
 async def generate_attack_paths(
     engagement_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     # Get engagement
     result = await db.execute(select(Engagement).where(Engagement.id == engagement_id))
@@ -119,7 +119,7 @@ async def generate_attack_paths(
 async def clear_attack_paths(
     engagement_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     await db.execute(
         delete(AttackPath).where(AttackPath.engagement_id == engagement_id)

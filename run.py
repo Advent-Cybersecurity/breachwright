@@ -44,27 +44,34 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("breachwright")
+_uvicorn_server = None
+
+from app.version import APP_VERSION
 
 
 def start_server(host, port):
     import uvicorn
+    global _uvicorn_server
     if getattr(sys, 'frozen', False):
         # Frozen: import app object directly (string import unreliable)
         from app.main import app as application
-        uvicorn.run(
-            application,
-            host=host,
-            port=port,
-            log_level="warning",
-        )
+        target = application
     else:
-        uvicorn.run(
-            "app.main:app",
-            host=host,
-            port=port,
-            log_level="warning",
-            reload=False,
-        )
+        target = "app.main:app"
+    config = uvicorn.Config(
+        target,
+        host=host,
+        port=port,
+        log_level="warning",
+        reload=False,
+    )
+    _uvicorn_server = uvicorn.Server(config)
+    _uvicorn_server.run()
+
+
+def stop_server():
+    if _uvicorn_server is not None:
+        _uvicorn_server.should_exit = True
 
 
 def wait_for_server(host, port, timeout=20):
@@ -113,7 +120,7 @@ def launch_window(host, port):
     )
 
     def on_closing():
-        os._exit(0)
+        stop_server()
 
     window.events.closing += on_closing
     # Force EdgeChromium on Windows (avoid pythonnet/WinForms fallback)
@@ -126,9 +133,53 @@ def main():
     parser = argparse.ArgumentParser(description="Breachwright")
     parser.add_argument("--setup", action="store_true", help="Create admin account")
     parser.add_argument("--headless", action="store_true", help="Run server only, no GUI")
+    parser.add_argument(
+        "--create-backup",
+        action="store_true",
+        help="Create a verified local backup and exit",
+    )
+    parser.add_argument(
+        "--restore-backup",
+        metavar="PATH",
+        help="Restore a verified backup while Breachwright is stopped",
+    )
+    parser.add_argument(
+        "--confirm-restore",
+        action="store_true",
+        help="Confirm an offline restore and preserve current data in a safety folder",
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=13370)
     args = parser.parse_args()
+
+    if args.create_backup:
+        from app.config import settings
+        from app.system.backup import create_backup
+
+        path = create_backup(
+            settings.data_dir,
+            settings.resolved_database_url,
+            APP_VERSION,
+        )
+        print(f"Backup created: {path}")
+        return
+
+    if args.restore_backup:
+        if not args.confirm_restore:
+            parser.error(
+                "--restore-backup requires --confirm-restore after Breachwright is stopped"
+            )
+        from pathlib import Path
+        from app.config import settings
+        from app.system.backup import restore_backup
+
+        safety_path = restore_backup(
+            Path(args.restore_backup),
+            settings.data_dir,
+            settings.resolved_database_url,
+        )
+        print(f"Restore complete. Previous data: {safety_path}")
+        return
 
     if args.setup:
         run_setup()
@@ -136,8 +187,8 @@ def main():
 
     print()
     print("  +----------------------------------------------+")
-    print("  |              BREACHWRIGHT v2.0.0             |")
-    print("  |         An Advent Cybersecurity Product       |")
+    print(f"  |          BREACHWRIGHT v{APP_VERSION:<21}|")
+    print("  |  Open source, created by Advent Cybersecurity |")
     print("  +----------------------------------------------+")
     print()
 
@@ -160,6 +211,12 @@ def main():
             print(f"  Opening application window...")
             print()
             launch_window(args.host, args.port)
+            stop_server()
+            server.join(timeout=10)
+            if server.is_alive() and _uvicorn_server is not None:
+                logger.warning("Server did not stop cleanly; forcing shutdown")
+                _uvicorn_server.force_exit = True
+                server.join(timeout=3)
         else:
             print("  ERROR: Server failed to start. Run with --headless to see logs.")
             sys.exit(1)

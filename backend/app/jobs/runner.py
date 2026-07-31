@@ -67,6 +67,11 @@ def start_job(job_id: str, command: str, tool: str, output_dir: str) -> Optional
             command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1, cwd=output_dir,
             preexec_fn=os.setsid if os.name != "nt" else None,
+            creationflags=(
+                subprocess.CREATE_NEW_PROCESS_GROUP
+                if os.name == "nt"
+                else 0
+            ),
         )
     except Exception as e:
         logger.error("Failed to start job %s: %s", job_id, e)
@@ -120,6 +125,31 @@ def get_job_output(job_id: str) -> Optional[dict]:
         }
 
 
+def _terminate_process_tree(process: subprocess.Popen, timeout: int = 5) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        result = subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=timeout,
+        )
+        if result.returncode != 0 and process.poll() is None:
+            process.terminate()
+    else:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if os.name != "nt":
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        else:
+            process.kill()
+        process.wait(timeout=timeout)
+
+
 def stop_job(job_id: str) -> bool:
     with _lock:
         job = _running_jobs.get(job_id)
@@ -129,16 +159,7 @@ def stop_job(job_id: str) -> bool:
     if process.poll() is not None:
         return False
     try:
-        if os.name != "nt":
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-        else:
-            process.terminate()
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        if os.name != "nt":
-            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-        else:
-            process.kill()
+        _terminate_process_tree(process)
     except Exception as e:
         logger.error("Error stopping job %s: %s", job_id, e)
         return False
@@ -200,11 +221,7 @@ def flush_all_to_db_sync():
                 if process.poll() is None:
                     # Still running at shutdown — kill it and mark interrupted
                     try:
-                        if os.name != "nt":
-                            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-                        else:
-                            process.terminate()
-                        process.wait(timeout=3)
+                        _terminate_process_tree(process, timeout=3)
                     except Exception:
                         try:
                             process.kill()
@@ -230,3 +247,5 @@ def flush_all_to_db_sync():
         logger.error("Failed to flush jobs on shutdown: %s", e)
     finally:
         engine.dispose()
+        for job_id in jobs_to_flush:
+            cleanup_job(job_id)

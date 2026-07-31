@@ -5,9 +5,10 @@ from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.ad.models import ADImport, ADObject, ADRelationship, ADAttackPath
+from app.engagements.models import Engagement
 from app.ad.parser import parse_sharphound_zip, build_ad_summary
 from app.ad.prompts import AD_ANALYSIS_PROMPT
 from app.ai.provider import get_provider
@@ -47,8 +48,13 @@ async def import_sharphound(
     engagement_id: str,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
+    engagement_result = await db.execute(
+        select(Engagement.id).where(Engagement.id == engagement_id)
+    )
+    if not engagement_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Engagement not found")
     if not file.filename.endswith(".zip"):
         raise HTTPException(status_code=400, detail="Expected a ZIP file (SharpHound/BloodHound output)")
 
@@ -125,7 +131,7 @@ async def delete_ad_import(
     engagement_id: str,
     import_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     result = await db.execute(
         select(ADImport).where(ADImport.id == import_id, ADImport.engagement_id == engagement_id)
@@ -232,7 +238,7 @@ async def list_ad_attack_paths(
 async def analyze_ad_paths(
     engagement_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     """AI-powered analysis of AD data to find critical attack paths."""
     # Get latest import

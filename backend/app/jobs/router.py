@@ -2,15 +2,16 @@ import os
 import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.jobs.models import Job
+from app.engagements.models import Engagement
 from app.jobs.runner import (
     start_job, stop_job, get_job_output, cleanup_job,
     get_presets, TOOL_PRESETS,
@@ -23,9 +24,9 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
 class JobCreate(BaseModel):
-    engagement_id: str
-    tool: str
-    command: str
+    engagement_id: str = Field(min_length=1, max_length=36)
+    tool: str = Field(min_length=1, max_length=50)
+    command: str = Field(min_length=1, max_length=20000)
 
 
 class JobResponse(BaseModel):
@@ -54,8 +55,14 @@ async def list_presets(current_user: User = Depends(get_current_user)):
 async def create_job(
     body: JobCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
+    engagement_result = await db.execute(
+        select(Engagement.id).where(Engagement.id == body.engagement_id)
+    )
+    if not engagement_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
     # Validate command is not empty
     if not body.command.strip():
         raise HTTPException(status_code=400, detail="Command cannot be empty")
@@ -195,7 +202,7 @@ async def get_job(
 async def stop_running_job(
     job_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     result = await db.execute(select(Job).where(Job.id == job_id))
     job = result.scalar_one_or_none()
@@ -228,7 +235,7 @@ async def stop_running_job(
 async def delete_job(
     job_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     result = await db.execute(select(Job).where(Job.id == job_id))
     job = result.scalar_one_or_none()

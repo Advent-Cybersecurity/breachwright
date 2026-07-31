@@ -25,17 +25,24 @@ Third-party AI services may charge for API usage. Local model support does not r
 - Exploitation chains and MITRE ATT&CK-aware attack narratives
 - SharpHound and BloodHound ZIP import with Active Directory attack-path analysis
 - Markdown and DOCX report generation
+- Verified local backup and offline restore with secret exclusion
+- Built-in system diagnostics and version visibility
 - Evidence attachments, retest tracking, and engagement export/import
 - Tool Runner workflows for nmap, nikto, subfinder, feroxbuster, nuclei, and related tools
 - PTES, OWASP, and NIST methodology checklists and gap analysis
 - Cross-engagement intelligence, client risk profiles, and recurring-finding analysis
 - Custom report templates and AI prompts
-- Multi-user roles with no application-enforced seat limit
+- Multi-user roles with read-only viewers and no application-enforced seat limit
 - Light and dark themes
 
 ## Security and authorization
 
 Breachwright can execute security tools and process sensitive assessment data. Use it only on systems and data you are authorized to test. Review Tool Runner commands before execution, protect the application data directory, and do not expose the API directly to untrusted networks.
+
+Administrators can manage configuration, backups, and users. Analysts can
+create and edit assessment data and run tools. Viewers can browse and download
+existing data but cannot create, edit, delete, execute tools, or invoke
+AI-assisted actions.
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting and supported versions.
 
@@ -81,6 +88,19 @@ python run.py
 
 On first launch, Breachwright guides you through creating the initial administrator account.
 
+## Windows and Linux packages
+
+Breachwright uses one source tree, one feature set, and one data format on
+Windows and Linux. Native desktop dependencies differ, so release candidates
+are produced as two archives:
+
+- Windows x64 ZIP with `Breachwright.exe` and `BreachwrightCLI.exe`
+- Linux x64 tar.gz with `Breachwright` and `BreachwrightCLI`
+
+Both archives are built and tested by the same candidate workflow. A release
+download is not updated until both native candidates pass their platform
+checks.
+
 ## Configure an AI provider
 
 The application stores configuration in its platform-specific data directory:
@@ -92,6 +112,16 @@ The application stores configuration in its platform-specific data directory:
 You can configure Anthropic, OpenAI, or a local model in the Settings page. Azure OpenAI and AWS Bedrock can be configured through the environment file. Start with [.env.example](.env.example).
 
 AI configuration is optional for manual findings, evidence management, checklists, reporting from existing content, export/import, and other non-AI workflows.
+
+## Back up and restore data
+
+Administrators can create and download verified local backups from the
+Settings page. Backups include the SQLite database, evidence, uploads, and
+reports. API keys and token-signing secrets are excluded.
+
+Restores are offline by design and preserve displaced data in a recovery
+folder. See [docs/DATA_SAFETY.md](docs/DATA_SAFETY.md) for packaged and source
+commands.
 
 ## Docker
 

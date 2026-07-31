@@ -17,6 +17,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+MAX_ZIP_ENTRIES = 1000
+MAX_JSON_MEMBER_SIZE = 100 * 1024 * 1024
+MAX_TOTAL_JSON_SIZE = 500 * 1024 * 1024
+MAX_COMPRESSION_RATIO = 250
+
 # Relationship types that matter for attack path analysis
 INTERESTING_ACES = {
     "GenericAll", "GenericWrite", "WriteOwner", "WriteDacl",
@@ -56,13 +61,28 @@ def parse_sharphound_zip(zip_data: bytes) -> ParseResult:
     except zipfile.BadZipFile:
         raise ValueError("Invalid ZIP file")
 
-    for name in zf.namelist():
+    infos = zf.infolist()
+    if len(infos) > MAX_ZIP_ENTRIES:
+        raise ValueError("ZIP contains too many files")
+    json_infos = [info for info in infos if info.filename.lower().endswith(".json")]
+    total_size = sum(info.file_size for info in json_infos)
+    if total_size > MAX_TOTAL_JSON_SIZE:
+        raise ValueError("ZIP expands beyond the 500MB safety limit")
+
+    for info in json_infos:
+        name = info.filename
         lower = name.lower()
-        if not lower.endswith(".json"):
-            continue
+        if info.file_size > MAX_JSON_MEMBER_SIZE:
+            raise ValueError(f"ZIP member is too large: {name}")
+        if (
+            info.file_size > 0
+            and info.compress_size > 0
+            and info.file_size / info.compress_size > MAX_COMPRESSION_RATIO
+        ):
+            raise ValueError(f"ZIP member has an unsafe compression ratio: {name}")
 
         try:
-            raw = zf.read(name)
+            raw = zf.read(info)
             data = json.loads(raw)
         except (json.JSONDecodeError, Exception) as e:
             logger.warning("Could not parse %s: %s", name, e)

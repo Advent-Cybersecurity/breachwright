@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.engagements.models import Finding, Engagement
 from app.engagements.schemas import FindingCreate, FindingUpdate, FindingResponse
@@ -41,7 +41,7 @@ async def create_finding(
     engagement_id: str,
     request: FindingCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     await _get_engagement(engagement_id, db)
     finding = Finding(
@@ -67,7 +67,7 @@ async def update_finding(
     finding_id: str,
     request: FindingUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     result = await db.execute(
         select(Finding).where(Finding.id == finding_id, Finding.engagement_id == engagement_id)
@@ -105,7 +105,7 @@ async def delete_finding(
     engagement_id: str,
     finding_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     result = await db.execute(
         select(Finding).where(Finding.id == finding_id, Finding.engagement_id == engagement_id)
@@ -113,7 +113,22 @@ async def delete_finding(
     finding = result.scalar_one_or_none()
     if not finding:
         raise HTTPException(status_code=404, detail="Finding not found")
+
+    from sqlalchemy import delete
+    from app.engagements.models import EvidenceAttachment
+    await db.execute(
+        delete(EvidenceAttachment).where(
+            EvidenceAttachment.finding_id == finding_id
+        )
+    )
     await db.delete(finding)
+
+    import os
+    import shutil
+    from app.config import settings
+    evidence_dir = os.path.join(settings.data_dir, "evidence", finding_id)
+    if os.path.isdir(evidence_dir):
+        shutil.rmtree(evidence_dir, ignore_errors=True)
 
 
 class BulkAction(BaseModel):
@@ -127,7 +142,7 @@ async def bulk_action(
     engagement_id: str,
     body: BulkAction,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     if not body.finding_ids:
         raise HTTPException(status_code=400, detail="No findings selected")

@@ -8,6 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from app.config import settings
+from app.db.migrations import run_migrations
+from app.version import APP_VERSION, is_newer_version
 import sys
 
 def _get_base_dir():
@@ -32,30 +34,12 @@ async def lifespan(app: FastAPI):
     logger.info("Data directory: %s", settings.data_dir)
     logger.info("Database: %s", "SQLite" if "sqlite" in settings.resolved_database_url else "PostgreSQL")
 
-    # Run Alembic migrations
     try:
-        import threading
-        from alembic.config import Config as AlembicConfig
-        from alembic import command
-
-        def _run_migrations():
-            alembic_cfg = AlembicConfig(
-                os.path.join(BASE_DIR, "backend", "alembic.ini")
-            )
-            alembic_cfg.set_main_option("sqlalchemy.url", settings.resolved_database_url)
-            alembic_cfg.set_main_option(
-                "script_location",
-                os.path.join(BASE_DIR, "backend", "alembic")
-            )
-            command.upgrade(alembic_cfg, "head")
-
-        # Run in thread to avoid nested asyncio.run conflict
-        t = threading.Thread(target=_run_migrations)
-        t.start()
-        t.join(timeout=30)
+        await run_migrations(BASE_DIR, settings.resolved_database_url)
         logger.info("Database migrations complete")
-    except Exception as e:
-        logger.error("Migration error: %s", e)
+    except Exception:
+        logger.exception("Database migration failed; startup aborted")
+        raise
 
     logger.info("All Breachwright features are available in this open-source build")
 
@@ -68,8 +52,6 @@ async def lifespan(app: FastAPI):
         logger.error("Job flush on shutdown failed: %s", e)
     logger.info("Breachwright shutting down")
 
-
-APP_VERSION = "2.0.0"
 
 app = FastAPI(
     title="Breachwright",
@@ -93,6 +75,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=()",
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "font-src 'self' data:; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'; "
+            "form-action 'self'"
+        ),
+    )
+    if request.url.path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
+
+
 # API Routers
 from app.auth.router import router as auth_router
 from app.engagements.router import router as engagements_router
@@ -112,6 +125,7 @@ from app.knowledge.router import router as knowledge_router
 from app.gap_detection.router import router as gap_analysis_router
 from app.correlation.router import router as correlation_router
 from app.narrative.router import router as narrative_router
+from app.system.router import router as system_router
 
 app.include_router(auth_router)
 app.include_router(engagements_router)
@@ -131,6 +145,7 @@ app.include_router(knowledge_router)
 app.include_router(gap_analysis_router)
 app.include_router(correlation_router)
 app.include_router(narrative_router)
+app.include_router(system_router)
 
 
 @app.get("/api/health")
@@ -158,7 +173,9 @@ async def version_check():
                 return {
                     "current": APP_VERSION,
                     "latest": latest,
-                    "update_available": latest and latest != APP_VERSION,
+                    "update_available": bool(
+                        latest and is_newer_version(latest, APP_VERSION)
+                    ),
                     "release_url": data.get("html_url", ""),
                     "release_notes": data.get("body", "")[:500],
                 }
@@ -181,8 +198,15 @@ if os.path.isdir(FRONTEND_DIR):
         # Don't intercept /api routes
         if full_path.startswith("api"):
             return
-        file_path = os.path.join(FRONTEND_DIR, full_path)
-        if os.path.isfile(file_path):
+        frontend_root = os.path.realpath(FRONTEND_DIR)
+        file_path = os.path.realpath(os.path.join(frontend_root, full_path))
+        try:
+            within_frontend = (
+                os.path.commonpath([frontend_root, file_path]) == frontend_root
+            )
+        except ValueError:
+            within_frontend = False
+        if within_frontend and os.path.isfile(file_path):
             return FileResponse(file_path)
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 else:

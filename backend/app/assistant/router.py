@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import require_editor
 from app.auth.models import User
 from app.engagements.models import Engagement, Finding, AttackPath, ScanUpload
 from app.ai.provider import get_provider
@@ -193,7 +193,7 @@ async def _build_context(db: AsyncSession, user_id: str, engagement_id: Optional
 async def chat(
     body: ChatMessage,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
 
     if not body.message.strip():

@@ -3,13 +3,13 @@ import { system, auth as authApi, appSettings } from '../api';
 import { useAuth } from '../auth';
 import { useTheme } from '../theme';
 import { Modal, Toast, Spinner } from '../components/UI';
-import { Users, Server, UserPlus, Sun, Moon, Palette, MessageSquare, RotateCcw, Bot, Save, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import { Users, Server, UserPlus, Sun, Moon, Palette, MessageSquare, RotateCcw, Bot, Save, Wifi, WifiOff, RefreshCw, DatabaseBackup, Download, ShieldCheck } from 'lucide-react';
 
 function InfoRow({ label, value, mono = false }) {
   return (
     <div className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid color-mix(in srgb, var(--border) 40%, transparent)' }}>
       <span className="text-sm themed-text-muted">{label}</span>
-      <span className={`text-sm themed-text-primary ${mono ? 'font-mono' : ''}`}>{value}</span>
+      <span className={`text-sm themed-text-primary text-right break-all max-w-[70%] ${mono ? 'font-mono' : ''}`}>{value}</span>
     </div>
   );
 }
@@ -18,6 +18,9 @@ export default function Settings() {
   const { user } = useAuth();
   const { theme, toggle } = useTheme();
   const [health, setHealth] = useState(null);
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [backups, setBackups] = useState([]);
+  const [backingUp, setBackingUp] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddUser, setShowAddUser] = useState(false);
   const [toast, setToast] = useState(null);
@@ -39,6 +42,14 @@ export default function Settings() {
         setHealth(await system.health());
       } catch (e) {}
       try {
+        setDiagnostics(await system.diagnostics());
+      } catch (e) {}
+      if (user?.role === 'admin') {
+        try {
+          setBackups(await system.listBackups());
+        } catch (e) {}
+      }
+      try {
         const p = await appSettings.getPrompts();
         setPrompts(p);
       } catch (e) {}
@@ -49,7 +60,7 @@ export default function Settings() {
       } catch (e) {}
       finally { setLoading(false); }
     })();
-  }, []);
+  }, [user?.role]);
 
   const handleAddUser = async (e) => {
     e.preventDefault();
@@ -289,9 +300,86 @@ export default function Settings() {
               </span>
             } />
             <InfoRow label="Version" value={health.version} mono />
+            {diagnostics && (
+              <>
+                <InfoRow label="Platform" value={`${diagnostics.platform} ${diagnostics.platform_release}`} mono />
+                <InfoRow label="Database" value={diagnostics.database_type} mono />
+                <InfoRow label="Data directory" value={diagnostics.data_directory} mono />
+                <InfoRow label="Free space" value={`${(diagnostics.free_space / (1024 ** 3)).toFixed(1)} GB`} mono />
+              </>
+            )}
           </div>
         )}
       </div>
+
+      {/* Data safety */}
+      {user?.role === 'admin' && (
+        <div className="card p-5 mb-5">
+          <div className="flex items-center gap-2.5 mb-2">
+            <DatabaseBackup size={18} className="text-green-400" />
+            <h2 className="text-base font-semibold themed-text-primary">Data Safety</h2>
+          </div>
+          <p className="text-xs themed-text-muted mb-4">
+            Create a verified local backup of the database, evidence, uploads, and reports. API keys and signing secrets are excluded.
+          </p>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2 text-xs themed-text-secondary">
+              <ShieldCheck size={14} className="text-green-400" />
+              {backups.length} verified backup{backups.length === 1 ? '' : 's'}
+            </div>
+            <button
+              onClick={async () => {
+                setBackingUp(true);
+                try {
+                  const backup = await system.createBackup();
+                  setBackups(prev => [backup, ...prev]);
+                  setToast({ message: `Backup created: ${backup.filename}`, type: 'success' });
+                } catch (err) {
+                  setToast({ message: err.message, type: 'error' });
+                } finally {
+                  setBackingUp(false);
+                }
+              }}
+              disabled={backingUp}
+              className="btn-primary flex items-center gap-2 text-sm"
+            >
+              {backingUp ? <Spinner className="w-4 h-4" /> : <DatabaseBackup size={14} />}
+              {backingUp ? 'Creating...' : 'Create Backup'}
+            </button>
+          </div>
+          {backups.length > 0 && (
+            <div className="space-y-2">
+              {backups.slice(0, 5).map(backup => (
+                <div key={backup.filename} className="flex items-center gap-3 px-3 py-2 rounded-md"
+                  style={{ backgroundColor: 'var(--bg-700)', border: '1px solid var(--border)' }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-mono themed-text-primary truncate">{backup.filename}</p>
+                    <p className="text-[10px] themed-text-muted">
+                      {new Date(backup.created_at).toLocaleString()} · {(backup.size / (1024 ** 2)).toFixed(2)} MB
+                    </p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await system.downloadBackup(backup.filename);
+                      } catch (err) {
+                        setToast({ message: err.message, type: 'error' });
+                      }
+                    }}
+                    className="btn-ghost flex items-center gap-1 text-xs"
+                  >
+                    <Download size={12} />
+                    Download
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-[10px] themed-text-muted mt-3">
+            Restores are intentionally offline. Stop Breachwright, then use BreachwrightCLI with the documented restore command.
+          </p>
+        </div>
+      )}
 
       {/* Custom AI Prompts */}
       {user?.role === 'admin' && prompts && (

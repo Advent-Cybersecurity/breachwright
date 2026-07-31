@@ -6,13 +6,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.engagements.models import Engagement, Finding, AttackPath, Report
 from app.engagements.schemas import ReportResponse
 from app.ai.provider import get_provider
 from app.ai.prompts.loader import get_prompt
 from app.config import settings
+from app.reports.content import build_report_content
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,9 @@ async def generate_report(
     engagement_id: str,
     format: str = Query(default="md", pattern="^(md|docx)$"),
     template_id: str = Query(default=None),
+    use_ai: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     result = await db.execute(select(Engagement).where(Engagement.id == engagement_id))
     engagement = result.scalar_one_or_none()
@@ -50,45 +52,20 @@ async def generate_report(
     ap_result = await db.execute(select(AttackPath).where(AttackPath.engagement_id == engagement_id))
     attack_paths = ap_result.scalars().all()
 
-    # Build AI context
-    findings_text = "\n\n".join(
-        f"### {f.title}\n"
-        f"Severity: {f.severity.upper() if isinstance(f.severity, str) else f.severity.value.upper()} | "
-        f"CVSS: {f.cvss_score or 'N/A'}\n"
-        f"Affected: {f.affected_hosts or 'N/A'}\n"
-        f"Description: {f.description or 'N/A'}\n"
-        f"Evidence: {f.evidence or 'N/A'}\n"
-        f"Remediation: {f.remediation or 'N/A'}"
-        for f in findings
-    )
-
-    ap_text = ""
-    if attack_paths:
-        ap_text = "\n\nAttack Paths:\n" + "\n\n".join(
-            f"### {ap.name} (Risk: {ap.risk_level or 'N/A'})\n{ap.description or 'N/A'}"
-            for ap in attack_paths
-        )
-
-    user_message = (
-        f"Engagement: {engagement.name}\n"
-        f"Client: {engagement.client_name}\n"
-        f"Scope: {engagement.scope or 'Not specified'}\n"
-        f"Start: {engagement.start_date or 'N/A'}\n"
-        f"End: {engagement.end_date or 'N/A'}\n\n"
-        f"Findings ({len(findings)} total):\n\n{findings_text}{ap_text}"
-    )
-
-    provider = get_provider()
-    system_prompt = await get_prompt(db, "prompt_reports")
-    try:
-        report_content = await provider.complete(
-            system_prompt=system_prompt,
-            user_message=user_message,
-            max_tokens=8192,
-        )
-    except Exception as e:
-        logger.error("AI provider error: %s", e)
-        raise HTTPException(status_code=502, detail=f"AI provider error: {e}")
+    report_content = build_report_content(engagement, findings, attack_paths)
+    if use_ai:
+        provider = get_provider()
+        system_prompt = await get_prompt(db, "prompt_reports")
+        try:
+            report_content = await provider.complete(
+                system_prompt=system_prompt,
+                user_message=report_content,
+                max_tokens=8192,
+            )
+        except Exception as e:
+            logger.error("AI provider error: %s", e)
+            raise HTTPException(status_code=502, detail=f"AI provider error: {e}")
+    report_content = report_content.replace("\u2014", "-")
 
     # Save report
     report_dir = os.path.join(settings.data_dir, "reports", engagement_id)
@@ -123,12 +100,12 @@ async def generate_report(
             logger.error("DOCX generation error: %s", e)
             # Fall back to markdown
             file_path = os.path.join(report_dir, f"report-{report.id}.md")
-            with open(file_path, "w") as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(report_content)
             report.format = "md"
     else:
         file_path = os.path.join(report_dir, f"report-{report.id}.md")
-        with open(file_path, "w") as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             f.write(report_content)
 
     report.file_path = file_path
@@ -168,7 +145,7 @@ async def download_report(
 async def delete_report(
     report_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor),
 ):
     result = await db.execute(select(Report).where(Report.id == report_id))
     report = result.scalar_one_or_none()

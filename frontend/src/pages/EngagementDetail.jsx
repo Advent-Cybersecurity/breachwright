@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth';
 import {
   engagements as engApi, findings as findingsApi, analysis as analysisApi,
   attackPaths as apApi, reports as reportsApi, evidence as evidenceApi,
@@ -141,14 +142,14 @@ function FindingForm({ form, setForm, onSubmit, saving, submitLabel }) {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Title</label>
-        <input className="input-field text-sm" value={form.title}
+        <label htmlFor="finding-title" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Title</label>
+        <input id="finding-title" className="input-field text-sm" value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })} required autoFocus />
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Severity</label>
-          <select className="input-field text-sm" value={form.severity}
+          <label htmlFor="finding-severity" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Severity</label>
+          <select id="finding-severity" className="input-field text-sm" value={form.severity}
             onChange={(e) => setForm({ ...form, severity: e.target.value })}>
             <option value="critical">Critical</option>
             <option value="high">High</option>
@@ -158,39 +159,39 @@ function FindingForm({ form, setForm, onSubmit, saving, submitLabel }) {
           </select>
         </div>
         <div>
-          <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">CVSS Score</label>
-          <input type="number" step="0.1" min="0" max="10" className="input-field text-sm"
+          <label htmlFor="finding-cvss" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">CVSS Score</label>
+          <input id="finding-cvss" type="number" step="0.1" min="0" max="10" className="input-field text-sm"
             value={form.cvss_score} onChange={(e) => setForm({ ...form, cvss_score: e.target.value })}
             placeholder="7.5" />
         </div>
         <div>
-          <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Retest Status</label>
-          <select className="input-field text-sm" value={form.retest_status || ''}
+          <label htmlFor="finding-retest" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Retest Status</label>
+          <select id="finding-retest" className="input-field text-sm" value={form.retest_status || ''}
             onChange={(e) => setForm({ ...form, retest_status: e.target.value || null })}>
             {RETEST_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
       </div>
       <div>
-        <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Affected Hosts</label>
-        <input className="input-field text-sm" value={form.affected_hosts}
+        <label htmlFor="finding-hosts" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Affected Hosts</label>
+        <input id="finding-hosts" className="input-field text-sm" value={form.affected_hosts}
           onChange={(e) => setForm({ ...form, affected_hosts: e.target.value })}
           placeholder="10.10.10.5, 10.10.10.12" />
       </div>
       <div>
-        <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Description</label>
-        <textarea className="input-field text-sm resize-none" rows={3} value={form.description}
+        <label htmlFor="finding-description" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Description</label>
+        <textarea id="finding-description" className="input-field text-sm resize-none" rows={3} value={form.description}
           onChange={(e) => setForm({ ...form, description: e.target.value })} />
       </div>
       <div>
-        <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Evidence</label>
-        <textarea className="input-field text-sm font-mono resize-none" rows={3} value={form.evidence}
+        <label htmlFor="finding-evidence" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Evidence</label>
+        <textarea id="finding-evidence" className="input-field text-sm font-mono resize-none" rows={3} value={form.evidence}
           onChange={(e) => setForm({ ...form, evidence: e.target.value })}
           placeholder="Paste scan output, screenshots, etc." />
       </div>
       <div>
-        <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Remediation</label>
-        <textarea className="input-field text-sm resize-none" rows={2} value={form.remediation}
+        <label htmlFor="finding-remediation" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Remediation</label>
+        <textarea id="finding-remediation" className="input-field text-sm resize-none" rows={2} value={form.remediation}
           onChange={(e) => setForm({ ...form, remediation: e.target.value })} />
       </div>
       <div className="flex justify-end gap-3 pt-2">
@@ -1020,6 +1021,7 @@ function ReportsTab({ engId, toast }) {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [reportFormat, setReportFormat] = useState('docx');
+  const [useAI, setUseAI] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [showTemplateForm, setShowTemplateForm] = useState(false);
@@ -1051,10 +1053,10 @@ function ReportsTab({ engId, toast }) {
     setGenerating(true);
     try {
       const templateId = reportFormat === 'docx' && selectedTemplate ? selectedTemplate : null;
-      const report = await reportsApi.generate(engId, reportFormat, templateId);
+      const report = await reportsApi.generate(engId, reportFormat, templateId, useAI);
       setReportList(prev => [report, ...prev]);
       const tName = templates.find(t => t.id === selectedTemplate)?.name;
-      toast({ message: `${reportFormat.toUpperCase()} report generated${tName ? ` with "${tName}" template` : ''}`, type: 'success' });
+      toast({ message: `${reportFormat.toUpperCase()} report generated${useAI ? ' with AI enhancement' : ' locally'}${tName ? ` with "${tName}" template` : ''}`, type: 'success' });
     } catch (err) {
       toast({ message: err.message, type: 'error' });
     } finally {
@@ -1179,7 +1181,7 @@ function ReportsTab({ engId, toast }) {
                 <label className="block text-[10px] font-mono themed-text-muted uppercase tracking-wider mb-1">Logo</label>
                 <label className="btn-secondary text-xs cursor-pointer inline-flex items-center gap-1">
                   <Upload size={12} /> {logoFile ? logoFile.name : editingTemplate?.has_logo ? 'Replace Logo' : 'Upload Logo'}
-                  <input type="file" className="hidden" accept=".png,.jpg,.jpeg,.svg" onChange={e => setLogoFile(e.target.files[0])} />
+                  <input type="file" className="hidden" accept=".png,.jpg,.jpeg" onChange={e => setLogoFile(e.target.files[0])} />
                 </label>
               </div>
             </div>
@@ -1210,7 +1212,15 @@ function ReportsTab({ engId, toast }) {
       </div>
 
       {/* Generate controls */}
-      <div className="flex items-center justify-end gap-3 mb-4">
+      <div className="flex flex-wrap items-center justify-end gap-3 mb-4">
+        <label className="flex items-center gap-2 text-xs themed-text-secondary">
+          <input
+            type="checkbox"
+            checked={useAI}
+            onChange={e => setUseAI(e.target.checked)}
+          />
+          Enhance with configured AI
+        </label>
         {reportFormat === 'docx' && templates.length > 0 && (
           <select className="input-field text-sm" style={{ maxWidth: 200 }} value={selectedTemplate}
             onChange={e => setSelectedTemplate(e.target.value)}>
@@ -1587,6 +1597,8 @@ function ADTab({ engId, toast, onFindingsCreated }) {
 
 // Main engagement detail page
 export default function EngagementDetail() {
+  const { user } = useAuth();
+  const canEdit = user?.role !== 'viewer';
   const { id } = useParams();
   const navigate = useNavigate();
   const [engagement, setEngagement] = useState(null);
@@ -1649,7 +1661,7 @@ export default function EngagementDetail() {
         </div>
         <div className="flex items-center gap-2 self-start">
           {/* Status transitions */}
-          {engagement.status === 'active' && (
+          {canEdit && engagement.status === 'active' && (
             <button onClick={async () => {
               try {
                 await engApi.update(id, { status: 'completed' });
@@ -1660,7 +1672,7 @@ export default function EngagementDetail() {
               <Check size={14} /> Complete
             </button>
           )}
-          {engagement.status === 'completed' && (
+          {canEdit && engagement.status === 'completed' && (
             <button onClick={async () => {
               try {
                 await engApi.update(id, { status: 'active' });
@@ -1671,7 +1683,7 @@ export default function EngagementDetail() {
               <RotateCcw size={14} /> Reopen
             </button>
           )}
-          {engagement.status !== 'archived' && (
+          {canEdit && engagement.status !== 'archived' && (
             <button onClick={async () => {
               const confirmed = window.confirm('Archive this engagement? It will be hidden from the active view.');
               if (!confirmed) return;
@@ -1684,7 +1696,7 @@ export default function EngagementDetail() {
               Archive
             </button>
           )}
-          {engagement.status === 'archived' && (
+          {canEdit && engagement.status === 'archived' && (
             <button onClick={async () => {
               try {
                 await engApi.update(id, { status: 'active' });
@@ -1710,6 +1722,20 @@ export default function EngagementDetail() {
           </button>
         </div>
       </div>
+
+      {!canEdit && (
+        <div
+          className="mb-5 px-4 py-3 rounded-lg text-sm themed-text-secondary"
+          style={{
+            backgroundColor: 'rgba(59,130,246,0.08)',
+            border: '1px solid rgba(59,130,246,0.2)',
+          }}
+        >
+          Read-only access: you can review and export this engagement. Changes,
+          tool execution, uploads, and AI-assisted actions are disabled for
+          viewer accounts.
+        </div>
+      )}
 
       {/* Severity summary */}
       <div className="flex items-center gap-4 mb-4">

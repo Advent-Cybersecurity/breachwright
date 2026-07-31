@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
-import { auth as authApi } from '../api';
 import { ArrowRight, AlertCircle } from 'lucide-react';
 
 
@@ -10,22 +8,15 @@ function VersionFooter() {
   useEffect(() => {
     fetch('/api/health').then(r => r.json()).then(d => setVersion(d.version || '')).catch(() => {});
   }, []);
-  return <p className="text-center text-xs themed-text-muted mt-6 font-mono">{version ? `v${version}` : ''} // CONFIDENTIAL</p>;
+  return <p className="text-center text-xs themed-text-muted mt-6 font-mono">{version ? `v${version}` : ''} // OPEN SOURCE</p>;
 }
 
 export default function Login() {
   const { login } = useAuth();
-  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    authApi.needsSetup().then(data => {
-      if (data.needs_setup) navigate('/setup', { replace: true });
-    }).catch(() => {});
-  }, [navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -73,13 +64,13 @@ export default function Login() {
               </div>
             )}
             <div>
-              <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              <label htmlFor="login-email" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Email</label>
+              <input id="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                 className="input-field font-mono text-sm" placeholder="operator@example.com" autoFocus required />
             </div>
             <div>
-              <label className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              <label htmlFor="login-password" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Password</label>
+              <input id="login-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
                 className="input-field font-mono text-sm" required />
             </div>
             <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 mt-2">

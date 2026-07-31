@@ -7,9 +7,11 @@ from app.auth.schemas import LoginRequest, TokenResponse, UserCreate, UserRespon
 from app.auth.service import (
     authenticate_user, create_access_token, create_refresh_token,
     decode_token, create_user, get_user_by_id, get_active_user_count,
+    DuplicateEmailError,
 )
 from app.auth.dependencies import get_current_user, require_admin
 from app.auth.models import User
+from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -31,13 +33,16 @@ async def first_run_setup(request: UserCreate, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=403, detail="Setup already completed. Use the app to manage users.")
 
     from app.auth.models import UserRole
-    user = await create_user(
-        db,
-        email=request.email,
-        password=request.password,
-        display_name=request.display_name or request.email.split("@")[0],
-        role=UserRole.admin,
-    )
+    try:
+        user = await create_user(
+            db,
+            email=request.email,
+            password=request.password,
+            display_name=request.display_name or str(request.email).split("@")[0],
+            role=UserRole.admin,
+        )
+    except DuplicateEmailError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"message": f"Admin account created: {user.email}", "email": user.email}
 
 
@@ -55,7 +60,8 @@ async def login(request: LoginRequest, response: Response, db: AsyncSession = De
         value=refresh_token,
         httponly=True,
         samesite="lax",
-        max_age=7 * 24 * 60 * 60,
+        max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+        path="/api/auth",
     )
 
     return TokenResponse(access_token=access_token)
@@ -86,7 +92,8 @@ async def refresh(
         value=new_refresh,
         httponly=True,
         samesite="lax",
-        max_age=7 * 24 * 60 * 60,
+        max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+        path="/api/auth",
     )
 
     return TokenResponse(access_token=access_token)
@@ -94,7 +101,7 @@ async def refresh(
 
 @router.post("/logout")
 async def logout(response: Response):
-    response.delete_cookie("refresh_token")
+    response.delete_cookie("refresh_token", path="/api/auth")
     return {"message": "Logged out"}
 
 
@@ -109,5 +116,14 @@ async def create_new_user(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    user = await create_user(db, request.email, request.password, request.display_name, request.role)
+    try:
+        user = await create_user(
+            db,
+            request.email,
+            request.password,
+            request.display_name,
+            request.role,
+        )
+    except DuplicateEmailError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return user

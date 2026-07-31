@@ -1,36 +1,34 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-Breachwright PyInstaller Spec File
-===================================
-Packages the pywebview + uvicorn + FastAPI desktop application.
+Breachwright PyInstaller Spec File (Windows and Linux)
+=====================================================
+Builds for Windows or Linux depending on the build machine.
 
 Usage:
+    cd frontend && npm run build && cd ..
     pyinstaller breachwright.spec
-
-Prerequisites:
-    1. Build the frontend first:  cd frontend && npm run build
-    2. Install PyInstaller:       pip install pyinstaller
-    3. Run from project root:     pyinstaller breachwright.spec
 """
 
 import os
 import sys
+import platform
 import importlib
 from pathlib import Path
 from PyInstaller.utils.hooks import (
     collect_submodules,
     collect_data_files,
-    collect_all,
 )
 
-# ---------------------------------------------------------------------------
-# Project root = directory containing this spec file
-# ---------------------------------------------------------------------------
+IS_WINDOWS = platform.system() == "Windows"
+IS_LINUX = platform.system() == "Linux"
+
 PROJECT_ROOT = os.path.abspath(SPECPATH)
 
-# ---------------------------------------------------------------------------
-# Helper: resolve a project-relative path
-# ---------------------------------------------------------------------------
+if IS_LINUX:
+    _system_dist_packages = "/usr/lib/python3/dist-packages"
+    if os.path.isdir(_system_dist_packages) and _system_dist_packages not in sys.path:
+        sys.path.append(_system_dist_packages)
+
 def proj(*parts):
     return os.path.join(PROJECT_ROOT, *parts)
 
@@ -44,7 +42,7 @@ _frontend_dist = proj("frontend", "dist")
 if os.path.isdir(_frontend_dist):
     datas.append((_frontend_dist, os.path.join("frontend", "dist")))
 else:
-    print("⚠  WARNING: frontend/dist/ not found — run `npm run build` first!")
+    print("WARNING: frontend/dist/ not found - run npm run build first!")
 
 # 2. Alembic migrations + config
 _alembic_dir = proj("backend", "alembic")
@@ -55,13 +53,13 @@ _alembic_ini = proj("backend", "alembic.ini")
 if os.path.isfile(_alembic_ini):
     datas.append((_alembic_ini, "backend"))
 
-# 3. Any DOCX / report templates (common patterns)
+# 3. Report templates
 for _tpl_dir_name in ("templates", "report_templates", "assets"):
     _tpl_path = proj("backend", "app", "reports", _tpl_dir_name)
     if os.path.isdir(_tpl_path):
         datas.append((_tpl_path, os.path.join("backend", "app", "reports", _tpl_dir_name)))
 
-# 4. Checklist / methodology data shipped as package data (if any non-.py files)
+# 4. Checklist data (non-Python files)
 _checklists_dir = proj("backend", "app", "checklists")
 if os.path.isdir(_checklists_dir):
     for f in os.listdir(_checklists_dir):
@@ -71,7 +69,7 @@ if os.path.isdir(_checklists_dir):
                  os.path.join("backend", "app", "checklists"))
             )
 
-# 5. Static / misc assets at project root (icons, logos, etc.)
+# 5. Icons / assets
 for _asset in ("icon.ico", "icon.png", "logo.png", "LICENSE", "LICENSE.txt", "THIRD_PARTY_NOTICES.md"):
     _p = proj(_asset)
     if os.path.isfile(_p):
@@ -82,16 +80,16 @@ for _asset in ("icon.ico", "icon.png", "logo.png", "LICENSE", "LICENSE.txt", "TH
 
 hidden_imports = []
 
-# -- Collect the ENTIRE backend package tree automatically ------------------
-hidden_imports += collect_submodules("backend")
+# -- Backend package tree
+hidden_imports += collect_submodules("app")
 
-# -- FastAPI / Starlette / Pydantic -----------------------------------------
+# -- FastAPI / Starlette / Pydantic
 hidden_imports += collect_submodules("fastapi")
 hidden_imports += collect_submodules("starlette")
 hidden_imports += collect_submodules("pydantic")
 hidden_imports += collect_submodules("pydantic_core")
 
-# -- Uvicorn & its transitive deps ------------------------------------------
+# -- Uvicorn
 hidden_imports += collect_submodules("uvicorn")
 hidden_imports += [
     "uvicorn.logging",
@@ -112,7 +110,7 @@ hidden_imports += [
     "uvicorn.lifespan.off",
 ]
 
-# -- HTTP parsing libraries (uvicorn optional deps) -------------------------
+# -- HTTP parsing
 for _mod in ("httptools", "h11", "wsproto", "websockets"):
     try:
         importlib.import_module(_mod)
@@ -120,33 +118,58 @@ for _mod in ("httptools", "h11", "wsproto", "websockets"):
     except ImportError:
         pass
 
-# -- Async event-loop extras ------------------------------------------------
-for _mod in ("uvloop",):
+# -- Async event loop
+if not IS_WINDOWS:
+    # uvloop doesn't work on Windows
     try:
-        importlib.import_module(_mod)
-        hidden_imports += collect_submodules(_mod)
+        importlib.import_module("uvloop")
+        hidden_imports += collect_submodules("uvloop")
     except ImportError:
         pass
 
-# -- pywebview ---------------------------------------------------------------
+# -- pywebview
 hidden_imports += collect_submodules("webview")
 
-# -- PyGObject / GTK (pywebview backend) ------------------------------------
-hidden_imports += collect_submodules("gi")
-hidden_imports += ["gi._gi", "gi.repository.Gtk", "gi.repository.GLib", "gi.repository.Gdk", "gi.repository.WebKit2", "gi.repository.GObject", "gi.repository.Gio"]
+# -- Platform-specific pywebview backends
+if IS_WINDOWS:
+    # EdgeChromium (WebView2) - pywebview auto-detects on Windows
+    hidden_imports += [
+        "webview.platforms.edgechromium",
+        "webview.platforms.winforms",
+        "clr_loader",
+        "pythonnet",
+    ]
+    # pythonnet / clr dependencies
+    for _mod in ("clr_loader", "pythonnet", "clr"):
+        try:
+            importlib.import_module(_mod)
+            hidden_imports += collect_submodules(_mod)
+        except ImportError:
+            pass
+else:
+    # GTK/WebKit on Linux
+    hidden_imports += collect_submodules("gi")
+    hidden_imports += [
+        "gi._gi",
+        "gi.repository.Gtk",
+        "gi.repository.GLib",
+        "gi.repository.Gdk",
+        "gi.repository.WebKit2",
+        "gi.repository.GObject",
+        "gi.repository.Gio",
+    ]
 
-# -- SQLAlchemy + Alembic ----------------------------------------------------
+# -- SQLAlchemy + Alembic
 hidden_imports += collect_submodules("sqlalchemy")
 hidden_imports += collect_submodules("alembic")
-# Common DB drivers
-for _drv in ("aiosqlite", "sqlite3", "asyncpg", "psycopg2"):
+for _drv in ("aiosqlite", "sqlite3"):
     try:
         importlib.import_module(_drv)
         hidden_imports += collect_submodules(_drv)
     except ImportError:
         pass
 
-# -- python-docx (report generation) ----------------------------------------
+# -- python-docx
 for _mod in ("docx", "lxml", "lxml.etree", "lxml._elementpath"):
     try:
         importlib.import_module(_mod.split(".")[0])
@@ -155,7 +178,7 @@ for _mod in ("docx", "lxml", "lxml.etree", "lxml._elementpath"):
         pass
 hidden_imports += collect_submodules("docx")
 
-# -- AI / LLM libraries (commonly used) -------------------------------------
+# -- AI / LLM libraries
 for _mod in ("openai", "anthropic", "tiktoken", "httpx", "jwt"):
     try:
         importlib.import_module(_mod)
@@ -163,15 +186,15 @@ for _mod in ("openai", "anthropic", "tiktoken", "httpx", "jwt"):
     except ImportError:
         pass
 
-# -- Other common deps -------------------------------------------------------
+# -- Common deps
 for _mod in (
-    "multipart",          # python-multipart (FastAPI file uploads)
-    "jose",               # python-jose (JWT)
-    "passlib",            # password hashing
+    "multipart",
+    "jose",
+    "passlib",
     "bcrypt",
     "email_validator",
-    "dotenv",             # python-dotenv
-    "yaml",               # PyYAML
+    "dotenv",
+    "yaml",
     "jinja2",
     "markupsafe",
     "anyio",
@@ -179,6 +202,7 @@ for _mod in (
     "certifi",
     "charset_normalizer",
     "idna",
+    "pydantic_settings",
 ):
     try:
         importlib.import_module(_mod)
@@ -190,8 +214,7 @@ for _mod in (
 hidden_imports = sorted(set(hidden_imports))
 
 
-# ========================== COLLECT EXTRA DATA =============================
-# Some packages ship data files that PyInstaller misses.
+# ========================== EXTRA DATA FILES ===============================
 
 _extra_datas = []
 for _pkg in ("certifi", "email_validator", "docx", "jinja2", "alembic"):
@@ -199,25 +222,51 @@ for _pkg in ("certifi", "email_validator", "docx", "jinja2", "alembic"):
         _extra_datas += collect_data_files(_pkg)
     except Exception:
         pass
-
 datas += _extra_datas
 
-# PyGObject typelibs
-try:
-    import gi
-    _gi_path = os.path.dirname(gi.__file__)
-    datas.append((_gi_path, "gi"))
-except ImportError:
-    pass
+# Platform-specific data
+if IS_LINUX:
+    # PyGObject typelibs
+    try:
+        import gi
+        _gi_path = os.path.dirname(gi.__file__)
+        datas.append((_gi_path, "gi"))
+    except ImportError:
+        pass
+    for _typelib_dir in ("/usr/lib/x86_64-linux-gnu/girepository-1.0", "/usr/lib/girepository-1.0"):
+        if os.path.isdir(_typelib_dir):
+            datas.append((_typelib_dir, "gi_typelibs"))
+            break
 
-# System typelibs
-for _typelib_dir in ("/usr/lib/x86_64-linux-gnu/girepository-1.0", "/usr/lib/girepository-1.0"):
-    if os.path.isdir(_typelib_dir):
-        datas.append((_typelib_dir, "gi_typelibs"))
-        break
+if IS_WINDOWS:
+    # WebView2 runtime files if present
+    try:
+        import clr_loader
+        _clr_path = os.path.dirname(clr_loader.__file__)
+        datas.append((_clr_path, "clr_loader"))
+    except ImportError:
+        pass
 
 
 # ========================== ANALYSIS =======================================
+
+_excludes = [
+    "matplotlib", "scipy", "numpy", "pandas",
+    "IPython", "jupyter", "notebook",
+    "pytest", "unittest",
+    "boto3", "botocore", "s3transfer", "awscrt",
+    "setuptools", "pip", "wheel", "pkg_resources",
+    "test", "lib2to3", "ensurepip",
+    "django",
+    "PyQt5", "PyQt6", "PySide2", "PySide6",
+    "pygame", "PIL", "Pillow",
+]
+
+# Don't exclude GTK on Linux or pythonnet on Windows
+if IS_WINDOWS:
+    _excludes += ["gi", "gi.repository"]
+else:
+    _excludes += ["clr_loader", "pythonnet", "clr", "win32api", "win32com"]
 
 a = Analysis(
     [proj("run.py")],
@@ -231,29 +280,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[proj("runtime_hook.py")],
-    excludes=[
-        # ---- Large packages not needed ----
-        "tkinter", "_tkinter",
-        "matplotlib", "matplotlib.backends",
-        "scipy",
-        "numpy", "numpy.testing",
-        "pandas",
-        "IPython", "jupyter", "notebook",
-        "pytest", "unittest",
-        # ---- boto3/botocore (huge, ~80MB+ of JSON) ----
-        "boto3", "botocore", "s3transfer", "awscrt",
-        # ---- Dev/test tools ----
-        "setuptools", "pip", "wheel", "pkg_resources",
-        # ---- Unused stdlib ----
-        "test", "lib2to3", "ensurepip",
-        "django", "django.db", "django.core", "django.contrib", "django.template",
-        "PyQt5", "PyQt6", "PySide2", "PySide6",
-        "pygame",
-        "PIL", "Pillow",
-        "passlib.tests", "sqlalchemy.testing", "aiosqlite.tests",
-        "py", "pytz",
-        "pydoc_data", "doctest",
-    ],
+    excludes=_excludes,
     noarchive=False,
 )
 
@@ -265,20 +292,34 @@ pyz = PYZ(a.pure, a.zipped_data)
 exe = EXE(
     pyz,
     a.scripts,
-    [],                     # empty → onedir mode  (remove for onefile)
-    exclude_binaries=True,  # True  → onedir mode
+    [],
+    exclude_binaries=True,
     name="Breachwright",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,          # No console window (GUI app via pywebview)
-    # Uncomment and set icon path if available:
-    icon=proj("icon.ico"),
+    console=False,
+    icon=proj("icon.ico") if os.path.isfile(proj("icon.ico")) else None,
+)
+
+cli_exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name="BreachwrightCLI",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=True,
+    icon=proj("icon.ico") if os.path.isfile(proj("icon.ico")) else None,
 )
 
 coll = COLLECT(
     exe,
+    cli_exe,
     a.binaries,
     a.datas,
     strip=False,
