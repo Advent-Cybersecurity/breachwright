@@ -174,7 +174,7 @@ def main() -> int:
                 }
             )
             upload = client.post(
-                f"/api/engagements/{engagement_id}/upload-scan?scan_type=nuclei",
+                f"/api/engagements/{engagement_id}/upload-scan?scan_type=auto",
                 headers=headers,
                 files={
                     "file": (
@@ -185,6 +185,10 @@ def main() -> int:
                 },
             )
             upload.raise_for_status()
+            if upload.json().get("scan_type") != "nuclei" or not upload.json().get("auto_detected"):
+                raise RuntimeError(
+                    f"Packaged scan auto-detection failed: {upload.json()}"
+                )
             listed_scans = client.get(
                 f"/api/engagements/{engagement_id}/scans",
                 headers=headers,

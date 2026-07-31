@@ -22,7 +22,8 @@ Third-party AI services may charge for API usage. Local model support does not r
 
 - A refreshable engagement Overview with readiness, retest priorities, recent
   local activity, and direct access to the next assessment task
-- Scan ingestion for nmap, Nessus, Burp Suite, and structured tool output
+- Conservative local auto-detection and scan ingestion for Nmap, Nessus, Burp
+  Suite, Nuclei JSONL, SARIF, and raw evidence
 - A latest-snapshot asset and service inventory with new, persistent,
   regressed, and resolved observation context
 - Engagement-wide local search across findings, checklist items, assets,
