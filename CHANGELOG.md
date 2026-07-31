@@ -92,6 +92,10 @@
 - Added a downloadable support snapshot for community bug reports. It includes
   version, platform, integrity, storage, and provider-status metadata while
   excluding logs, credentials, local data paths, and workspace content.
+- Tool Runner AI analysis now submits only the selected job's scan copy instead
+  of implicitly including other engagement scans. Job history is bounded and
+  user-selectable, interrupted jobs are labeled, and deletion confirms process
+  termination while preserving linked Notebook and Scans copies.
 
 ## v2.2.0 (2026-07-31)
 

@@ -468,6 +468,27 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(linked_scan_job.json()["scan_upload_id"], job_scan.json()["id"])
         duplicate_job_scan = self.client.post(f"/api/jobs/{scan_job_id}/scan", headers=headers)
         self.assertEqual(duplicate_job_scan.status_code, 409, duplicate_job_scan.text)
+        limited_jobs = self.client.get(
+            f"/api/jobs?engagement_id={engagement_id}&limit=1",
+            headers=headers,
+        )
+        self.assertEqual(limited_jobs.status_code, 200, limited_jobs.text)
+        self.assertEqual(len(limited_jobs.json()), 1)
+        self.assertEqual(limited_jobs.json()[0]["id"], scan_job_id)
+        self.assertEqual(
+            self.client.get(
+                f"/api/jobs?engagement_id={engagement_id}&limit=0",
+                headers=headers,
+            ).status_code,
+            422,
+        )
+        self.assertEqual(
+            self.client.get(
+                f"/api/jobs?engagement_id={engagement_id}&limit=201",
+                headers=headers,
+            ).status_code,
+            422,
+        )
         self.assertEqual(
             self.client.delete(f"/api/jobs/{scan_job_id}", headers=headers).status_code,
             204,

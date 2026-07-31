@@ -67,6 +67,10 @@ preflight reports the selected count, combined size, configured provider, and
 redaction state before any provider is initialized. Keeping an upload in an
 engagement does not require sending it to the model.
 
+When **Analyze with AI** is selected for a completed Tool Runner job,
+Breachwright copies that job's structured result into Scans and submits only
+that scan ID. Other scans in the engagement are not included implicitly.
+
 Common API keys, bearer tokens, authorization headers, passwords, private-key
 blocks, and JWT-shaped values are redacted locally from AI context by default.
 The operator can change this behavior in Settings. Pattern-based redaction

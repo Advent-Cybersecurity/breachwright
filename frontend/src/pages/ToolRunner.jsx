@@ -18,6 +18,7 @@ const STATUS_STYLES = {
   complete: { color: '#22c55e', label: 'COMPLETE', icon: CheckCircle },
   failed: { color: '#ef4444', label: 'FAILED', icon: AlertCircle },
   stopped: { color: '#f97316', label: 'STOPPED', icon: Square },
+  interrupted: { color: '#f97316', label: 'INTERRUPTED', icon: AlertCircle },
   queued: { color: '#71717a', label: 'QUEUED', icon: Clock },
 };
 
@@ -137,7 +138,7 @@ function JobCard({ job, onStop, onDelete, onAnalyze, onAddToScans, onSaveNoteboo
                 <div style={{ flex: 1 }} />
                 <button onClick={onDelete} className="btn-ghost flex items-center gap-1 text-xs"
                   style={{ color: 'var(--accent-red)' }}>
-                  <Trash2 size={12} /> Delete
+                  <Trash2 size={12} /> Stop &amp; Delete
                 </button>
               </>
             ) : (
@@ -210,6 +211,7 @@ export default function ToolRunner() {
   const [customCmd, setCustomCmd] = useState('');
   const [editingCmd, setEditingCmd] = useState(false);
   const [running, setRunning] = useState(false);
+  const [jobLimit, setJobLimit] = useState(50);
 
   useEffect(() => {
     (async () => {
@@ -231,18 +233,18 @@ export default function ToolRunner() {
   // Load jobs when engagement changes
   useEffect(() => {
     if (!selectedEng) return;
-    jobsApi.list(selectedEng).then(setJobList).catch((e) => {
+    jobsApi.list(selectedEng, jobLimit).then(setJobList).catch((e) => {
       setToast({ message: `Could not load jobs: ${e.message}`, type: 'error' });
     });
-  }, [selectedEng]);
+  }, [selectedEng, jobLimit]);
 
   const refreshJobs = useCallback(async () => {
     if (!selectedEng) return;
     try {
-      const jobs = await jobsApi.list(selectedEng);
+      const jobs = await jobsApi.list(selectedEng, jobLimit);
       setJobList(jobs);
     } catch (e) {}
-  }, [selectedEng]);
+  }, [selectedEng, jobLimit]);
 
   // Build command from inputs
   const tabTools = TABS.find(t => t.id === activeTab)?.tools || ['nmap'];
@@ -314,11 +316,16 @@ export default function ToolRunner() {
     }
   };
 
-  const handleDelete = async (jobId) => {
+  const handleDelete = async (job) => {
+    const linkedCopies = [job.notebook_note_id && 'Notebook note', job.scan_upload_id && 'scan copy'].filter(Boolean);
+    const confirmation = job.status === 'running'
+      ? `Stop and delete this running ${job.tool.toUpperCase()} job? Its process will be terminated and its Tool Runner output removed.`
+      : `Delete this ${job.tool.toUpperCase()} job and its Tool Runner output?${linkedCopies.length ? ` The linked ${linkedCopies.join(' and ')} will be preserved.` : ''}`;
+    if (!window.confirm(confirmation)) return;
     try {
-      await jobsApi.delete(jobId);
-      setJobList(prev => prev.filter(j => j.id !== jobId));
-      setToast({ message: 'Job deleted', type: 'success' });
+      await jobsApi.delete(job.id);
+      setJobList(prev => prev.filter(item => item.id !== job.id));
+      setToast({ message: job.status === 'running' ? 'Running job stopped and deleted' : 'Job deleted', type: 'success' });
     } catch (err) {
       setToast({ message: err.message, type: 'error' });
     }
@@ -331,13 +338,15 @@ export default function ToolRunner() {
     setJobList(prev => prev.map(j => j.id === job.id ? { ...j, _analyzing: true } : j));
 
     try {
-      if (!job.scan_upload_id) {
+      let scanId = job.scan_upload_id;
+      if (!scanId) {
         const scan = await jobsApi.addToScans(job.id);
+        scanId = scan.id;
         setJobList(previous => previous.map(item => item.id === job.id
           ? { ...item, scan_upload_id: scan.id }
           : item));
       }
-      const result = await analysisApi.run(selectedEng);
+      const result = await analysisApi.run(selectedEng, [scanId]);
       const count = result?.drafts?.length || 0;
       setToast({
         message: `${count} AI proposal${count !== 1 ? 's' : ''} ready for review in "${engName}" > Scans`,
@@ -570,13 +579,19 @@ export default function ToolRunner() {
                 <span style={{ color: '#eab308' }}>{runningCount} running</span>
               )}
               <span className="themed-text-muted">{completeCount} completed</span>
+              <label className="flex items-center gap-2 themed-text-muted">
+                Show newest
+                <select className="input-field text-xs py-1" value={jobLimit} onChange={event => setJobLimit(Number(event.target.value))}>
+                  {[25, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}
+                </select>
+              </label>
             </div>
           </div>
 
           {jobList.map(job => (
             <JobCard key={job.id} job={job}
               onStop={() => handleStop(job.id)}
-              onDelete={() => handleDelete(job.id)}
+              onDelete={() => handleDelete(job)}
               onAnalyze={() => handleAnalyze(job)}
               onAddToScans={() => handleAddToScans(job)}
               onSaveNotebook={() => handleSaveToNotebook(job)}
