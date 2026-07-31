@@ -89,6 +89,9 @@
 - Settings now keeps corrupted backup archives visible with their verification
   failure, reports each verified archive's protected file count, and verifies
   stored or downloaded backups off the main request loop.
+- Added a downloadable support snapshot for community bug reports. It includes
+  version, platform, integrity, storage, and provider-status metadata while
+  excluding logs, credentials, local data paths, and workspace content.
 
 ## v2.2.0 (2026-07-31)
 

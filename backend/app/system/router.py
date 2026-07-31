@@ -10,7 +10,7 @@ import shutil
 import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -138,11 +138,7 @@ async def _stored_file_diagnostics(db: AsyncSession) -> dict:
     }
 
 
-@router.get("/diagnostics")
-async def diagnostics(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def _diagnostics_payload(db: AsyncSession) -> dict:
     data_path = Path(settings.data_dir).resolve()
     usage = shutil.disk_usage(data_path)
     database_type = (
@@ -182,6 +178,62 @@ async def diagnostics(
         "free_space": usage.free,
         "backup_count": len(list(backup_dir.glob("breachwright-backup-*.zip"))),
     }
+
+
+def _support_ai_summary() -> dict:
+    provider = settings.ai_provider.lower()
+    if provider in {"ollama", "vllm", "llamacpp", "lmstudio"}:
+        provider = "local"
+    configured = {
+        "anthropic": bool(settings.anthropic_api_key),
+        "openai": bool(settings.openai_api_key),
+        "azure": bool(settings.azure_openai_api_key),
+        "local": bool(settings.local_model_api_key),
+        "bedrock": None,
+    }.get(provider)
+    return {
+        "provider": provider,
+        "credential_configured": configured,
+        "sensitive_data_redaction": settings.ai_redact_sensitive_data,
+    }
+
+
+@router.get("/diagnostics")
+async def diagnostics(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _diagnostics_payload(db)
+
+
+@router.get("/support-snapshot")
+async def support_snapshot(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download bounded troubleshooting metadata without workspace content."""
+    diagnostic_data = await _diagnostics_payload(db)
+    diagnostic_data.pop("data_directory", None)
+    created_at = datetime.now(timezone.utc)
+    filename = created_at.strftime("breachwright-support-%Y%m%d-%H%M%S.json")
+    return JSONResponse(
+        {
+            "schema_version": 1,
+            "generated_at": created_at.isoformat(),
+            "diagnostics": diagnostic_data,
+            "ai": _support_ai_summary(),
+            "privacy": {
+                "contains_logs": False,
+                "contains_credentials": False,
+                "contains_workspace_content": False,
+                "contains_data_path": False,
+            },
+        },
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get("/backups")

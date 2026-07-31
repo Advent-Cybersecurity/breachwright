@@ -6,6 +6,9 @@ Thank you for helping improve Breachwright.
 
 - Search existing issues and discussions.
 - Use a minimal example that does not contain customer data or credentials.
+- Use **Settings > Support Snapshot** for bounded troubleshooting metadata.
+  It excludes logs, credentials, the data-directory path, and workspace content,
+  but review the downloaded JSON before attaching it to a public issue.
 - For vulnerabilities, follow `SECURITY.md` instead of opening a public issue.
 
 ## Development setup

@@ -230,6 +230,18 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(diagnostics.json()["stored_files"]["status"], "ok")
         self.assertEqual(diagnostics.json()["stored_files"]["missing"], 0)
         self.assertTrue(diagnostics.json()["stored_files"]["complete"])
+        support = self.client.get("/api/system/support-snapshot", headers=headers)
+        self.assertEqual(support.status_code, 200, support.text)
+        self.assertIn(
+            "attachment; filename=\"breachwright-support-",
+            support.headers["content-disposition"],
+        )
+        self.assertEqual(support.json()["schema_version"], 1)
+        self.assertNotIn("data_directory", support.json()["diagnostics"])
+        self.assertTrue(
+            all(value is False for value in support.json()["privacy"].values())
+        )
+        self.assertNotIn("model_url", support.json()["ai"])
 
         unsafe_logo = self.client.post(
             "/api/report-templates",
