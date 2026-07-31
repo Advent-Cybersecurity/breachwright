@@ -156,7 +156,7 @@ async def delete_engagement(
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
 
-    # Delete related data (findings, evidence, attack paths, reports, scans, AD data, jobs)
+    # Delete related data explicitly so cleanup is reliable on every supported database.
     from app.engagements.models import (
         Finding,
         EvidenceAttachment,
@@ -166,6 +166,7 @@ async def delete_engagement(
         AppSetting,
     )
     from app.ad.models import ADImport
+    from app.checklists.models import ChecklistItem
     from app.jobs.models import Job
     from app.jobs.runner import cleanup_job, stop_job
     from sqlalchemy import delete
@@ -185,6 +186,9 @@ async def delete_engagement(
     await db.execute(delete(Report).where(Report.engagement_id == engagement_id))
     await db.execute(delete(ScanUpload).where(ScanUpload.engagement_id == engagement_id))
     await db.execute(delete(ADImport).where(ADImport.engagement_id == engagement_id))
+    await db.execute(
+        delete(ChecklistItem).where(ChecklistItem.engagement_id == engagement_id)
+    )
     job_result = await db.execute(
         select(Job.id).where(Job.engagement_id == engagement_id)
     )

@@ -7,6 +7,38 @@ import getpass
 import os
 import sys
 
+from pydantic import ValidationError
+
+
+def _validate_setup_credentials(
+    email: str,
+    display_name: str,
+    password: str,
+) -> dict[str, str]:
+    from app.auth.models import UserRole
+    from app.auth.schemas import UserCreate
+
+    validated = UserCreate(
+        email=email,
+        display_name=display_name or None,
+        password=password,
+        role=UserRole.admin,
+    )
+    normalized_email = str(validated.email).strip().lower()
+    return {
+        "email": normalized_email,
+        "display_name": validated.display_name or normalized_email.split("@")[0],
+        "password": validated.password,
+    }
+
+
+def _credential_error_message(error: Exception) -> str:
+    errors = getattr(error, "errors", lambda: [])()
+    if errors:
+        message = str(errors[0].get("msg", "Invalid account details"))
+        return message.removeprefix("Value error, ")
+    return "Invalid account details"
+
 
 def run_migrations():
     """Run Alembic migrations to ensure tables exist."""
@@ -49,19 +81,16 @@ def _gui_setup_dialog():
         pw = pw_var.get()
         pw2 = pw2_var.get()
 
-        if not email:
-            messagebox.showerror("Error", "Email is required.")
-            return
         if pw != pw2:
             messagebox.showerror("Error", "Passwords do not match.")
             return
-        if len(pw) < 8:
-            messagebox.showerror("Error", "Password must be at least 8 characters.")
+        try:
+            credentials = _validate_setup_credentials(email, name, pw)
+        except ValidationError as error:
+            messagebox.showerror("Error", _credential_error_message(error))
             return
 
-        result["email"] = email
-        result["display_name"] = name
-        result["password"] = pw
+        result.update(credentials)
         root.destroy()
 
     root = tk.Tk()
@@ -110,7 +139,7 @@ async def create_admin():
     from sqlalchemy import select, func
     from app.db.session import async_session
     from app.auth.models import User, UserRole
-    from app.auth.service import hash_password
+    from app.auth.service import create_user
     async with async_session() as db:
         result = await db.execute(select(func.count(User.id)))
         count = result.scalar_one()
@@ -135,18 +164,24 @@ async def create_admin():
             print("  ╚══════════════════════════════════════════════╝")
             print()
             email = input("  Admin email: ").strip()
-            if not email:
-                print("  Email is required.")
-                sys.exit(1)
             display_name = input("  Display name: ").strip() or email.split("@")[0]
             password = getpass.getpass("  Password: ")
             confirm = getpass.getpass("  Confirm password: ")
             if password != confirm:
                 print("  Passwords do not match.")
                 sys.exit(1)
-            if len(password) < 8:
-                print("  Password must be at least 8 characters.")
+            try:
+                credentials = _validate_setup_credentials(
+                    email,
+                    display_name,
+                    password,
+                )
+            except ValidationError as error:
+                print(f"  {_credential_error_message(error)}")
                 sys.exit(1)
+            email = credentials["email"]
+            display_name = credentials["display_name"]
+            password = credentials["password"]
         else:
             creds = _gui_setup_dialog()
             if not creds:
@@ -155,13 +190,13 @@ async def create_admin():
             display_name = creds["display_name"]
             password = creds["password"]
 
-        user = User(
+        user = await create_user(
+            db,
             email=email,
-            password_hash=hash_password(password),
+            password=password,
             display_name=display_name,
             role=UserRole.admin,
         )
-        db.add(user)
         await db.commit()
 
         if _has_stdin():

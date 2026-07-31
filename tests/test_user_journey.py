@@ -184,6 +184,15 @@ class UserJourneyTests(unittest.TestCase):
             },
         )
         self.assertEqual(invalid_email.status_code, 422)
+        blank_display_name = self.client.post(
+            "/api/auth/setup",
+            json={
+                "email": "admin@example.com",
+                "password": "correct-horse-battery-staple",
+                "display_name": "   ",
+            },
+        )
+        self.assertEqual(blank_display_name.status_code, 422)
         oversized_bcrypt_password = self.client.post(
             "/api/auth/setup",
             json={

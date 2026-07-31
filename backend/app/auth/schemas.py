@@ -44,6 +44,16 @@ class UserCreate(BaseModel):
     def password_fits_bcrypt(cls, value: str) -> str:
         return validate_bcrypt_password(value)
 
+    @field_validator("display_name")
+    @classmethod
+    def display_name_is_not_blank(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Display name cannot be blank")
+        return cleaned
+
 
 class UserResponse(BaseModel):
     id: str
