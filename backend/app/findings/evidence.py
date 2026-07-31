@@ -265,6 +265,9 @@ async def delete_evidence(
     if att.file_path and os.path.exists(att.file_path):
         try:
             os.remove(att.file_path)
-        except Exception:
-            pass
+        except OSError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Evidence file could not be removed: {exc}",
+            ) from exc
     await db.delete(att)
