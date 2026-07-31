@@ -462,6 +462,74 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(spoofed_logo.status_code, 400)
 
+        valid_template = self.client.post(
+            "/api/report-templates",
+            headers=headers,
+            data={
+                "name": "Release Candidate Template",
+                "company_name": "Example Client",
+                "primary_color": "#112233",
+                "secondary_color": "#445566",
+                "header_text": "Authorized security assessment",
+                "footer_text": "Confidential",
+                "is_default": "true",
+            },
+            files={
+                "logo": (
+                    "brand.png",
+                    b"\x89PNG\r\n\x1a\nbreachwright-template",
+                    "image/png",
+                )
+            },
+        )
+        self.assertEqual(valid_template.status_code, 201, valid_template.text)
+        template_id = valid_template.json()["id"]
+        templates = self.client.get("/api/report-templates", headers=headers)
+        self.assertEqual(templates.status_code, 200, templates.text)
+        self.assertIn(
+            template_id,
+            {item["id"] for item in templates.json()},
+        )
+        template_logo_url = f"/api/report-templates/{template_id}/logo"
+        self.assertEqual(self.client.get(template_logo_url).status_code, 401)
+        template_logo = self.client.get(template_logo_url, headers=headers)
+        self.assertEqual(template_logo.status_code, 200, template_logo.text)
+        self.assertEqual(template_logo.headers["content-type"], "image/png")
+        updated_template = self.client.put(
+            f"/api/report-templates/{template_id}",
+            headers=headers,
+            data={
+                "name": "Updated Release Candidate Template",
+                "company_name": "Example Client",
+                "primary_color": "#223344",
+                "secondary_color": "#556677",
+                "header_text": "Updated assessment",
+                "footer_text": "Confidential",
+                "is_default": "true",
+            },
+            files={
+                "logo": (
+                    "brand.jpg",
+                    b"\xff\xd8\xffbreachwright-template",
+                    "image/jpeg",
+                )
+            },
+        )
+        self.assertEqual(updated_template.status_code, 200, updated_template.text)
+        updated_logo = self.client.get(template_logo_url, headers=headers)
+        self.assertEqual(updated_logo.status_code, 200, updated_logo.text)
+        self.assertEqual(updated_logo.headers["content-type"], "image/jpeg")
+        deleted_template = self.client.delete(
+            f"/api/report-templates/{template_id}",
+            headers=headers,
+        )
+        self.assertEqual(deleted_template.status_code, 204, deleted_template.text)
+        self.assertEqual(
+            self.client.get(template_logo_url, headers=headers).status_code,
+            404,
+        )
+        self.assertFalse((self.data_dir / "templates" / template_id).exists())
+
         invalid_engagement = self.client.post(
             "/api/engagements",
             headers=headers,
@@ -573,6 +641,23 @@ class UserJourneyTests(unittest.TestCase):
             401,
             revoked_viewer_session.text,
         )
+        revoked_viewer_refresh = self.client.post("/api/auth/refresh")
+        self.assertEqual(
+            revoked_viewer_refresh.status_code,
+            401,
+            revoked_viewer_refresh.text,
+        )
+        viewer_relogin = self.client.post(
+            "/api/auth/login",
+            json={
+                "email": "viewer@example.com",
+                "password": "viewer-test-password",
+            },
+        )
+        self.assertEqual(viewer_relogin.status_code, 200, viewer_relogin.text)
+        viewer_headers = {
+            "Authorization": f"Bearer {viewer_relogin.json()['access_token']}"
+        }
 
         job = self.client.post(
             "/api/jobs",
@@ -624,6 +709,19 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(len(uploaded_files), 1)
         self.assertEqual(uploaded_files[0].parent, upload_directory)
         self.assertFalse((self.data_dir / "outside.txt").exists())
+        scans = self.client.get(
+            f"/api/engagements/{engagement_id}/scans",
+            headers=headers,
+        )
+        self.assertEqual(scans.status_code, 200, scans.text)
+        self.assertEqual(len(scans.json()), 1)
+        self.assertEqual(scans.json()[0]["id"], scan_upload.json()["id"])
+        correlated = self.client.post(
+            f"/api/engagements/{engagement_id}/correlate",
+            headers=headers,
+        )
+        self.assertEqual(correlated.status_code, 200, correlated.text)
+        self.assertEqual(correlated.json()["stats"]["total_hosts"], 0)
 
         invalid_finding = self.client.post(
             f"/api/engagements/{engagement_id}/findings",
@@ -664,6 +762,57 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(checklist.status_code, 200, checklist.text)
         self.assertGreater(checklist.json()["items_created"], 0)
+        checklist_items = self.client.get(
+            f"/api/engagements/{engagement_id}/checklists",
+            headers=headers,
+        )
+        self.assertEqual(checklist_items.status_code, 200, checklist_items.text)
+        self.assertGreater(len(checklist_items.json()), 0)
+        checklist_item_id = checklist_items.json()[0]["id"]
+        viewer_checklist_update = self.client.put(
+            (
+                f"/api/engagements/{engagement_id}/checklists/"
+                f"{checklist_item_id}"
+            ),
+            headers=viewer_headers,
+            json={"status": "done"},
+        )
+        self.assertEqual(
+            viewer_checklist_update.status_code,
+            403,
+            viewer_checklist_update.text,
+        )
+        invalid_checklist_status = self.client.put(
+            (
+                f"/api/engagements/{engagement_id}/checklists/"
+                f"{checklist_item_id}"
+            ),
+            headers=headers,
+            json={"status": "unknown"},
+        )
+        self.assertEqual(
+            invalid_checklist_status.status_code,
+            400,
+            invalid_checklist_status.text,
+        )
+        updated_checklist = self.client.put(
+            (
+                f"/api/engagements/{engagement_id}/checklists/"
+                f"{checklist_item_id}"
+            ),
+            headers=headers,
+            json={
+                "status": "done",
+                "notes": "Validated during release testing",
+            },
+        )
+        self.assertEqual(updated_checklist.status_code, 200, updated_checklist.text)
+        checklist_progress = self.client.get(
+            f"/api/engagements/{engagement_id}/checklists/progress",
+            headers=headers,
+        )
+        self.assertEqual(checklist_progress.status_code, 200, checklist_progress.text)
+        self.assertEqual(checklist_progress.json()["ptes"]["done"], 1)
 
         sharphound_buffer = BytesIO()
         with ZipFile(
@@ -701,6 +850,26 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(ad_import.status_code, 200, ad_import.text)
         self.assertEqual(ad_import.json()["object_count"], 1)
+        ad_imports = self.client.get(
+            f"/api/engagements/{engagement_id}/ad/imports",
+            headers=headers,
+        )
+        self.assertEqual(ad_imports.status_code, 200, ad_imports.text)
+        self.assertEqual(len(ad_imports.json()), 1)
+        self.assertEqual(ad_imports.json()[0]["id"], ad_import.json()["id"])
+        ad_summary = self.client.get(
+            f"/api/engagements/{engagement_id}/ad/summary",
+            headers=headers,
+        )
+        self.assertEqual(ad_summary.status_code, 200, ad_summary.text)
+        self.assertTrue(ad_summary.json()["has_data"])
+        self.assertEqual(sum(ad_summary.json()["object_counts"].values()), 1)
+        ad_paths = self.client.get(
+            f"/api/engagements/{engagement_id}/ad/paths",
+            headers=headers,
+        )
+        self.assertEqual(ad_paths.status_code, 200, ad_paths.text)
+        self.assertEqual(ad_paths.json(), [])
 
         disguised_evidence = self.client.post(
             f"/api/engagements/{engagement_id}/findings/{finding_id}/evidence",
@@ -814,6 +983,18 @@ class UserJourneyTests(unittest.TestCase):
         )
         self.assertEqual(docx_download.status_code, 200)
         self.assertTrue(docx_download.content.startswith(b"PK"))
+        deleted_docx = self.client.delete(
+            f"/api/reports/{docx_report.json()['id']}",
+            headers=headers,
+        )
+        self.assertEqual(deleted_docx.status_code, 204, deleted_docx.text)
+        self.assertEqual(
+            self.client.get(
+                f"/api/reports/{docx_report.json()['id']}/download",
+                headers=headers,
+            ).status_code,
+            404,
+        )
 
         export = self.client.get(
             f"/api/engagements/{engagement_id}/export",
@@ -869,6 +1050,12 @@ class UserJourneyTests(unittest.TestCase):
         backup = self.client.post("/api/system/backups", headers=headers)
         self.assertEqual(backup.status_code, 201, backup.text)
         backup_name = backup.json()["filename"]
+        backup_list = self.client.get("/api/system/backups", headers=headers)
+        self.assertEqual(backup_list.status_code, 200, backup_list.text)
+        self.assertIn(
+            backup_name,
+            {item["filename"] for item in backup_list.json()},
+        )
         backup_download = self.client.get(
             f"/api/system/backups/{backup_name}",
             headers=headers,
