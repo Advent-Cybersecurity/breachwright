@@ -16,6 +16,8 @@ import httpx
 
 
 CURRENT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(CURRENT_ROOT / "backend"))
+from app.version import APP_VERSION
 
 
 def free_port() -> int:
@@ -194,7 +196,7 @@ def main() -> int:
         try:
             health = candidate_client.get("/api/health")
             health.raise_for_status()
-            if health.json().get("version") != "2.2.0":
+            if health.json().get("version") != APP_VERSION:
                 raise RuntimeError("Candidate version was not loaded")
             if candidate_client.get("/api/auth/login").status_code != 404:
                 raise RuntimeError("Candidate authentication routes are still exposed")
@@ -224,7 +226,7 @@ def main() -> int:
         finally:
             stop_application(candidate_process, candidate_client)
 
-        print("v2.0.0 to v2.2.0 upgrade smoke test passed")
+        print(f"v2.0.0 to v{APP_VERSION} upgrade smoke test passed")
         return 0
     finally:
         shutil.rmtree(temp_root, ignore_errors=True)

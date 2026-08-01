@@ -147,7 +147,10 @@ def include_distribution_files(bundle_dir: Path) -> None:
         if source.is_file():
             shutil.copy2(source, bundle_dir / name)
     bundled_docs = bundle_dir / "docs"
-    for document_name in ("DATA_SAFETY.md", "RELEASE_NOTES_2.2.0.md"):
+    for document_name in (
+        "DATA_SAFETY.md",
+        f"RELEASE_NOTES_{APP_VERSION}.md",
+    ):
         source = PROJECT_ROOT / "docs" / document_name
         if source.is_file():
             bundled_docs.mkdir(exist_ok=True)

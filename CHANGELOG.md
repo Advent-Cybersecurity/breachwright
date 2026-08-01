@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v2.3.0 (2026-08-01)
+
 ### Active assessment workspace
 
 - Added an engagement Overview with current finding, asset, retest,
