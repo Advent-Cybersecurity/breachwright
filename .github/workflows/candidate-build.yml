@@ -85,7 +85,7 @@ jobs:
         run: python scripts/verify_archive.py dist
       - name: Retain approved release archive
         if: github.event_name == 'workflow_dispatch' && inputs.retain_release_artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: breachwright-${{ runner.os }}-${{ github.sha }}
           path: dist/breachwright-*
