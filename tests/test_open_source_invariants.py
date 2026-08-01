@@ -82,9 +82,13 @@ class OpenSourceReleaseTests(unittest.TestCase):
 
     def test_launcher_rejects_an_unavailable_local_port(self):
         launcher = (ROOT / "run.py").read_text(encoding="utf-8")
+        packaged_smoke = (ROOT / "scripts" / "smoke_bundle.py").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("def ensure_port_available", launcher)
         self.assertIn("ensure_port_available(args.host, args.port)", launcher)
         self.assertIn("close the other application or choose", launcher)
+        self.assertIn("Packaged CLI did not reject an occupied local port", packaged_smoke)
 
     def test_local_workspace_has_no_account_or_token_surface(self):
         reports_router = (
