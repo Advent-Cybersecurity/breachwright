@@ -476,6 +476,32 @@ def main() -> int:
         cli = executable.with_name(cli_name)
         if not cli.is_file():
             raise RuntimeError(f"Packaged CLI not found: {cli}")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen()
+            occupied_port = listener.getsockname()[1]
+            occupied = subprocess.run(
+                [
+                    str(cli),
+                    "--headless",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(occupied_port),
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        occupied_output = f"{occupied.stdout}\n{occupied.stderr}"
+        if (
+            occupied.returncode == 0
+            or "The port is unavailable" not in occupied_output
+        ):
+            raise RuntimeError(
+                "Packaged CLI did not reject an occupied local port"
+            )
         version = subprocess.run(
             [str(cli), "--version"],
             env=env,
