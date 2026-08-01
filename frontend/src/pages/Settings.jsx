@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { system, appSettings } from '../api';
 import { useTheme } from '../theme';
 import { Toast, Spinner } from '../components/UI';
-import { AlertTriangle, Server, Sun, Moon, Palette, MessageSquare, RotateCcw, Bot, Save, Wifi, WifiOff, RefreshCw, DatabaseBackup, Download, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Server, Sun, Moon, Palette, MessageSquare, RotateCcw, Bot, Save, Wifi, WifiOff, RefreshCw, DatabaseBackup, Download, ShieldCheck, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
 
 function InfoRow({ label, value, mono = false }) {
   return (
@@ -30,6 +30,7 @@ export default function Settings() {
   const [provider, setProvider] = useState(null);
   const [providerForm, setProviderForm] = useState({});
   const [savingProvider, setSavingProvider] = useState(false);
+  const [showProviderAdvanced, setShowProviderAdvanced] = useState(false);
   const [localStatus, setLocalStatus] = useState(null);
   const [checkingLocal, setCheckingLocal] = useState(false);
   const [refreshingDiagnostics, setRefreshingDiagnostics] = useState(false);
@@ -76,6 +77,17 @@ export default function Settings() {
 
   if (loading) return <div className="flex items-center justify-center py-20"><Spinner style={{ color: 'var(--accent-red)' }} /></div>;
 
+  const selectedProvider = providerForm.ai_provider || 'anthropic';
+  const recommendedModels = provider?.recommended_models || {};
+  const selectedHostedModel = selectedProvider === 'anthropic'
+    ? providerForm.anthropic_model
+    : providerForm.openai_model;
+  const recommendedHostedModel = recommendedModels[selectedProvider];
+  const displayedHostedModel = selectedHostedModel || recommendedHostedModel;
+  const usingRecommendedHostedModel = Boolean(
+    recommendedHostedModel && displayedHostedModel === recommendedHostedModel,
+  );
+
   return (
     <div className="animate-fade-in max-w-2xl">
       <h1 className="text-xl font-semibold themed-text-primary mb-6">Settings</h1>
@@ -109,8 +121,11 @@ export default function Settings() {
             <div>
               <label htmlFor="ai-provider" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Provider</label>
               <select id="ai-provider" className="input-field text-sm" style={{ maxWidth: 250 }}
-                value={providerForm.ai_provider || 'anthropic'}
-                onChange={(e) => setProviderForm(prev => ({ ...prev, ai_provider: e.target.value }))}>
+                value={selectedProvider}
+                onChange={(e) => {
+                  setShowProviderAdvanced(false);
+                  setProviderForm(prev => ({ ...prev, ai_provider: e.target.value }));
+                }}>
                 <option value="anthropic">Anthropic (Claude)</option>
                 <option value="openai">OpenAI (GPT)</option>
                 <option value="azure">Azure OpenAI</option>
@@ -133,7 +148,7 @@ export default function Settings() {
                 aria-label="Redact common secrets before AI requests"
               />
             </div>
-            {(providerForm.ai_provider || 'anthropic') === 'anthropic' && (
+            {selectedProvider === 'anthropic' && (
               <>
                 <div>
                   <label htmlFor="anthropic-api-key" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
@@ -143,16 +158,15 @@ export default function Settings() {
                     placeholder={provider.has_anthropic_key ? 'Key is set (enter new to replace)' : 'sk-ant-api03-...'}
                     onChange={(e) => setProviderForm(prev => ({ ...prev, anthropic_api_key: e.target.value }))} />
                 </div>
-                <div>
-                  <label htmlFor="anthropic-model" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Model</label>
-                  <input id="anthropic-model" className="input-field text-sm font-mono"
-                    value={providerForm.anthropic_model || 'claude-sonnet-4-20250514'}
-                    onChange={(e) => setProviderForm(prev => ({ ...prev, anthropic_model: e.target.value }))}
-                    placeholder="Provider model identifier" />
+                <div className="px-4 py-3 rounded-lg" style={{ backgroundColor: 'var(--bg-700)' }}>
+                  <p className="text-sm themed-text-primary">
+                    {usingRecommendedHostedModel ? 'Recommended model selected automatically' : 'Custom model override active'}
+                  </p>
+                  <p className="text-xs font-mono themed-text-muted mt-1 break-all">{displayedHostedModel}</p>
                 </div>
               </>
             )}
-            {providerForm.ai_provider === 'openai' && (
+            {selectedProvider === 'openai' && (
               <>
                 <div>
                   <label htmlFor="openai-api-key" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
@@ -162,16 +176,15 @@ export default function Settings() {
                     placeholder={provider.has_openai_key ? 'Key is set (enter new to replace)' : 'sk-...'}
                     onChange={(e) => setProviderForm(prev => ({ ...prev, openai_api_key: e.target.value }))} />
                 </div>
-                <div>
-                  <label htmlFor="openai-model" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Model</label>
-                  <input id="openai-model" className="input-field text-sm font-mono"
-                    value={providerForm.openai_model || 'gpt-4o'}
-                    onChange={(e) => setProviderForm(prev => ({ ...prev, openai_model: e.target.value }))}
-                    placeholder="gpt-4o" />
+                <div className="px-4 py-3 rounded-lg" style={{ backgroundColor: 'var(--bg-700)' }}>
+                  <p className="text-sm themed-text-primary">
+                    {usingRecommendedHostedModel ? 'Recommended model selected automatically' : 'Custom model override active'}
+                  </p>
+                  <p className="text-xs font-mono themed-text-muted mt-1 break-all">{displayedHostedModel}</p>
                 </div>
               </>
             )}
-            {providerForm.ai_provider === 'azure' && (
+            {selectedProvider === 'azure' && (
               <>
                 <div>
                   <label htmlFor="azure-openai-key" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">
@@ -188,25 +201,16 @@ export default function Settings() {
                     onChange={(e) => setProviderForm(prev => ({ ...prev, azure_openai_endpoint: e.target.value }))}
                     placeholder="https://resource.openai.azure.com" />
                 </div>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="azure-openai-deployment" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Deployment</label>
-                    <input id="azure-openai-deployment" className="input-field text-sm font-mono"
-                      value={providerForm.azure_openai_deployment || ''}
-                      onChange={(e) => setProviderForm(prev => ({ ...prev, azure_openai_deployment: e.target.value }))}
-                      placeholder="Deployment name" />
-                  </div>
-                  <div>
-                    <label htmlFor="azure-openai-version" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">API version</label>
-                    <input id="azure-openai-version" className="input-field text-sm font-mono"
-                      value={providerForm.azure_openai_api_version || ''}
-                      onChange={(e) => setProviderForm(prev => ({ ...prev, azure_openai_api_version: e.target.value }))}
-                      placeholder="Azure API version" />
-                  </div>
+                <div>
+                  <label htmlFor="azure-openai-deployment" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Deployment</label>
+                  <input id="azure-openai-deployment" className="input-field text-sm font-mono"
+                    value={providerForm.azure_openai_deployment || ''}
+                    onChange={(e) => setProviderForm(prev => ({ ...prev, azure_openai_deployment: e.target.value }))}
+                    placeholder="Deployment name" />
                 </div>
               </>
             )}
-            {providerForm.ai_provider === 'bedrock' && (
+            {selectedProvider === 'bedrock' && (
               <>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
@@ -229,7 +233,7 @@ export default function Settings() {
                 </div>
               </>
             )}
-            {providerForm.ai_provider === 'local' && (
+            {selectedProvider === 'local' && (
               <>
                 {/* Status indicator */}
                 <div className="flex items-center gap-3 px-4 py-3 rounded-lg"
@@ -291,9 +295,9 @@ export default function Settings() {
                     </select>
                   ) : (
                     <input id="local-model-name" className="input-field text-sm font-mono"
-                      value={providerForm.local_model_name || 'llama3.1'}
+                      value={providerForm.local_model_name || ''}
                       onChange={(e) => setProviderForm(prev => ({ ...prev, local_model_name: e.target.value }))}
-                      placeholder="llama3.1" />
+                      placeholder="Installed model name" />
                   )}
                   <p className="text-xs themed-text-muted mt-1">
                     {localStatus?.online ? 'Models detected from server' : 'Connect to server to see available models, or type a name'}
@@ -322,13 +326,60 @@ export default function Settings() {
 
                 <div className="px-4 py-3 rounded-lg" style={{ backgroundColor: 'var(--bg-700)' }}>
                   <p className="text-xs themed-text-muted">
-                    <strong className="themed-text-secondary">Quick start:</strong> Install <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--accent-red)' }}>Ollama</a>, then run:
+                    <strong className="themed-text-secondary">Quick start:</strong> Install <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--accent-red)' }}>Ollama</a>, start its server, install a model, then click Test and select it above.
                   </p>
-                  <code className="block text-xs font-mono mt-1.5 px-2 py-1 rounded" style={{ backgroundColor: 'var(--bg-800)', color: '#10b981' }}>
-                    ollama serve && ollama pull llama3.1
-                  </code>
                 </div>
               </>
+            )}
+            {['anthropic', 'openai', 'azure'].includes(selectedProvider) && (
+              <div className="rounded-lg" style={{ border: '1px solid var(--border)' }}>
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
+                  onClick={() => setShowProviderAdvanced(current => !current)}
+                  aria-expanded={showProviderAdvanced}
+                >
+                  <span className="flex items-center gap-2 text-sm themed-text-secondary">
+                    <SlidersHorizontal size={14} />
+                    Advanced model settings
+                  </span>
+                  {showProviderAdvanced ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                {showProviderAdvanced && (
+                  <div className="px-4 pb-4">
+                    {selectedProvider === 'anthropic' && (
+                      <div>
+                        <label htmlFor="anthropic-model" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">Anthropic model override</label>
+                        <input id="anthropic-model" className="input-field text-sm font-mono"
+                          value={providerForm.anthropic_model ?? ''}
+                          onChange={(e) => setProviderForm(prev => ({ ...prev, anthropic_model: e.target.value }))}
+                          placeholder={recommendedModels.anthropic || 'Provider model identifier'} />
+                        <p className="text-xs themed-text-muted mt-1">Clear this field to return to Breachwright's recommended model.</p>
+                      </div>
+                    )}
+                    {selectedProvider === 'openai' && (
+                      <div>
+                        <label htmlFor="openai-model" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">OpenAI model override</label>
+                        <input id="openai-model" className="input-field text-sm font-mono"
+                          value={providerForm.openai_model ?? ''}
+                          onChange={(e) => setProviderForm(prev => ({ ...prev, openai_model: e.target.value }))}
+                          placeholder={recommendedModels.openai || 'Provider model identifier'} />
+                        <p className="text-xs themed-text-muted mt-1">Clear this field to return to Breachwright's recommended model.</p>
+                      </div>
+                    )}
+                    {selectedProvider === 'azure' && (
+                      <div>
+                        <label htmlFor="azure-openai-version" className="block text-xs font-mono themed-text-muted uppercase tracking-wider mb-1.5">API mode</label>
+                        <input id="azure-openai-version" className="input-field text-sm font-mono"
+                          value={providerForm.azure_openai_api_version || 'v1'}
+                          onChange={(e) => setProviderForm(prev => ({ ...prev, azure_openai_api_version: e.target.value }))}
+                          placeholder="v1" />
+                        <p className="text-xs themed-text-muted mt-1">Use v1 unless an existing Azure deployment specifically requires a dated legacy API version.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
             <div className="flex justify-end">
               <button onClick={async () => {
@@ -338,12 +389,12 @@ export default function Settings() {
                   if (providerForm.ai_provider) update.ai_provider = providerForm.ai_provider;
                   if (providerForm.anthropic_api_key) update.anthropic_api_key = providerForm.anthropic_api_key;
                   if (providerForm.openai_api_key) update.openai_api_key = providerForm.openai_api_key;
-                  if (providerForm.anthropic_model) update.anthropic_model = providerForm.anthropic_model;
-                  if (providerForm.openai_model) update.openai_model = providerForm.openai_model;
+                  if (showProviderAdvanced && selectedProvider === 'anthropic') update.anthropic_model = providerForm.anthropic_model || '';
+                  if (showProviderAdvanced && selectedProvider === 'openai') update.openai_model = providerForm.openai_model || '';
                   if (providerForm.azure_openai_api_key) update.azure_openai_api_key = providerForm.azure_openai_api_key;
                   if (providerForm.azure_openai_endpoint) update.azure_openai_endpoint = providerForm.azure_openai_endpoint;
                   if (providerForm.azure_openai_deployment) update.azure_openai_deployment = providerForm.azure_openai_deployment;
-                  if (providerForm.azure_openai_api_version) update.azure_openai_api_version = providerForm.azure_openai_api_version;
+                  if (showProviderAdvanced && selectedProvider === 'azure') update.azure_openai_api_version = providerForm.azure_openai_api_version || 'v1';
                   if (providerForm.aws_region) update.aws_region = providerForm.aws_region;
                   if (providerForm.bedrock_model_id) update.bedrock_model_id = providerForm.bedrock_model_id;
                   if (providerForm.local_model_url) update.local_model_url = providerForm.local_model_url;

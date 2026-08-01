@@ -255,6 +255,13 @@ class UserJourneyTests(unittest.TestCase):
         provider_settings = self.client.get("/api/settings/provider", headers=headers)
         self.assertEqual(provider_settings.status_code, 200, provider_settings.text)
         self.assertTrue(provider_settings.json()["ai_redact_sensitive_data"])
+        self.assertEqual(
+            provider_settings.json()["recommended_models"],
+            {
+                "anthropic": "claude-sonnet-5",
+                "openai": "gpt-5.6-terra",
+            },
+        )
         self.assertIn("bedrock_model_id", provider_settings.json())
         self.assertIn("azure_openai_api_version", provider_settings.json())
 

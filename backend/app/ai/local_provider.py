@@ -38,11 +38,16 @@ class LocalProvider(AIProvider):
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
-        model: str = "llama3.1",
+        model: str = "",
         api_key: str = "not-needed",
         timeout: int = 120,
         api_format: str = "openai",
     ):
+        if not model:
+            raise ValueError(
+                "LOCAL_MODEL_NAME is required when AI_PROVIDER=local. "
+                "Connect to the server and select one of its installed models."
+            )
         # Normalize base URL
         self._base_url = base_url.rstrip("/")
         self._model = model

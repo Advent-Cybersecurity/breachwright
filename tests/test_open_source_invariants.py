@@ -662,6 +662,35 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertNotIn('"boto3"', excludes)
         self.assertNotIn('"botocore"', excludes)
 
+    def test_ai_setup_is_api_key_first_with_bounded_advanced_overrides(self):
+        settings = (ROOT / "frontend" / "src" / "pages" / "Settings.jsx").read_text(
+            encoding="utf-8"
+        )
+        defaults = (ROOT / "backend" / "app" / "ai" / "model_defaults.py").read_text(
+            encoding="utf-8"
+        )
+        anthropic_adapter = (ROOT / "backend" / "app" / "ai" / "anthropic.py").read_text(
+            encoding="utf-8"
+        )
+        openai_adapter = (ROOT / "backend" / "app" / "ai" / "openai_provider.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("Recommended model selected automatically", settings)
+        self.assertIn("Advanced model settings", settings)
+        self.assertIn("Clear this field to return", settings)
+        self.assertNotIn("claude-sonnet-4-20250514", settings)
+        self.assertNotIn("gpt-4o", settings)
+        self.assertNotIn("llama3.1", settings)
+        self.assertIn('RECOMMENDED_ANTHROPIC_MODEL = "claude-sonnet-5"', defaults)
+        self.assertIn('RECOMMENDED_OPENAI_MODEL = "gpt-5.6-terra"', defaults)
+        self.assertIn('if not uses_claude_5(self._model):', anthropic_adapter)
+        self.assertIn('reasoning={"effort": "none"}', openai_adapter)
+        smoke = (ROOT / "scripts" / "smoke_bundle.py").read_text(encoding="utf-8")
+        launcher = (ROOT / "run.py").read_text(encoding="utf-8")
+        self.assertIn('"BEDROCK_MODEL_ID": "packaging-test-model"', smoke)
+        self.assertIn("AI provider not ready:", launcher)
+
     def test_release_automation_has_zero_cost_compute_guardrails(self):
         workflows = {
             path.name: path.read_text(encoding="utf-8")

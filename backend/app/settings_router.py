@@ -137,11 +137,13 @@ async def get_provider_config(
     current_user: User = Depends(get_current_user),
 ):
     from app.config import settings as cfg
+    from app.ai.model_defaults import RECOMMENDED_MODELS
     provider_name = cfg.ai_provider.lower()
     if provider_name in {"ollama", "vllm", "llamacpp", "lmstudio"}:
         provider_name = "local"
     return {
         "ai_provider": provider_name,
+        "recommended_models": RECOMMENDED_MODELS,
         "anthropic_model": cfg.anthropic_model,
         "openai_model": cfg.openai_model,
         "has_anthropic_key": bool(cfg.anthropic_api_key),
