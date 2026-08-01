@@ -1,5 +1,9 @@
 # Breachwright
 
+[![CI](https://github.com/Advent-Cybersecurity/breachwright/actions/workflows/ci.yml/badge.svg)](https://github.com/Advent-Cybersecurity/breachwright/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/Advent-Cybersecurity/breachwright)](https://github.com/Advent-Cybersecurity/breachwright/releases/latest)
+[![License](https://img.shields.io/github/license/Advent-Cybersecurity/breachwright)](LICENSE)
+
 Breachwright is open-source penetration test management software for organizing assessment evidence, turning scanner output into reviewable findings, mapping attack paths, and producing client-ready reports.
 
 Created by [Advent Cybersecurity](https://www.adventcybersecurity.com) and released as open source for the security community.
@@ -257,7 +261,8 @@ control and transport-security layer.
 - Reports: python-docx and Markdown
 - Packaging: PyInstaller for Windows and Linux
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system map and data flows. The current dependency advisory assessment is in [docs/DEPENDENCY_SECURITY.md](docs/DEPENDENCY_SECURITY.md).
+See the [documentation index](docs/README.md) for architecture, data safety,
+AI trust, dependency security, and release records.
 
 ## Contributing
 
