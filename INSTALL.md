@@ -9,6 +9,11 @@ Download the archive for your operating system from the GitHub release. Check
 its SHA-256 value against the checksum published with that release before
 running it.
 
+The Windows executables are not currently Authenticode-signed. Windows may
+show an unknown-publisher or Microsoft Defender SmartScreen warning. Download
+only from the official Advent Cybersecurity GitHub release, verify the
+published SHA-256 checksum, and do not run the files if the checksum differs.
+
 Windows PowerShell:
 
 ```powershell
@@ -27,10 +32,11 @@ directory and installer files.
 ## Windows x64
 
 1. Extract the ZIP.
-2. Open the extracted `Breachwright` folder.
-3. Run `install-windows.bat`.
-4. Start Breachwright from the desktop or Start menu shortcut.
-5. Breachwright opens directly into your local workspace.
+2. Verify the ZIP checksum before running any included file.
+3. Open the extracted `Breachwright` folder.
+4. Run `install-windows.bat`.
+5. Start Breachwright from the desktop or Start menu shortcut.
+6. Breachwright opens directly into your local workspace.
 
 Application files are installed in `%LOCALAPPDATA%\Breachwright`. Assessment
 data, reports, evidence, backups, configuration, and logs are stored separately

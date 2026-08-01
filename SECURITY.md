@@ -31,9 +31,11 @@ The API also accepts only `127.0.0.1` and `localhost` in the HTTP `Host` header.
 This reduces DNS-rebinding exposure and intentionally does not support
 publishing the local workspace behind a custom hostname.
 
-The Tool Runner executes operator-supplied shell commands with the
-operating-system permissions of the Breachwright process. Anyone with access
-to the local operating-system account can use Breachwright and its Tool
-Runner. Protect that account, use disk encryption and appropriate file
-permissions, do not expose the application to a network, and review each
-command before execution.
+The Tool Runner launches only the selected supported executable with parsed
+arguments. It does not invoke a command shell and rejects shell-control
+operators. The selected tool still runs with the operating-system permissions
+of the Breachwright process, so review its target and arguments before
+execution. Anyone with access to the local operating-system account can use
+Breachwright and its Tool Runner. Protect that account, use disk encryption
+and appropriate file permissions, and do not expose the application to a
+network.

@@ -54,6 +54,35 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("Created by [Advent Cybersecurity]", readme)
         self.assertIn("Apache License 2.0", readme)
 
+    def test_public_onboarding_matches_the_2_3_release(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
+        security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+        bug_report = (
+            ROOT / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("does not invoke a command shell", security)
+        self.assertNotIn("executes operator-supplied shell commands", security)
+        for source in (readme, install):
+            self.assertIn("not currently Authenticode-signed", source)
+            self.assertIn("SHA-256", source)
+        self.assertIn("placeholder: 2.3.0", bug_report)
+        self.assertIn("## Quick start", readme)
+
+        assets = {
+            "docs/images/breachwright-workspace.png": b"\x89PNG\r\n\x1a\n",
+            "docs/images/breachwright-engagement-overview.png": b"\x89PNG\r\n\x1a\n",
+            "docs/images/breachwright-evidence-notebook.png": b"\x89PNG\r\n\x1a\n",
+            "docs/media/breachwright-quick-tour.gif": b"GIF89a",
+        }
+        for relative_path, signature in assets.items():
+            path = ROOT / relative_path
+            self.assertIn(relative_path, readme)
+            self.assertTrue(path.is_file(), relative_path)
+            self.assertGreater(path.stat().st_size, 20_000, relative_path)
+            self.assertEqual(signature, path.read_bytes()[: len(signature)])
+
     def test_local_service_rejects_untrusted_host_headers(self):
         main = (ROOT / "backend" / "app" / "main.py").read_text(
             encoding="utf-8"

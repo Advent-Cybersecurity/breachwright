@@ -84,6 +84,11 @@ Verify the published SHA-256 checksum before installation. macOS remains a
 source installation until it has the same repeatable native build, desktop,
 installation, and signing gates.
 
+The Windows executables are not currently Authenticode-signed. Windows may
+show an unknown-publisher or Microsoft Defender SmartScreen warning. Download
+only from the official Advent Cybersecurity GitHub release and do not run the
+files if their SHA-256 values differ from `SHA256SUMS.txt`.
+
 Back up the workspace from **Settings > Data Safety** before upgrading. Read
 `INSTALL.md`, `docs/DATA_SAFETY.md`, and `SECURITY.md` for platform paths,
 restore procedures, and the single-owner local security model.
