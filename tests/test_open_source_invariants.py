@@ -80,6 +80,12 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("Node.js 20 or newer", readme)
         self.assertIn("Node 20 source-install baseline", dependency_review)
 
+    def test_launcher_rejects_an_unavailable_local_port(self):
+        launcher = (ROOT / "run.py").read_text(encoding="utf-8")
+        self.assertIn("def ensure_port_available", launcher)
+        self.assertIn("ensure_port_available(args.host, args.port)", launcher)
+        self.assertIn("close the other application or choose", launcher)
+
     def test_local_workspace_has_no_account_or_token_surface(self):
         reports_router = (
             ROOT / "backend" / "app" / "reports" / "router.py"

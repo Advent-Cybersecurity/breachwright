@@ -156,6 +156,9 @@
   20 or newer, matching the pinned frontend runtime instead of failing later
   with a package engine error. Source installation also uses the committed npm
   lockfile for repeatable dependency resolution.
+- Desktop and headless launch now reject an occupied or invalid local port
+  immediately with guidance to close the conflicting application or choose a
+  free port, instead of waiting or opening an unrelated local service.
 
 ## v2.2.0 (2026-07-31)
 
