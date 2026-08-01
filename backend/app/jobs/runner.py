@@ -113,7 +113,7 @@ def read_job_artifact(output_dir: str) -> Optional[tuple[str, str]]:
 
 def start_job(job_id: str, command: str, tool: str, output_dir: str) -> Optional[int]:
     os.makedirs(output_dir, exist_ok=True)
-    logger.info("Starting %s job %s", tool, job_id)
+    logger.info("Starting Tool Runner subprocess")
     try:
         process = subprocess.Popen(
             command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -125,8 +125,8 @@ def start_job(job_id: str, command: str, tool: str, output_dir: str) -> Optional
                 else 0
             ),
         )
-    except Exception as e:
-        logger.error("Failed to start job %s: %s", job_id, e)
+    except Exception as exc:
+        logger.error("Failed to start Tool Runner job with %s", type(exc).__name__)
         return None
 
     with _lock:
@@ -156,8 +156,8 @@ def _capture_output(job_id: str, process: subprocess.Popen):
                 if job_id in _running_jobs:
                     _append_job_output(_running_jobs[job_id], line)
         process.wait()
-    except Exception as e:
-        logger.error("Error capturing output for job %s: %s", job_id, e)
+    except Exception as exc:
+        logger.error("Error capturing Tool Runner output with %s", type(exc).__name__)
     finally:
         with _lock:
             if job_id in _running_jobs:
@@ -226,8 +226,8 @@ def stop_job(job_id: str) -> bool:
         return False
     try:
         _terminate_process_tree(process)
-    except Exception as e:
-        logger.error("Error stopping job %s: %s", job_id, e)
+    except Exception as exc:
+        logger.error("Error stopping Tool Runner job with %s", type(exc).__name__)
         return False
     with _lock:
         if job_id in _running_jobs:
@@ -316,8 +316,11 @@ def flush_all_to_db_sync():
 
             db.commit()
             logger.info("Job flush complete")
-    except Exception as e:
-        logger.error("Failed to flush jobs on shutdown: %s", e)
+    except Exception as exc:
+        logger.error(
+            "Failed to flush jobs on shutdown with %s",
+            type(exc).__name__,
+        )
     finally:
         engine.dispose()
         for job_id in jobs_to_flush:

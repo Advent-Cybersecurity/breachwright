@@ -31,6 +31,7 @@ from app.findings.evidence import (
 )
 from app.engagements.schemas import FindingCreate, FindingResponse
 from app.findings.history import record_history, snapshot as finding_snapshot
+from app.safety import app_data_directory
 
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}/notebook", tags=["evidence_notebook"])
@@ -289,8 +290,13 @@ async def delete_note(
     await _require_unlinked_note(db, engagement_id, note_id)
     await db.execute(delete(EvidenceNoteAttachment).where(EvidenceNoteAttachment.note_id == note_id))
     await db.delete(note)
-    note_dir = os.path.join(settings.data_dir, "notebook", engagement_id, note_id)
-    if os.path.isdir(note_dir):
+    note_dir = app_data_directory(
+        settings.data_dir,
+        "notebook",
+        note.engagement_id,
+        note.id,
+    )
+    if note_dir.is_dir():
         shutil.rmtree(note_dir, ignore_errors=True)
 
 
@@ -302,7 +308,7 @@ async def upload_attachment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_editor),
 ):
-    await _require_note(db, engagement_id, note_id)
+    note = await _require_note(db, engagement_id, note_id)
     await _require_unlinked_note(db, engagement_id, note_id)
     content_type = _resolved_content_type(file.filename, file.content_type)
     if not content_type:
@@ -314,16 +320,21 @@ async def upload_attachment(
     if not _matches_declared_type(content_type, content):
         raise HTTPException(status_code=415, detail="Evidence content does not match its declared file type")
 
-    note_dir = os.path.join(settings.data_dir, "notebook", engagement_id, note_id)
-    os.makedirs(note_dir, exist_ok=True)
+    note_dir = app_data_directory(
+        settings.data_dir,
+        "notebook",
+        note.engagement_id,
+        note.id,
+    )
+    note_dir.mkdir(parents=True, exist_ok=True)
     display_name = _safe_display_name(file.filename, "evidence")
-    file_path = os.path.join(note_dir, f"{uuid.uuid4().hex}{CANONICAL_EXTENSIONS[content_type]}")
-    with open(file_path, "wb") as stored:
+    file_path = note_dir / f"{uuid.uuid4().hex}{CANONICAL_EXTENSIONS[content_type]}"
+    with file_path.open("wb") as stored:
         stored.write(content)
     attachment = EvidenceNoteAttachment(
         note_id=note_id,
         filename=display_name,
-        file_path=file_path,
+        file_path=str(file_path),
         content_type=content_type,
         file_size=len(content),
         uploaded_by=current_user.id,

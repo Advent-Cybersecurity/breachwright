@@ -10,6 +10,41 @@ SENSITIVE_FIELD_NAMES = (
     "refresh[_-]?token|session[_-]?token|private[_-]?key"
 )
 
+SENSITIVE_HEADER_NAMES = (
+    "authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key|"
+    "x-auth-token"
+)
+PRIVATE_KEY_MARKERS = tuple(
+    (
+        f"-----BEGIN {key_type}PRIVATE KEY-----",
+        f"-----END {key_type}PRIVATE KEY-----",
+    )
+    for key_type in ("", "RSA ", "EC ", "OPENSSH ")
+)
+
+
+def _redact_private_keys(content: str) -> str:
+    pieces = []
+    cursor = 0
+    while cursor < len(content):
+        starts = [
+            (content.find(begin, cursor), begin, end)
+            for begin, end in PRIVATE_KEY_MARKERS
+        ]
+        starts = [item for item in starts if item[0] >= 0]
+        if not starts:
+            pieces.append(content[cursor:])
+            break
+        start, begin, end = min(starts, key=lambda item: item[0])
+        end_at = content.find(end, start + len(begin))
+        if end_at < 0:
+            pieces.append(content[cursor:])
+            break
+        pieces.append(content[cursor:start])
+        pieces.append("[REDACTED_PRIVATE_KEY]")
+        cursor = end_at + len(end)
+    return "".join(pieces)
+
 
 class AIContextTooLarge(ValueError):
     """Raised before provider use when a generative request is oversized."""
@@ -18,8 +53,7 @@ class AIContextTooLarge(ValueError):
 def redact_sensitive_text(content: str) -> str:
     """Conservatively remove common credentials while preserving security context."""
     redacted = re.sub(
-        r"(?im)(^|[ \t\"'])(\s*(?:authorization|proxy-authorization|cookie|"
-        r"set-cookie|x-api-key|api-key|x-auth-token)\s*:\s*)[^\r\n]+",
+        rf"(?im)(^|[ \t\"'])((?:{SENSITIVE_HEADER_NAMES})[ \t]*:[ \t]*)[^\r\n]*",
         r"\1\2[REDACTED]",
         content,
     )
@@ -48,14 +82,7 @@ def redact_sensitive_text(content: str) -> str:
         "[REDACTED_JWT]",
         redacted,
     )
-    redacted = re.sub(
-        r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.*?"
-        r"-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
-        "[REDACTED_PRIVATE_KEY]",
-        redacted,
-        flags=re.DOTALL,
-    )
-    return redacted
+    return _redact_private_keys(redacted)
 
 
 def build_bounded_untrusted_context(

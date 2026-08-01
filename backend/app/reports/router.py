@@ -22,6 +22,7 @@ from app.ai.context import (
 from app.ai.errors import AI_PROVIDER_FAILURE_MESSAGE
 from app.config import settings
 from app.reports.content import build_report_content
+from app.safety import app_data_directory, canonical_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -213,8 +214,8 @@ async def generate_report(
     report_content = report_content.replace("\u2014", "-")
 
     # Save report
-    report_dir = os.path.join(settings.data_dir, "reports", engagement_id)
-    os.makedirs(report_dir, exist_ok=True)
+    report_dir = app_data_directory(settings.data_dir, "reports", engagement.id)
+    report_dir.mkdir(parents=True, exist_ok=True)
 
     report = Report(
         engagement_id=engagement_id,
@@ -225,11 +226,12 @@ async def generate_report(
     )
     db.add(report)
     await db.flush()
+    report_key = canonical_uuid(report.id)
 
     if format == "docx":
         from app.reports.docx_generator import generate_docx_report
 
-        file_path = os.path.join(report_dir, f"report-{report.id}.docx")
+        file_path = report_dir / f"report-{report_key}.docx"
         try:
             await asyncio.to_thread(
                 generate_docx_report,
@@ -240,23 +242,23 @@ async def generate_report(
                 file_path,
                 template=template,
             )
-        except Exception as e:
-            logger.error("DOCX generation error: %s", e)
+        except Exception as exc:
+            logger.error("DOCX generation failed with %s", type(exc).__name__)
             # Fall back to markdown
-            file_path = os.path.join(report_dir, f"report-{report.id}.md")
-            with open(file_path, "w", encoding="utf-8") as f:
+            file_path = report_dir / f"report-{report_key}.md"
+            with file_path.open("w", encoding="utf-8") as f:
                 f.write(report_content)
             report.format = "md"
             report.template_used = None
     else:
-        file_path = os.path.join(report_dir, f"report-{report.id}.md")
-        with open(file_path, "w", encoding="utf-8") as f:
+        file_path = report_dir / f"report-{report_key}.md"
+        with file_path.open("w", encoding="utf-8") as f:
             f.write(report_content)
 
-    report.file_path = file_path
+    report.file_path = str(file_path)
     await db.flush()
 
-    logger.info("Generated %s report %s for engagement %s", format, report.id, engagement_id)
+    logger.info("Generated local report")
     return ReportResponse.model_validate(report)
 
 

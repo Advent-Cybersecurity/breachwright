@@ -32,6 +32,7 @@ from app.correlation.structured_parsers import parse_structured
 from app.correlation.engine import correlate, to_ai_prompt
 from app.findings.history import diff, record_history, snapshot
 from app.config import settings
+from app.safety import app_data_directory
 
 logger = logging.getLogger(__name__)
 
@@ -390,17 +391,18 @@ async def upload_scan(
 ):
     # Verify engagement exists
     result = await db.execute(select(Engagement).where(Engagement.id == engagement_id))
-    if not result.scalar_one_or_none():
+    engagement = result.scalar_one_or_none()
+    if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
     if scan_type not in ALLOWED_SCAN_TYPES | {"auto"}:
         raise HTTPException(status_code=400, detail="Unsupported scan type")
 
     # Save file
-    upload_dir = os.path.join(settings.data_dir, "uploads", engagement_id)
-    os.makedirs(upload_dir, exist_ok=True)
+    upload_dir = app_data_directory(settings.data_dir, "uploads", engagement.id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
     display_name = _safe_upload_name(file.filename, "scan.txt")
     extension = _safe_upload_extension(display_name)
-    file_path = os.path.join(upload_dir, f"{uuid.uuid4().hex}{extension}")
+    file_path = upload_dir / f"{uuid.uuid4().hex}{extension}"
     content = await file.read(MAX_SCAN_SIZE + 1)
     if len(content) > MAX_SCAN_SIZE:
         raise HTTPException(status_code=413, detail="Scan file too large (max 50MB)")
@@ -409,13 +411,13 @@ async def upload_scan(
         if scan_type == "auto"
         else scan_type
     )
-    with open(file_path, "wb") as f:
+    with file_path.open("wb") as f:
         f.write(content)
 
     scan = ScanUpload(
         engagement_id=engagement_id,
         filename=display_name,
-        file_path=file_path,
+        file_path=str(file_path),
         scan_type=resolved_scan_type,
         uploaded_by=current_user.id,
     )
@@ -428,7 +430,7 @@ async def upload_scan(
         try:
             os.remove(file_path)
         except OSError:
-            logger.warning("Could not remove failed scan upload %s", file_path)
+            logger.warning("Could not remove failed scan upload")
         raise
 
     return {
@@ -518,7 +520,10 @@ async def analyze_scans(
         except HTTPException:
             raise
         except Exception as exc:
-            logger.warning("Could not read scan file %s: %s", scan.file_path, exc)
+            logger.warning(
+                "Could not read stored scan file with %s",
+                type(exc).__name__,
+            )
 
     if not by_tool and not text_fallbacks:
         raise HTTPException(status_code=400, detail="Could not read any scan files")
@@ -836,7 +841,10 @@ async def _accept_draft(
         engagement = engagement_result.scalar_one()
         await index_finding(db, finding, engagement)
     except Exception as exc:
-        logger.warning("Knowledge base indexing failed after AI draft review: %s", exc)
+        logger.warning(
+            "Knowledge base indexing failed after AI draft review with %s",
+            type(exc).__name__,
+        )
     return finding
 
 

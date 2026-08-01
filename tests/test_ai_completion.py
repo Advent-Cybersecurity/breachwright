@@ -172,6 +172,11 @@ class AICompletionTests(unittest.IsolatedAsyncioTestCase):
 
     def test_common_credentials_are_redacted_without_removing_security_context(self):
         jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop"
+        private_key = (
+            "-----BEGIN PRIVATE KEY-----\n"
+            "private-material\n"
+            "-----END PRIVATE KEY-----"
+        )
         source = (
             "POST /admin?token=top-secret HTTP/1.1\n"
             "Host: app.example.test\n"
@@ -179,14 +184,25 @@ class AICompletionTests(unittest.IsolatedAsyncioTestCase):
             "Cookie: session=top-secret\n"
             'Body: {"password":"hunter2","note":"SQL injection evidence"}\n'
             f"JWT: {jwt}\n"
-            "AWS: AKIAIOSFODNN7EXAMPLE"
+            "AWS: AKIAIOSFODNN7EXAMPLE\n"
+            f"Key: {private_key}"
         )
         redacted = redact_sensitive_text(source)
-        for secret in ("top-secret", "hunter2", jwt, "AKIAIOSFODNN7EXAMPLE"):
+        for secret in (
+            "top-secret",
+            "hunter2",
+            jwt,
+            "AKIAIOSFODNN7EXAMPLE",
+            "private-material",
+        ):
             self.assertNotIn(secret, redacted)
         self.assertIn("app.example.test", redacted)
         self.assertIn("SQL injection evidence", redacted)
         self.assertIn("[REDACTED_JWT]", redacted)
+        self.assertIn("[REDACTED_PRIVATE_KEY]", redacted)
+
+        repeated = "Authorization: " + ("\t " * 50_000) + "secret"
+        self.assertNotIn("secret", redact_sensitive_text(repeated))
 
         unchanged = build_bounded_untrusted_context(
             "untrusted_test_data",
