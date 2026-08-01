@@ -56,11 +56,13 @@ limits, or feature gates.
 - Stored report, attachment, and scan deletion preserves the database record
   when the underlying file cannot be removed, allowing a retry.
 - Tool Runner presets are reconstructed from validated server inputs and reject
-  shell-control injection. Custom shell commands remain explicit and require
-  confirmation.
+  shell-control injection. Custom mode launches only the selected supported
+  tool directly, without a command shell, and requires confirmation.
 - App-owned file paths canonicalize record UUIDs and remain contained beneath
   the configured data directory. Operational logs omit user-controlled paths
   and labels.
+- Packaged Tool Runner processes start independently from Breachwright's
+  PyInstaller runtime so third-party scanner startup remains isolated.
 - Credential redaction handles headers and private-key blocks without
   backtracking-prone searches over assessment data.
 - Active Directory imports use bounded ZIP reads, deterministic dataset

@@ -9,6 +9,7 @@ import signal
 import subprocess
 import threading
 import logging
+import shlex
 import shutil
 from collections import deque
 from datetime import datetime, timezone
@@ -21,6 +22,7 @@ _lock = threading.Lock()
 MAX_JOB_OUTPUT = 500_000
 TRUNCATION_NOTICE = "[Earlier output truncated]\n"
 ARTIFACT_FILENAMES = ("output.xml", "output.jsonl", "output.txt")
+SHELL_CONTROL_TOKENS = {"|", "||", "&", "&&", ";", "<", ">", ">>"}
 
 TOOL_PRESETS = {
     "nmap": {
@@ -35,7 +37,7 @@ TOOL_PRESETS = {
     },
     "httpx": {
         "default": {"name": "HTTP Probe", "description": "Probe discovered hosts for web services", "cmd": "httpx -l {input_file} -silent -title -status-code -tech-detect -o {output_file}"},
-        "from_target": {"name": "HTTP Probe (single target)", "description": "Probe a single target", "cmd": "echo {target} | httpx -silent -title -status-code -tech-detect -o {output_file}"},
+        "from_target": {"name": "HTTP Probe (single target)", "description": "Probe a single target", "cmd": "httpx -u {target} -silent -title -status-code -tech-detect -o {output_file}"},
     },
     "gowitness": {
         "default": {"name": "Web Screenshots", "description": "Screenshot discovered web services", "cmd": "gowitness file -f {input_file} --screenshot-path {output_dir}"},
@@ -111,13 +113,55 @@ def read_job_artifact(output_dir: str) -> Optional[tuple[str, str]]:
     return None
 
 
-def start_job(job_id: str, command: str, tool: str, output_dir: str) -> Optional[int]:
+def build_command_arguments(tool: str, command: str) -> list[str]:
+    """Build a shell-free command line for one supported Tool Runner binary."""
+    if tool == "nmap":
+        executable = "nmap"
+    elif tool == "subfinder":
+        executable = "subfinder"
+    elif tool == "httpx":
+        executable = "httpx"
+    elif tool == "gowitness":
+        executable = "gowitness"
+    elif tool == "nikto":
+        executable = "nikto"
+    elif tool == "feroxbuster":
+        executable = "feroxbuster"
+    elif tool == "nuclei":
+        executable = "nuclei"
+    else:
+        raise ValueError("Unsupported Tool Runner executable")
+
+    try:
+        supplied = shlex.split(command, posix=True)
+    except ValueError as exc:
+        raise ValueError("Command quoting is invalid") from exc
+    if not supplied:
+        raise ValueError("Command cannot be empty")
+    supplied_executable = os.path.basename(supplied[0]).casefold()
+    if supplied_executable not in {executable, f"{executable}.exe"}:
+        raise ValueError(f"Custom commands must run {executable} directly")
+    if any(token in SHELL_CONTROL_TOKENS for token in supplied[1:]):
+        raise ValueError("Shell operators are not supported")
+    return [executable, *supplied[1:]]
+
+
+def start_job(
+    job_id: str,
+    arguments: list[str],
+    tool: str,
+    output_dir: str,
+) -> Optional[int]:
     os.makedirs(output_dir, exist_ok=True)
     logger.info("Starting Tool Runner subprocess")
+    child_environment = os.environ.copy()
+    # A scanner launched from a PyInstaller build must start as an independent
+    # process instead of inheriting the parent bootloader's runtime state.
+    child_environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     try:
         process = subprocess.Popen(
-            command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1, cwd=output_dir,
+            arguments, shell=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, cwd=output_dir, env=child_environment,
             preexec_fn=os.setsid if os.name != "nt" else None,
             creationflags=(
                 subprocess.CREATE_NEW_PROCESS_GROUP
@@ -136,7 +180,8 @@ def start_job(job_id: str, command: str, tool: str, output_dir: str) -> Optional
             "output_length": 0,
             "output_truncated": False,
             "tool": tool,
-            "command": command, "started_at": datetime.now(timezone.utc),
+            "command": subprocess.list2cmdline(arguments),
+            "started_at": datetime.now(timezone.utc),
             "output_dir": output_dir,
         }
 

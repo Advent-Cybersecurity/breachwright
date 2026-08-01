@@ -263,8 +263,8 @@ async def index_engagement(db: AsyncSession, engagement_id: str) -> dict:
             new_entries += 1
 
     logger.info(
-        "Indexed engagement %s: %d findings → %d new, %d existing entries",
-        engagement_id, len(findings), new_entries, existing_entries,
+        "Indexed %d findings: %d new and %d existing entries",
+        len(findings), new_entries, existing_entries,
     )
 
     return {

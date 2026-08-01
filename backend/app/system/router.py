@@ -52,6 +52,20 @@ def _backup_metadata(path: Path) -> dict:
     }
 
 
+def _stored_backup_path(filename: str) -> Path | None:
+    """Resolve a requested backup only from app-enumerated stored archives."""
+    if Path(filename).name != filename or not filename.endswith(".zip"):
+        return None
+    backup_root = (Path(settings.data_dir) / "backups").resolve()
+    for candidate in backup_root.glob("breachwright-backup-*.zip"):
+        if candidate.name != filename or candidate.is_symlink():
+            continue
+        resolved = candidate.resolve()
+        if resolved.parent == backup_root and resolved.is_file():
+            return resolved
+    return None
+
+
 def _list_backup_metadata(backup_dir: Path) -> list[dict]:
     """Verify stored backups without blocking the application's request loop."""
     def modified_time(path: Path) -> float:
@@ -255,11 +269,8 @@ async def download_backup(
     filename: str,
     admin: User = Depends(require_admin),
 ):
-    if Path(filename).name != filename or not filename.endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Invalid backup filename")
-    backup_path = (Path(settings.data_dir) / "backups" / filename).resolve()
-    expected_parent = (Path(settings.data_dir) / "backups").resolve()
-    if backup_path.parent != expected_parent or not backup_path.is_file():
+    backup_path = _stored_backup_path(filename)
+    if backup_path is None:
         raise HTTPException(status_code=404, detail="Backup not found")
     try:
         await asyncio.to_thread(validate_backup, backup_path)
@@ -267,7 +278,7 @@ async def download_backup(
         raise HTTPException(status_code=409, detail=f"Backup is invalid: {exc}") from exc
     return FileResponse(
         backup_path,
-        filename=filename,
+        filename=backup_path.name,
         media_type="application/zip",
         headers={"X-Content-Type-Options": "nosniff"},
     )
@@ -278,15 +289,8 @@ async def delete_backup(
     filename: str,
     admin: User = Depends(require_admin),
 ):
-    if (
-        Path(filename).name != filename
-        or not filename.startswith("breachwright-backup-")
-        or not filename.endswith(".zip")
-    ):
-        raise HTTPException(status_code=400, detail="Invalid backup filename")
-    backup_path = (Path(settings.data_dir) / "backups" / filename).resolve()
-    expected_parent = (Path(settings.data_dir) / "backups").resolve()
-    if backup_path.parent != expected_parent or not backup_path.is_file():
+    backup_path = _stored_backup_path(filename)
+    if backup_path is None:
         raise HTTPException(status_code=404, detail="Backup not found")
     try:
         backup_path.unlink()

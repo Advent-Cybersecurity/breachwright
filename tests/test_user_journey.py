@@ -41,6 +41,14 @@ class UserJourneyTests(unittest.TestCase):
         cls.log_path = cls.temp_root / "server.log"
         cls.log_file = cls.log_path.open("w+", encoding="utf-8")
 
+        # Provide a deterministic, cross-platform stand-in for nmap so the
+        # journey exercises direct argument execution without requiring a
+        # third-party scanner on the CI runner.
+        cls.test_bin = cls.temp_root / "bin"
+        cls.test_bin.mkdir()
+        executable_name = "nmap.exe" if os.name == "nt" else "nmap"
+        shutil.copy2(sys._base_executable, cls.test_bin / executable_name)
+
         env = os.environ.copy()
         env.update(
             {
@@ -54,6 +62,9 @@ class UserJourneyTests(unittest.TestCase):
                 "DESKTOP": "false",
                 "PYTHONPATH": str(BACKEND),
                 "PYTHONUNBUFFERED": "1",
+                "PATH": os.pathsep.join(
+                    [str(cls.test_bin), str(Path(sys._base_executable).parent), env["PATH"]]
+                ),
             }
         )
         cls.process = subprocess.Popen(
@@ -422,8 +433,8 @@ class UserJourneyTests(unittest.TestCase):
             headers=headers,
             json={
                 "engagement_id": engagement_id,
-                "tool": "custom",
-                "command": "echo breachwright-job-ok",
+                "tool": "nmap",
+                "command": 'nmap -c "print(\'breachwright-job-ok\')"',
             },
         )
         self.assertEqual(job.status_code, 201, job.text)
@@ -448,7 +459,7 @@ class UserJourneyTests(unittest.TestCase):
         self.assertEqual(saved_job_note.status_code, 201, saved_job_note.text)
         self.assertEqual(saved_job_note.json()["source_type"], "tool_runner_job")
         self.assertEqual(saved_job_note.json()["source_id"], job_id)
-        self.assertIn("echo breachwright-job-ok", saved_job_note.json()["body"])
+        self.assertIn("nmap -c", saved_job_note.json()["body"])
         self.assertIn("breachwright-job-ok", saved_job_note.json()["body"])
         job_with_note = self.client.get(f"/api/jobs/{job_id}", headers=headers)
         self.assertEqual(
@@ -466,7 +477,10 @@ class UserJourneyTests(unittest.TestCase):
             json={
                 "engagement_id": engagement_id,
                 "tool": "nmap",
-                "command": "echo Nmap scan report for 192.0.2.10 > output.txt",
+                "command": (
+                    'nmap -c "from pathlib import Path; '
+                    "Path('output.txt').write_text('Nmap scan report for 192.0.2.10')\""
+                ),
             },
         )
         self.assertEqual(scan_job.status_code, 201, scan_job.text)

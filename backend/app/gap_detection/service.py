@@ -371,8 +371,7 @@ async def analyze_gaps(
     }
 
     logger.info(
-        "Gap analysis for %s against %s: score=%s, gaps=%d (H:%d M:%d L:%d)",
-        engagement_id, methodology_key,
+        "Gap analysis complete: score=%s, gaps=%d (H:%d M:%d L:%d)",
         result.get("coverage_score", "?"),
         len(gaps),
         result["gap_severity_breakdown"]["high"],

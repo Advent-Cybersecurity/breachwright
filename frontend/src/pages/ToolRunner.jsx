@@ -307,8 +307,8 @@ export default function ToolRunner() {
     if (!canRun) return;
     if (editingCmd) {
       const confirmed = window.confirm(
-        'Run this custom command with your local shell? Review it carefully. ' +
-        'The command and its output will be stored in this engagement history.',
+        'Run this direct tool command? Review its arguments carefully. ' +
+        'Shell operators are not supported. The command and its output will be stored in this engagement history.',
       );
       if (!confirmed) return;
     }
@@ -538,7 +538,7 @@ export default function ToolRunner() {
             />
           ))}
           <PresetCard
-            preset={{ name: 'Custom', description: 'Enter your own command' }}
+            preset={{ name: 'Custom', description: 'Enter direct tool arguments' }}
             selected={editingCmd}
             onClick={() => { setEditingCmd(true); setCustomCmd(command); }}
           />
@@ -596,7 +596,7 @@ export default function ToolRunner() {
             </label>
             <input id="tool-custom-command" className="input-field font-mono text-sm" value={customCmd}
               onChange={(e) => setCustomCmd(e.target.value)}
-              placeholder="Enter full command..." />
+              placeholder={`Enter a direct ${currentTool} command...`} />
           </div>
         ) : (
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-md mb-4 font-mono text-xs"

@@ -215,16 +215,8 @@ if os.path.isdir(FRONTEND_DIR):
         # Unknown API routes must not look like successful empty responses.
         if full_path == "api" or full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="API route not found")
-        frontend_root = os.path.realpath(FRONTEND_DIR)
-        file_path = os.path.realpath(os.path.join(frontend_root, full_path))
-        try:
-            within_frontend = (
-                os.path.commonpath([frontend_root, file_path]) == frontend_root
-            )
-        except ValueError:
-            within_frontend = False
-        if within_frontend and os.path.isfile(file_path):
-            return FileResponse(file_path)
+        # Vite assets are served by the fixed /assets mount above. Every other
+        # non-API path is a client-side route and receives the fixed SPA shell.
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 else:
     @app.get("/")

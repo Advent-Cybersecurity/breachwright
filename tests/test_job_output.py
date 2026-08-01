@@ -20,6 +20,7 @@ from app.jobs.runner import (
     MAX_JOB_OUTPUT,
     TRUNCATION_NOTICE,
     _append_job_output,
+    build_command_arguments,
     _render_job_output,
     read_job_artifact,
     TOOL_PRESETS,
@@ -130,6 +131,24 @@ class JobOutputTests(unittest.TestCase):
             command="nmap --version",
         ))
         self.assertEqual(command, "nmap --version")
+
+    def test_commands_launch_supported_tools_without_a_shell(self):
+        self.assertEqual(
+            build_command_arguments("nmap", 'nmap -sV "example.test"'),
+            ["nmap", "-sV", "example.test"],
+        )
+        self.assertEqual(
+            build_command_arguments("nmap", "C:/tools/nmap.exe --version"),
+            ["nmap", "--version"],
+        )
+        for command in (
+            "powershell -Command whoami",
+            "nmap example.test | whoami",
+            "nmap example.test && whoami",
+            "nmap example.test > output.txt",
+        ):
+            with self.subTest(command=command), self.assertRaises(ValueError):
+                build_command_arguments("nmap", command)
 
 
 if __name__ == "__main__":
