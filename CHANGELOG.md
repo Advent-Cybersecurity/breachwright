@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Simplified Anthropic and OpenAI setup to an API-key-first workflow with a
+  visible tested recommendation and optional Advanced model override.
+- Updated the recommended hosted models, added Claude 5 request compatibility,
+  moved current GPT-5 requests to the Responses API, and retained legacy model
+  support for explicit overrides.
+- Updated Azure OpenAI to the stable v1 API by default while preserving dated
+  API compatibility, and removed stale Bedrock and local model assumptions.
+
 ## v2.3.0 (2026-08-01)
 
 ### Active assessment workspace

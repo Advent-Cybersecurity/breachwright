@@ -190,6 +190,13 @@ You can configure Anthropic, OpenAI, Azure OpenAI, AWS Bedrock, or a compatible
 local endpoint in the Settings page. Start with [.env.example](.env.example)
 when configuring through an environment file instead.
 
+Anthropic and OpenAI use a tested Breachwright recommendation by default, so
+their normal setup requires only the provider and API key. Settings shows the
+effective model, and an Advanced section allows an exact model override. Azure
+OpenAI still requires its endpoint and deployment name. AWS Bedrock requires a
+region plus a model or inference profile available to that AWS account. Local
+servers require their URL and an installed model, which Settings can detect.
+
 Common credential patterns are redacted locally before AI context is sent by
 default. The setting is visible and can be changed by the operator. Redaction
 reduces accidental disclosure but is not a guarantee that every sensitive

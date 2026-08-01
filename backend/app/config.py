@@ -3,8 +3,18 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from typing import Optional
+
+from app.ai.model_defaults import (
+    AZURE_OPENAI_V1,
+    LEGACY_ANTHROPIC_DEFAULTS,
+    LEGACY_AZURE_API_DEFAULTS,
+    LEGACY_OPENAI_DEFAULTS,
+    RECOMMENDED_ANTHROPIC_MODEL,
+    RECOMMENDED_OPENAI_MODEL,
+)
 
 
 def get_data_dir() -> str:
@@ -90,25 +100,25 @@ class Settings(BaseSettings):
 
     # Anthropic
     anthropic_api_key: Optional[str] = None
-    anthropic_model: str = "claude-sonnet-4-20250514"
+    anthropic_model: str = RECOMMENDED_ANTHROPIC_MODEL
 
     # OpenAI
     openai_api_key: Optional[str] = None
-    openai_model: str = "gpt-4o"
+    openai_model: str = RECOMMENDED_OPENAI_MODEL
 
     # Azure OpenAI
     azure_openai_api_key: Optional[str] = None
     azure_openai_endpoint: Optional[str] = None
     azure_openai_deployment: Optional[str] = None
-    azure_openai_api_version: str = "2024-02-15-preview"
+    azure_openai_api_version: str = AZURE_OPENAI_V1
 
     # Bedrock
     aws_region: str = "us-east-1"
-    bedrock_model_id: str = "us.anthropic.claude-sonnet-4-20250514-v1:0"
+    bedrock_model_id: str = ""
 
     # Local / Self-Hosted Model
     local_model_url: str = "http://localhost:11434"
-    local_model_name: str = "llama3.1"
+    local_model_name: str = ""
     local_model_api_key: Optional[str] = None
     local_model_timeout: int = 120
 
@@ -117,6 +127,30 @@ class Settings(BaseSettings):
 
     # Desktop mode
     desktop: bool = True
+
+    @field_validator("anthropic_model", mode="before")
+    @classmethod
+    def use_recommended_anthropic_model(cls, value):
+        normalized = str(value or "").strip()
+        if not normalized or normalized in LEGACY_ANTHROPIC_DEFAULTS:
+            return RECOMMENDED_ANTHROPIC_MODEL
+        return normalized
+
+    @field_validator("openai_model", mode="before")
+    @classmethod
+    def use_recommended_openai_model(cls, value):
+        normalized = str(value or "").strip()
+        if not normalized or normalized in LEGACY_OPENAI_DEFAULTS:
+            return RECOMMENDED_OPENAI_MODEL
+        return normalized
+
+    @field_validator("azure_openai_api_version", mode="before")
+    @classmethod
+    def use_current_azure_api(cls, value):
+        normalized = str(value or "").strip()
+        if not normalized or normalized in LEGACY_AZURE_API_DEFAULTS:
+            return AZURE_OPENAI_V1
+        return normalized
 
     model_config = {
         "env_file": ENV_FILE,

@@ -183,7 +183,11 @@ def main():
     if args.provider_status:
         from app.ai.provider import get_provider
 
-        provider = get_provider()
+        try:
+            provider = get_provider()
+        except (RuntimeError, ValueError) as exc:
+            print(f"AI provider not ready: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
         print(f"AI provider ready: {provider.name()}")
         return
 

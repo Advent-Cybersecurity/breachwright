@@ -519,6 +519,7 @@ def main() -> int:
                 "AWS_ACCESS_KEY_ID": "packaging-test",
                 "AWS_SECRET_ACCESS_KEY": "packaging-test",
                 "AWS_EC2_METADATA_DISABLED": "true",
+                "BEDROCK_MODEL_ID": "packaging-test-model",
             }
         )
         provider_status = subprocess.run(

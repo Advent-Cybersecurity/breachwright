@@ -1,5 +1,6 @@
 import json
 import logging
+from app.ai.model_defaults import uses_claude_5
 from app.ai.provider import AIProvider
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,12 @@ class BedrockProvider(AIProvider):
     in the environment (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, or IAM role).
     """
 
-    def __init__(self, region: str = "us-east-1", model_id: str = "us.anthropic.claude-sonnet-4-20250514-v1:0"):
+    def __init__(self, region: str = "us-east-1", model_id: str = ""):
+        if not model_id:
+            raise ValueError(
+                "BEDROCK_MODEL_ID is required when AI_PROVIDER=bedrock. "
+                "Choose a model or inference profile available in your AWS region."
+            )
         try:
             import boto3
         except ImportError:
@@ -33,6 +39,9 @@ class BedrockProvider(AIProvider):
     ) -> str:
         import asyncio
         loop = asyncio.get_event_loop()
+        inference_config = {"maxTokens": max_tokens}
+        if not uses_claude_5(self._model_id):
+            inference_config["temperature"] = temperature
         response = await loop.run_in_executor(
             None,
             lambda: self._client.converse(
@@ -44,10 +53,7 @@ class BedrockProvider(AIProvider):
                         "content": [{"text": user_message}],
                     }
                 ],
-                inferenceConfig={
-                    "maxTokens": max_tokens,
-                    "temperature": temperature,
-                },
+                inferenceConfig=inference_config,
             ),
         )
         return response["output"]["message"]["content"][0]["text"]
