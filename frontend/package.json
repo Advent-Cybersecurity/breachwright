@@ -10,7 +10,7 @@
     "audit:release": "node scripts/audit-release.mjs"
   },
   "dependencies": {
-    "react": "^18.3.1",
+    "react": "^19.2.8",
     "react-dom": "^18.3.1",
     "react-router-dom": "7.18.2",
     "recharts": "^3.0.0",
@@ -18,7 +18,7 @@
     "lucide-react": "^0.460.0"
   },
   "devDependencies": {
-    "@types/react": "^18.3.12",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
