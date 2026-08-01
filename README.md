@@ -33,12 +33,6 @@ Third-party AI services may charge for API usage. Local model support does not r
 6. Use the engagement Overview to track coverage, retests, readiness, and
    reporting.
 
-### 60-second product tour
-
-The preview below is an animated GIF.
-
-![A six-step tour of the Breachwright local assessment workflow](docs/media/breachwright-quick-tour.gif)
-
 ### See the workflow
 
 ![Breachwright local workspace with assessment status and recent activity](docs/images/breachwright-workspace.png)

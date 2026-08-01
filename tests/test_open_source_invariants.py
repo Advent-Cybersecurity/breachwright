@@ -69,15 +69,14 @@ class OpenSourceReleaseTests(unittest.TestCase):
             self.assertIn("SHA-256", source)
         self.assertIn("placeholder: 2.3.0", bug_report)
         self.assertIn("## Quick start", readme)
-        self.assertIn("### 60-second product tour", readme)
-        self.assertNotIn("Watch the 60-second Breachwright quick tour", readme)
+        self.assertNotIn("60-second product tour", readme)
+        self.assertNotIn("breachwright-quick-tour.gif", readme)
         self.assertNotIn("breachwright-quick-tour.mp4", readme)
 
         assets = {
             "docs/images/breachwright-workspace.png": b"\x89PNG\r\n\x1a\n",
             "docs/images/breachwright-engagement-overview.png": b"\x89PNG\r\n\x1a\n",
             "docs/images/breachwright-evidence-notebook.png": b"\x89PNG\r\n\x1a\n",
-            "docs/media/breachwright-quick-tour.gif": b"GIF89a",
         }
         for relative_path, signature in assets.items():
             path = ROOT / relative_path
