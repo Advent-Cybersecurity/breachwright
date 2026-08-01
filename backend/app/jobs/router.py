@@ -20,6 +20,7 @@ from app.jobs.runner import (
     get_presets, TOOL_PRESETS, read_job_artifact,
 )
 from app.config import settings
+from app.safety import app_data_directory
 
 logger = logging.getLogger(__name__)
 
@@ -165,10 +166,11 @@ async def create_job(
     await db.flush()
 
     # Output directory for this job
-    output_dir = os.path.join(settings.data_dir, "jobs", job.id)
+    output_dir = app_data_directory(settings.data_dir, "jobs", job.id)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Start the subprocess
-    pid = start_job(job.id, command, body.tool, output_dir)
+    pid = start_job(job.id, command, body.tool, str(output_dir))
     if pid is None:
         job.status = "failed"
         job.output = "Failed to start process"
@@ -179,7 +181,7 @@ async def create_job(
     job.pid = pid
     await db.flush()
 
-    logger.info("Started %s job %s (PID %d)", body.tool, job.id, pid)
+    logger.info("Started Tool Runner job (PID %d)", pid)
 
     return _job_to_response(job)
 
@@ -390,8 +392,9 @@ async def save_job_to_scans(
     )).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=409, detail="This Tool Runner job is already present in Scans")
-    output_dir = os.path.join(settings.data_dir, "jobs", job.id)
-    artifact = read_job_artifact(output_dir)
+    output_dir = app_data_directory(settings.data_dir, "jobs", job.id)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    artifact = read_job_artifact(str(output_dir))
     if not artifact:
         raise HTTPException(
             status_code=422,
@@ -400,15 +403,19 @@ async def save_job_to_scans(
     artifact_name, artifact_text = artifact
     extension = ".jsonl" if job.tool == "nuclei" else ".txt"
     display_name = f"{job.tool}-job-{job.id[:8]}{extension}"
-    upload_dir = os.path.join(settings.data_dir, "uploads", job.engagement_id)
-    os.makedirs(upload_dir, exist_ok=True)
-    stored_path = os.path.join(upload_dir, f"{uuid.uuid4().hex}{extension}")
-    with open(stored_path, "wb") as stored:
+    upload_dir = app_data_directory(
+        settings.data_dir,
+        "uploads",
+        job.engagement_id,
+    )
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    stored_path = upload_dir / f"{uuid.uuid4().hex}{extension}"
+    with stored_path.open("wb") as stored:
         stored.write(artifact_text.encode("utf-8"))
     scan = ScanUpload(
         engagement_id=job.engagement_id,
         filename=display_name,
-        file_path=stored_path,
+        file_path=str(stored_path),
         scan_type=job.tool,
         source_job_id=job.id,
         uploaded_by=current_user.id,
@@ -421,7 +428,7 @@ async def save_job_to_scans(
         try:
             os.remove(stored_path)
         except OSError:
-            logger.warning("Could not remove failed Tool Runner scan copy %s", stored_path)
+            logger.warning("Could not remove failed Tool Runner scan copy")
         raise HTTPException(
             status_code=409,
             detail="This Tool Runner job is already present in Scans",
@@ -430,7 +437,7 @@ async def save_job_to_scans(
         try:
             os.remove(stored_path)
         except OSError:
-            logger.warning("Could not remove failed Tool Runner scan copy %s", stored_path)
+            logger.warning("Could not remove failed Tool Runner scan copy")
         raise
     return {
         "id": scan.id,
@@ -452,7 +459,7 @@ async def stop_running_job(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    success = stop_job(job_id)
+    success = stop_job(job.id)
     if not success:
         # Process might already be dead - just mark it
         if job.status == "running":
@@ -463,7 +470,7 @@ async def stop_running_job(
         raise HTTPException(status_code=400, detail="Job is not running")
 
     # Flush final state
-    final = cleanup_job(job_id)
+    final = cleanup_job(job.id)
     if final:
         job.output = final["output"]
         job.status = "stopped"
@@ -486,13 +493,13 @@ async def delete_job(
         raise HTTPException(status_code=404, detail="Job not found")
 
     # Stop if running
-    stop_job(job_id)
-    cleanup_job(job_id)
+    stop_job(job.id)
+    cleanup_job(job.id)
 
     # Clean up output directory before removing the record so a failed cleanup
     # remains visible and can be retried by the operator.
-    output_dir = os.path.join(settings.data_dir, "jobs", job_id)
-    if os.path.isdir(output_dir):
+    output_dir = app_data_directory(settings.data_dir, "jobs", job.id)
+    if output_dir.is_dir():
         import shutil
         try:
             shutil.rmtree(output_dir)

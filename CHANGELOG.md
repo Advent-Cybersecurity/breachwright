@@ -151,6 +151,10 @@
   confirmation, and command text is no longer copied into application logs.
   Packaged Windows and Linux journeys verify that injection-shaped preset
   targets are rejected before process creation.
+- App-owned scan, notebook, Tool Runner, and report directories now canonicalize
+  record UUIDs and verify containment beneath the configured data directory.
+- Credential redaction avoids backtracking-prone searches for headers and private
+  keys, and operational logs no longer include user-controlled paths or labels.
 - The local API now rejects non-loopback HTTP Host headers, reducing
   DNS-rebinding exposure to assessment data while preserving the supported
   desktop, localhost Docker, and test entry points.

@@ -58,6 +58,11 @@ limits, or feature gates.
 - Tool Runner presets are reconstructed from validated server inputs and reject
   shell-control injection. Custom shell commands remain explicit and require
   confirmation.
+- App-owned file paths canonicalize record UUIDs and remain contained beneath
+  the configured data directory. Operational logs omit user-controlled paths
+  and labels.
+- Credential redaction handles headers and private-key blocks without
+  backtracking-prone searches over assessment data.
 - Active Directory imports use bounded ZIP reads, deterministic dataset
   selection, indexed relationship summaries, and explicit cascade-deletion
   confirmation.
