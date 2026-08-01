@@ -21,7 +21,7 @@ class OpenSourceReleaseTests(unittest.TestCase):
         ignored = {
             ROOT / "CHANGELOG.md",
             ROOT / "CODEX_SESSION.md",
-            ROOT / "docs" / "OPEN_SOURCE_RELEASE_CHECKLIST.md",
+            ROOT / "docs" / "releases" / "OPEN_SOURCE_RELEASE_CHECKLIST.md",
             Path(__file__).resolve(),
         }
         banned = (

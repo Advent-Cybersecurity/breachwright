@@ -32,7 +32,7 @@ This checklist is for the first public Breachwright release.
 - [x] Receive Advent Cybersecurity authorization for the open-source publication sequence
 - [x] Review third-party dependency licenses and generated attribution requirements
 - [x] Run dependency vulnerability checks for Python and npm
-- [x] Review Tool Runner command construction and file-serving authorization
+- [x] Review Tool Runner workflow controls and file-serving authorization
 - [x] Enable GitHub private vulnerability reporting, secret scanning, push protection, Dependabot, and code scanning
 
 ## Publication
@@ -40,7 +40,7 @@ This checklist is for the first public Breachwright release.
 - [x] Create and review the clean public root commit
 - [x] Review the complete source diff and omit untested binary artifacts
 - [x] Determine that a clean public history is required to exclude legacy tier code, release titles, and binaries
-- [x] Approve the clean-public-repository topology in `docs/PUBLICATION_PLAN.md`
+- [x] Approve the clean-public-repository topology in `docs/releases/PUBLICATION_PLAN.md`
 - [x] Publish the clean `Advent-Cybersecurity/breachwright` repository
 - [x] Publish an annotated `v2.0.0` tag and source-only release
 - [x] Update the Advent Cybersecurity product page and remove checkout and subscription paths
