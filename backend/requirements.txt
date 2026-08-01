@@ -1,13 +1,13 @@
 # Web framework
-fastapi==0.140.13
-uvicorn[standard]==0.34.0
+fastapi==0.141.1
+uvicorn[standard]==0.52.0
 python-multipart==0.0.32
 
 # Database
-sqlalchemy[asyncio]==2.0.36
-aiosqlite==0.20.0
-asyncpg==0.30.0
-alembic==1.14.1
+sqlalchemy[asyncio]==2.0.51
+aiosqlite==0.22.1
+asyncpg==0.31.0
+alembic==1.18.5
 
 # AI Providers
 anthropic==0.120.2
@@ -15,11 +15,11 @@ openai==2.52.0
 boto3==1.43.61
 
 # Reports
-python-docx==1.1.2
+python-docx==1.2.0
 
 # Utilities
-pydantic==2.10.4
-pydantic-settings==2.7.1
+pydantic==2.13.4
+pydantic-settings==2.14.2
 python-dotenv==1.2.2
 httpx==0.28.1
 
