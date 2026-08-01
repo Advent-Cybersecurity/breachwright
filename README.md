@@ -18,6 +18,36 @@ The former hosted Advent AI provider is not part of the open-source release beca
 
 Third-party AI services may charge for API usage. Local model support does not require a commercial API.
 
+## Quick start
+
+1. Open the
+   [latest release](https://github.com/Advent-Cybersecurity/breachwright/releases/latest)
+   and download the archive for Windows x64 or Linux x64.
+2. Verify the archive against the release's `SHA256SUMS.txt` file.
+3. Follow [INSTALL.md](INSTALL.md) to extract and install the complete package.
+4. Launch Breachwright and create an engagement. No account or activation is
+   required.
+5. Import authorized scanner output or capture a note in the Evidence
+   Notebook, review the resulting evidence, and promote validated work into
+   findings.
+6. Use the engagement Overview to track coverage, retests, readiness, and
+   reporting.
+
+<details>
+<summary>Watch the 60-second Breachwright quick tour</summary>
+
+![A six-step tour of the Breachwright local assessment workflow](docs/media/breachwright-quick-tour.gif)
+
+</details>
+
+### See the workflow
+
+![Breachwright local workspace with assessment status and recent activity](docs/images/breachwright-workspace.png)
+
+![Breachwright engagement overview with readiness, findings, coverage, and retest priorities](docs/images/breachwright-engagement-overview.png)
+
+![Breachwright Evidence Notebook with reviewable analyst notes and attachments](docs/images/breachwright-evidence-notebook.png)
+
 ## Features
 
 - A refreshable engagement Overview with readiness, retest priorities, recent
@@ -148,6 +178,11 @@ Both archives are built and tested by the same candidate workflow. A release
 download is not updated until both native candidates pass their platform
 checks. See [INSTALL.md](INSTALL.md) for extraction, installation, first-run,
 data-location, backup, and uninstall instructions.
+
+The Windows executables are not currently Authenticode-signed. Windows may
+show an unknown-publisher or Microsoft Defender SmartScreen warning. Download
+only from the official Advent Cybersecurity release, verify the published
+SHA-256 checksum before running the package, and do not proceed if it differs.
 
 ## Configure an AI provider
 
