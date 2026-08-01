@@ -1,4 +1,6 @@
+import json
 from pathlib import Path
+import re
 import unittest
 
 
@@ -89,6 +91,39 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("ensure_port_available(args.host, args.port)", launcher)
         self.assertIn("close the other application or choose", launcher)
         self.assertIn("Packaged CLI did not reject an occupied local port", packaged_smoke)
+
+    def test_release_documents_follow_the_application_version(self):
+        version_source = (ROOT / "backend" / "app" / "version.py").read_text(
+            encoding="utf-8"
+        )
+        version_match = re.search(r'^APP_VERSION = "([^"]+)"$', version_source, re.M)
+        self.assertIsNotNone(version_match)
+        version = version_match.group(1)
+
+        package = json.loads(
+            (ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
+        )
+        package_lock = json.loads(
+            (ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8")
+        )
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+        self.assertEqual(version, package["version"])
+        self.assertEqual(version, package_lock["version"])
+        self.assertEqual(version, package_lock["packages"][""]["version"])
+        self.assertTrue((ROOT / "docs" / f"RELEASE_NOTES_{version}.md").is_file())
+        self.assertIn(f"## v{version} (", changelog)
+
+        builder = (ROOT / "build.py").read_text(encoding="utf-8")
+        verifier = (ROOT / "scripts" / "verify_archive.py").read_text(
+            encoding="utf-8"
+        )
+        upgrade = (ROOT / "scripts" / "smoke_upgrade.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('f"RELEASE_NOTES_{APP_VERSION}.md"', builder)
+        self.assertIn('f"Breachwright/docs/RELEASE_NOTES_{APP_VERSION}.md"', verifier)
+        self.assertIn('health.json().get("version") != APP_VERSION', upgrade)
 
     def test_local_workspace_has_no_account_or_token_surface(self):
         reports_router = (

@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import sys
 import tarfile
 import zipfile
 from pathlib import Path, PurePosixPath
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+from app.version import APP_VERSION
 
 
 REQUIRED_DOCUMENTS = {
@@ -18,7 +24,7 @@ REQUIRED_DOCUMENTS = {
     "Breachwright/INSTALL.md",
     "Breachwright/INSTALL_WSL.md",
     "Breachwright/docs/DATA_SAFETY.md",
-    "Breachwright/docs/RELEASE_NOTES_2.2.0.md",
+    f"Breachwright/docs/RELEASE_NOTES_{APP_VERSION}.md",
     "Breachwright/SECURITY.md",
     "Breachwright/SUPPORT.md",
     "Breachwright/THIRD_PARTY_NOTICES.md",
