@@ -289,9 +289,8 @@ async def generate_all_narratives(
             })
 
     logger.info(
-        "Generated %d narratives for engagement %s",
+        "Generated %d engagement narratives",
         sum(1 for r in results if "error" not in r),
-        engagement_id,
     )
 
     return results

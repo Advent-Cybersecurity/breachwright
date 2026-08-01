@@ -103,7 +103,7 @@ async def populate_checklist(
 
     await db.flush()
 
-    logger.info("Populated %d checklist items for %s on engagement %s", len(created), methodology, engagement_id)
+    logger.info("Populated %d checklist items", len(created))
 
     return {
         "methodology": methodology,

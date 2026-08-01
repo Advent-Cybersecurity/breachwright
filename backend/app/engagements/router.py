@@ -8,6 +8,8 @@ from app.auth.models import User
 from app.engagements.models import Engagement, Finding
 from app.engagements.schemas import EngagementCreate, EngagementUpdate, EngagementResponse
 from app.workflow.template_router import get_template
+from app.config import settings
+from app.safety import app_data_directory
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -257,17 +259,16 @@ async def delete_engagement(
     await db.delete(engagement)
 
     # Clean up files
-    import shutil, os
-    from app.config import settings
+    import shutil
     for subdir in ["uploads", "reports", "notebook"]:
-        path = os.path.join(settings.data_dir, subdir, engagement_id)
-        if os.path.isdir(path):
+        path = app_data_directory(settings.data_dir, subdir, engagement.id)
+        if path.is_dir():
             shutil.rmtree(path, ignore_errors=True)
     for finding_id in finding_ids:
-        path = os.path.join(settings.data_dir, "evidence", finding_id)
-        if os.path.isdir(path):
+        path = app_data_directory(settings.data_dir, "evidence", finding_id)
+        if path.is_dir():
             shutil.rmtree(path, ignore_errors=True)
     for job_id in job_ids:
-        path = os.path.join(settings.data_dir, "jobs", job_id)
-        if os.path.isdir(path):
+        path = app_data_directory(settings.data_dir, "jobs", job_id)
+        if path.is_dir():
             shutil.rmtree(path, ignore_errors=True)

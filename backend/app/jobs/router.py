@@ -17,7 +17,7 @@ from app.jobs.models import Job
 from app.engagements.models import Engagement, EvidenceNote, ScanUpload
 from app.jobs.runner import (
     start_job, stop_job, get_job_output, cleanup_job,
-    get_presets, TOOL_PRESETS, read_job_artifact,
+    build_command_arguments, get_presets, TOOL_PRESETS, read_job_artifact,
 )
 from app.config import settings
 from app.safety import app_data_directory
@@ -169,8 +169,13 @@ async def create_job(
     output_dir = app_data_directory(settings.data_dir, "jobs", job.id)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Start the subprocess
-    pid = start_job(job.id, command, body.tool, str(output_dir))
+    try:
+        arguments = build_command_arguments(body.tool, command)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    # Start the subprocess without a command shell.
+    pid = start_job(job.id, arguments, body.tool, str(output_dir))
     if pid is None:
         job.status = "failed"
         job.output = "Failed to start process"

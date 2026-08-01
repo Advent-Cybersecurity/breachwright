@@ -176,10 +176,7 @@ async def export_engagement(
             if isinstance(parsed_narrative, dict):
                 engagement_narrative = parsed_narrative
         except json.JSONDecodeError:
-            logger.warning(
-                "Skipping malformed saved narrative for engagement %s",
-                engagement_id,
-            )
+            logger.warning("Skipping malformed saved engagement narrative")
 
     export_data = {
         "version": "1.1",

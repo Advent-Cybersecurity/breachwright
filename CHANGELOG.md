@@ -98,6 +98,12 @@
   of implicitly including other engagement scans. Job history is bounded and
   user-selectable, interrupted jobs are labeled, and deletion confirms process
   termination while preserving linked Notebook and Scans copies.
+- Tool Runner execution no longer invokes a command shell. Presets and custom
+  mode launch only the selected supported tool directly, reject shell operators,
+  and isolate packaged child tools from the PyInstaller parent runtime.
+- App-owned evidence, report, notebook, engagement-cleanup, and backup paths are
+  resolved from canonical database identifiers or enumerated stored archives.
+  Remaining operational logs no longer include route values or workspace labels.
 - AI Assistant context now bounds scan and AD path queries, rejects missing
   engagement scopes before provider initialization, removes citations truncated
   out of the final prompt, preserves citation display order, and shows provider

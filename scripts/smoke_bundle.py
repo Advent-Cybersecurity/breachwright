@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import shutil
 
 import httpx
 
@@ -27,11 +28,19 @@ def main() -> int:
 
     port = free_port()
     with tempfile.TemporaryDirectory(prefix="breachwright-bundle-smoke-") as temp_dir:
+        executable_name = "nmap.exe" if os.name == "nt" else "nmap"
+        cli_name = "BreachwrightCLI.exe" if os.name == "nt" else "BreachwrightCLI"
+        cli = executable.with_name(cli_name)
+        test_runner = executable.with_name(executable_name)
+        if test_runner.exists():
+            raise RuntimeError(f"Smoke-test tool path already exists: {test_runner}")
+        shutil.copy2(cli, test_runner)
         env = os.environ.copy()
         env.update(
             {
                 "DATA_DIR": str(Path(temp_dir) / "data"),
                 "DESKTOP": "false",
+                "PATH": os.pathsep.join([str(executable.parent), env["PATH"]]),
             }
         )
         process = subprocess.Popen(
@@ -342,7 +351,7 @@ def main() -> int:
                     "engagement_id": engagement_id,
                     "tool": "nmap",
                     "execution_mode": "custom",
-                    "command": "echo Nmap scan report for 192.0.2.55 > output.txt",
+                    "command": "nmap --version",
                 },
             )
             tool_job.raise_for_status()
@@ -366,19 +375,21 @@ def main() -> int:
                 time.sleep(0.1)
             if (
                 tool_state.get("status") != "complete"
-                or "Nmap scan report for 192.0.2.55"
+                or "Breachwright 2.3.0"
                 not in (tool_state.get("output") or "")
                 or not tool_state.get("completed_at")
             ):
                 raise RuntimeError(
                     f"Packaged Tool Runner result was incomplete: {tool_state}"
                 )
-            job_scan = client.post(
+            rejected_job_scan = client.post(
                 f"/api/jobs/{tool_job_id}/scan",
                 headers=headers,
             )
-            job_scan.raise_for_status()
-            job_scan_id = job_scan.json()["id"]
+            if rejected_job_scan.status_code != 422:
+                raise RuntimeError(
+                    "Packaged Tool Runner accepted non-scan output as an Nmap scan"
+                )
             job_note = client.post(
                 f"/api/jobs/{tool_job_id}/notebook",
                 headers=headers,
@@ -393,17 +404,6 @@ def main() -> int:
             )
             if deleted_job.status_code != 204:
                 raise RuntimeError("Packaged Tool Runner job could not be deleted")
-            scans_after_job_delete = client.get(
-                f"/api/engagements/{engagement_id}/scans",
-                headers=headers,
-            )
-            scans_after_job_delete.raise_for_status()
-            if job_scan_id not in {
-                item.get("id") for item in scans_after_job_delete.json()
-            }:
-                raise RuntimeError(
-                    "Packaged scan was removed with its originating Tool Runner job"
-                )
             notebook = client.get(
                 f"/api/engagements/{engagement_id}/notebook",
                 headers=headers,
@@ -467,13 +467,13 @@ def main() -> int:
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait(timeout=5)
+            for _ in range(20):
+                try:
+                    test_runner.unlink(missing_ok=True)
+                    break
+                except PermissionError:
+                    time.sleep(0.1)
 
-        cli_name = (
-            "BreachwrightCLI.exe"
-            if sys.platform == "win32"
-            else "BreachwrightCLI"
-        )
-        cli = executable.with_name(cli_name)
         if not cli.is_file():
             raise RuntimeError(f"Packaged CLI not found: {cli}")
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:

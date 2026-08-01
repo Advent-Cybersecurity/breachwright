@@ -10,6 +10,8 @@ from app.auth.models import User
 from app.engagements.models import Finding, FindingHistory, Engagement
 from app.engagements.schemas import FindingCreate, FindingUpdate, FindingResponse
 from app.findings.history import diff, record_history, snapshot
+from app.config import settings
+from app.safety import app_data_directory
 
 router = APIRouter(prefix="/api/engagements/{engagement_id}/findings", tags=["findings"])
 
@@ -232,11 +234,9 @@ async def delete_finding(
     )
     await db.delete(finding)
 
-    import os
     import shutil
-    from app.config import settings
-    evidence_dir = os.path.join(settings.data_dir, "evidence", finding_id)
-    if os.path.isdir(evidence_dir):
+    evidence_dir = app_data_directory(settings.data_dir, "evidence", finding.id)
+    if evidence_dir.is_dir():
         shutil.rmtree(evidence_dir, ignore_errors=True)
 
 

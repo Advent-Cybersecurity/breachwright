@@ -12,6 +12,7 @@ from app.auth.dependencies import get_current_user, require_editor
 from app.auth.models import User
 from app.engagements.models import Finding, EvidenceAttachment
 from app.config import settings
+from app.safety import app_data_directory
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +156,7 @@ async def upload_evidence(
     current_user: User = Depends(require_editor),
 ):
     # Verify finding exists
-    await _require_finding(engagement_id, finding_id, db)
+    finding = await _require_finding(engagement_id, finding_id, db)
 
     content_type = _resolved_content_type(file.filename, file.content_type)
     if not content_type:
@@ -177,22 +178,22 @@ async def upload_evidence(
         )
 
     # Save file
-    evidence_dir = os.path.join(settings.data_dir, "evidence", finding_id)
-    os.makedirs(evidence_dir, exist_ok=True)
+    evidence_dir = app_data_directory(settings.data_dir, "evidence", finding.id)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
 
     display_name = _safe_display_name(file.filename, "evidence")
     stored_name = (
         f"{uuid.uuid4().hex}{CANONICAL_EXTENSIONS[content_type]}"
     )
-    file_path = os.path.join(evidence_dir, stored_name)
+    file_path = evidence_dir / stored_name
 
-    with open(file_path, "wb") as f:
+    with file_path.open("wb") as f:
         f.write(content)
 
     attachment = EvidenceAttachment(
         finding_id=finding_id,
         filename=display_name,
-        file_path=file_path,
+        file_path=str(file_path),
         content_type=content_type,
         file_size=len(content),
         uploaded_by=current_user.id,

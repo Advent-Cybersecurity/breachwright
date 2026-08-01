@@ -167,9 +167,8 @@ async def generate_attack_paths(
         created.append(AttackPathResponse.model_validate(attack_path))
 
     logger.info(
-        "Generated %d grounded attack paths for engagement %s in %d ms",
+        "Generated %d grounded attack paths in %d ms",
         len(created),
-        engagement_id,
         metadata.latency_ms,
     )
     return created
