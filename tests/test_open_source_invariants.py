@@ -707,6 +707,7 @@ class OpenSourceReleaseTests(unittest.TestCase):
                 self.assertNotIn("actions/upload-artifact", source, name)
 
         candidate = workflows["candidate-build.yml"]
+        self.assertNotIn("\n  push:", candidate)
         self.assertIn("retain_release_artifacts:", candidate)
         self.assertIn(
             "github.event_name == 'workflow_dispatch' && inputs.retain_release_artifacts",
