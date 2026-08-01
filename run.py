@@ -11,6 +11,7 @@ Usage:
 import argparse
 import logging
 import os
+import socket
 import sys
 import threading
 import time
@@ -71,6 +72,20 @@ def start_server(host, port):
 def stop_server():
     if _uvicorn_server is not None:
         _uvicorn_server.should_exit = True
+
+
+def ensure_port_available(host: str, port: int) -> None:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            if sys.platform == "win32":
+                probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            probe.bind((host, port))
+    except (OSError, OverflowError) as exc:
+        raise SystemExit(
+            f"Cannot start Breachwright on {host}:{port}. "
+            "The port is unavailable; close the other application or choose "
+            "a free port with --port."
+        ) from exc
 
 
 def wait_for_server(host, port, timeout=20):
@@ -223,6 +238,8 @@ def main():
     print("  |  Open source, created by Advent Cybersecurity |")
     print("  +----------------------------------------------+")
     print()
+
+    ensure_port_available(args.host, args.port)
 
     if args.headless:
         print(f"  Server: http://{args.host}:{args.port}")
