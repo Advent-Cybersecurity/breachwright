@@ -69,8 +69,9 @@ class OpenSourceReleaseTests(unittest.TestCase):
             self.assertIn("SHA-256", source)
         self.assertIn("placeholder: 2.3.0", bug_report)
         self.assertIn("## Quick start", readme)
-        self.assertIn("60-second MP4 video", readme)
+        self.assertIn("### 60-second product tour", readme)
         self.assertNotIn("Watch the 60-second Breachwright quick tour", readme)
+        self.assertNotIn("breachwright-quick-tour.mp4", readme)
 
         assets = {
             "docs/images/breachwright-workspace.png": b"\x89PNG\r\n\x1a\n",
@@ -84,12 +85,6 @@ class OpenSourceReleaseTests(unittest.TestCase):
             self.assertTrue(path.is_file(), relative_path)
             self.assertGreater(path.stat().st_size, 20_000, relative_path)
             self.assertEqual(signature, path.read_bytes()[: len(signature)])
-
-        video_path = ROOT / "docs/media/breachwright-quick-tour.mp4"
-        video_header = video_path.read_bytes()[:12]
-        self.assertIn("docs/media/breachwright-quick-tour.mp4", readme)
-        self.assertGreater(video_path.stat().st_size, 100_000)
-        self.assertEqual(b"ftyp", video_header[4:8])
 
     def test_local_service_rejects_untrusted_host_headers(self):
         main = (ROOT / "backend" / "app" / "main.py").read_text(

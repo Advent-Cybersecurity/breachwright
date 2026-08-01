@@ -35,9 +35,7 @@ Third-party AI services may charge for API usage. Local model support does not r
 
 ### 60-second product tour
 
-The preview below is an animated GIF. A real
-[60-second MP4 video](docs/media/breachwright-quick-tour.mp4) is also included
-in the repository for playback or download.
+The preview below is an animated GIF.
 
 ![A six-step tour of the Breachwright local assessment workflow](docs/media/breachwright-quick-tour.gif)
 
