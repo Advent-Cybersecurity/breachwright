@@ -79,6 +79,8 @@ class UserJourneyTests(unittest.TestCase):
                 "127.0.0.1",
                 "--port",
                 str(cls.port),
+                "--ws",
+                "none",
             ],
             cwd=ROOT,
             env=env,

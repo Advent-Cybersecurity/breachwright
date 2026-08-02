@@ -66,6 +66,8 @@ def start_application(
             "127.0.0.1",
             "--port",
             str(port),
+            "--ws",
+            "none",
         ],
         cwd=root,
         env={
@@ -122,8 +124,20 @@ def main() -> int:
         / f"breachwright-upgrade-smoke-{uuid.uuid4().hex}"
     )
     temp_root.mkdir()
-    data_dir = temp_root / "data"
+    data_dir = (
+        temp_root / "appdata" / "Breachwright"
+        if os.name == "nt"
+        else temp_root / "xdg" / "breachwright"
+    )
+    data_dir.mkdir(parents=True)
     database_path = data_dir / "breachwright.db"
+    provider_environment = data_dir / ".env"
+    provider_environment.write_text(
+        "AI_PROVIDER=openai\n"
+        "OPENAI_API_KEY=upgrade-smoke-placeholder\n"
+        "OPENAI_MODEL=upgrade-smoke-custom-model\n",
+        encoding="utf-8",
+    )
     environment = os.environ.copy()
     environment.update(
         {
@@ -200,6 +214,16 @@ def main() -> int:
                 raise RuntimeError("Candidate version was not loaded")
             if candidate_client.get("/api/auth/login").status_code != 404:
                 raise RuntimeError("Candidate authentication routes are still exposed")
+            provider = candidate_client.get("/api/settings/provider")
+            provider.raise_for_status()
+            provider_state = provider.json()
+            if (
+                provider_state.get("ai_provider") != "openai"
+                or provider_state.get("openai_model")
+                != "upgrade-smoke-custom-model"
+                or not provider_state.get("has_openai_key")
+            ):
+                raise RuntimeError("Saved provider configuration changed")
             headers = {}
             engagement = candidate_client.get(
                 f"/api/engagements/{engagement_id}",

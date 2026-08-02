@@ -15,4 +15,4 @@ RUN mkdir -p /app/data/uploads /app/data/reports
 
 EXPOSE 13370
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 13370"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 13370 --ws none"]

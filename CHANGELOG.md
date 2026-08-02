@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v2.4.0 (2026-08-02)
+
+### AI provider compatibility and setup
+
 - Simplified Anthropic and OpenAI setup to an API-key-first workflow with a
   visible tested recommendation and optional Advanced model override.
 - Updated the recommended hosted models, added Claude 5 request compatibility,
@@ -9,6 +13,19 @@
   support for explicit overrides.
 - Updated Azure OpenAI to the stable v1 API by default while preserving dated
   API compatibility, and removed stale Bedrock and local model assumptions.
+
+### Project maintenance
+
+- Updated the OpenAI and Anthropic SDKs for the current provider adapters.
+- Updated the frontend Autoprefixer and PostCSS development dependencies.
+- Disabled Uvicorn's unused WebSocket protocol path across desktop, container,
+  journey-test, and upgrade-test launches.
+- Added a public documentation index, organized historical release records,
+  and grouped routine dependency updates by ecosystem and compatibility risk.
+- Kept native candidate packaging manual so release archives are produced only
+  during an intentional, reviewed release sequence.
+- Expanded the legacy-workspace upgrade gate to verify that saved provider
+  selection, credentials, and explicit model overrides remain available.
 
 ## v2.3.0 (2026-08-01)
 
