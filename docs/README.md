@@ -18,6 +18,7 @@ in the repository [README](../README.md) and [INSTALL guide](../INSTALL.md).
 
 ## Release notes
 
+- [2.4.0](RELEASE_NOTES_2.4.0.md)
 - [2.3.0](RELEASE_NOTES_2.3.0.md)
 - [2.2.0](RELEASE_NOTES_2.2.0.md)
 - [2.1.0](RELEASE_NOTES_2.1.0.md)

@@ -25,6 +25,10 @@ def main() -> int:
     executable = Path(sys.argv[1]).resolve()
     if not executable.is_file():
         raise SystemExit(f"Executable not found: {executable}")
+    version_file = executable.parent / "VERSION"
+    if not version_file.is_file():
+        raise SystemExit(f"Packaged version file not found: {version_file}")
+    expected_version = version_file.read_text(encoding="utf-8").strip()
 
     port = free_port()
     with tempfile.TemporaryDirectory(prefix="breachwright-bundle-smoke-") as temp_dir:
@@ -375,7 +379,7 @@ def main() -> int:
                 time.sleep(0.1)
             if (
                 tool_state.get("status") != "complete"
-                or "Breachwright 2.3.0"
+                or f"Breachwright {expected_version}"
                 not in (tool_state.get("output") or "")
                 or not tool_state.get("completed_at")
             ):

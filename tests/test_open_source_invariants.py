@@ -54,7 +54,7 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("Created by [Advent Cybersecurity]", readme)
         self.assertIn("Apache License 2.0", readme)
 
-    def test_public_onboarding_matches_the_2_3_release(self):
+    def test_public_onboarding_matches_the_2_4_release(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
         security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
@@ -67,7 +67,7 @@ class OpenSourceReleaseTests(unittest.TestCase):
         for source in (readme, install):
             self.assertIn("not currently Authenticode-signed", source)
             self.assertIn("SHA-256", source)
-        self.assertIn("placeholder: 2.3.0", bug_report)
+        self.assertIn("placeholder: 2.4.0", bug_report)
         self.assertIn("## Quick start", readme)
         self.assertNotIn("60-second product tour", readme)
         self.assertNotIn("breachwright-quick-tour.gif", readme)
@@ -123,6 +123,22 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("close the other application or choose", launcher)
         self.assertIn("Packaged CLI did not reject an occupied local port", packaged_smoke)
 
+    def test_application_servers_disable_the_unused_websocket_protocol(self):
+        launcher = (ROOT / "run.py").read_text(encoding="utf-8")
+        dockerfile = (ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
+        user_journey = (ROOT / "tests" / "test_user_journey.py").read_text(
+            encoding="utf-8"
+        )
+        upgrade = (ROOT / "scripts" / "smoke_upgrade.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('ws="none"', launcher)
+        self.assertIn("--ws none", dockerfile)
+        for source in (user_journey, upgrade):
+            self.assertIn('"--ws",', source)
+            self.assertIn('"none",', source)
+
     def test_release_documents_follow_the_application_version(self):
         version_source = (ROOT / "backend" / "app" / "version.py").read_text(
             encoding="utf-8"
@@ -155,6 +171,7 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn('f"RELEASE_NOTES_{APP_VERSION}.md"', builder)
         self.assertIn('f"Breachwright/docs/RELEASE_NOTES_{APP_VERSION}.md"', verifier)
         self.assertIn('health.json().get("version") != APP_VERSION', upgrade)
+        self.assertIn("Saved provider configuration changed", upgrade)
 
     def test_local_workspace_has_no_account_or_token_surface(self):
         reports_router = (

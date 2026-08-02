@@ -64,6 +64,7 @@ def start_server(host, port):
         port=port,
         log_level="warning",
         reload=False,
+        ws="none",
     )
     _uvicorn_server = uvicorn.Server(config)
     _uvicorn_server.run()
