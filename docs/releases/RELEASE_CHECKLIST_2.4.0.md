@@ -21,14 +21,39 @@ exact-commit native runner gates below.
 
 ## Exact-release gates
 
-- [ ] Windows and Ubuntu source suites pass for the v2.4.0 commit
-- [ ] Frontend production audit and build pass for the v2.4.0 commit
-- [ ] Python and JavaScript CodeQL analysis passes for the v2.4.0 commit
-- [ ] Windows package, desktop, install, uninstall, upgrade, and archive tests pass
-- [ ] Linux package, desktop, install, uninstall, upgrade, and archive tests pass
-- [ ] Retained Windows and Linux archives match the exact tested commit
-- [ ] `SHA256SUMS.txt` contains the reviewed digest of each published native archive
-- [ ] The GitHub release and Advent website point to the same v2.4.0 assets
+- [x] Windows and Ubuntu source suites pass for the v2.4.0 commit
+- [x] Frontend production audit and build pass for the v2.4.0 commit
+- [x] Python and JavaScript CodeQL analysis passes for the v2.4.0 commit
+- [x] Windows package, desktop, install, uninstall, upgrade, and archive tests pass
+- [x] Linux package, desktop, install, uninstall, upgrade, and archive tests pass
+- [x] Retained Windows and Linux archives match the exact tested commit
+- [x] `SHA256SUMS.txt` contains the reviewed digest of each published native archive
+- [x] The GitHub release and Advent website point to the same v2.4.0 assets
+
+## Publication evidence
+
+Release commit `2b65186997b43bb1968c8a960990554c132ebb6a` passed exact-main
+[CI run 30747281535](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30747281535)
+and
+[CodeQL run 30747281525](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30747281525).
+Retained
+[candidate run 30747334782](https://github.com/Advent-Cybersecurity/breachwright/actions/runs/30747334782)
+passed both native jobs from the same commit. Each job verified the v2.0
+upgrade, packaged journey, desktop launch, native install and uninstall, and
+release archive before retaining its archive for one day.
+
+The reviewed SHA-256 values published in `SHA256SUMS.txt` are:
+
+- Windows: `37b0c708d6faad5df9358dd4ef63c2bed30664287ee5f97357b1ffd6278a8e4d`
+- Linux: `17e4100d4d6d2605c5e5ea1ef5ce2b0aae8f8cafa8d3977fbf8cf79653bfebfc`
+
+GitHub release
+[`v2.4.0`](https://github.com/Advent-Cybersecurity/breachwright/releases/tag/v2.4.0)
+was published from that release commit. Advent website pull request
+[`#2`](https://github.com/Advent-Cybersecurity/advent-website/pull/2) merged as
+website commit `a8c369216d56b63c67be73d4fb208bf9dd47618b`. The public product
+page served the 2.4.0 version and exact Windows, Linux, checksum, and release
+links with HTTP 200 responses on 2026-08-02.
 
 Do not publish if a supported platform fails, the retained artifact commit does
 not match the release commit, or an unexpected dependency advisory appears.
