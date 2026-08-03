@@ -29,6 +29,11 @@ sha256sum breachwright-*-linux-x64.tar.gz
 Extract the complete archive. Breachwright must remain beside its `_internal`
 directory and installer files.
 
+Windows may propagate internet-zone metadata from the downloaded ZIP to DLLs
+inside the extracted folder. Breachwright packages include runtime
+configuration files that allow the verified local DLLs to load without
+removing that metadata.
+
 ## Windows x64
 
 1. Extract the ZIP.

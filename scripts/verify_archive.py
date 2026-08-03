@@ -129,7 +129,12 @@ def verify(path: Path) -> None:
 
     windows = path.suffix.lower() == ".zip"
     required_launchers = (
-        {"Breachwright/Breachwright.exe", "Breachwright/BreachwrightCLI.exe"}
+        {
+            "Breachwright/Breachwright.exe",
+            "Breachwright/BreachwrightCLI.exe",
+            "Breachwright/Breachwright.exe.config",
+            "Breachwright/BreachwrightCLI.exe.config",
+        }
         if windows
         else {"Breachwright/Breachwright", "Breachwright/BreachwrightCLI"}
     )

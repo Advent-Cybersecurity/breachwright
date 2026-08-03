@@ -146,6 +146,16 @@ def include_distribution_files(bundle_dir: Path) -> None:
         source = PROJECT_ROOT / name
         if source.is_file():
             shutil.copy2(source, bundle_dir / name)
+    if sys.platform == "win32":
+        runtime_config = (
+            PROJECT_ROOT / "packaging" / "windows" / "Breachwright.exe.config"
+        )
+        if not runtime_config.is_file():
+            raise SystemExit(
+                f"Windows runtime configuration is missing: {runtime_config}"
+            )
+        for executable_name in ("Breachwright.exe", "BreachwrightCLI.exe"):
+            shutil.copy2(runtime_config, bundle_dir / f"{executable_name}.config")
     bundled_docs = bundle_dir / "docs"
     for document_name in (
         "DATA_SAFETY.md",
@@ -282,6 +292,15 @@ def validate_bundle(executable: Path, run_executable: bool) -> None:
         internal / "backend" / "alembic" / "versions",
     ]
     missing = [str(path) for path in required if not path.exists()]
+    if sys.platform == "win32":
+        missing.extend(
+            str(executable.parent / name)
+            for name in (
+                "Breachwright.exe.config",
+                "BreachwrightCLI.exe.config",
+            )
+            if not (executable.parent / name).is_file()
+        )
     if missing:
         raise SystemExit("Bundle is missing required files:\n" + "\n".join(missing))
     if run_executable:
