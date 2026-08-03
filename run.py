@@ -132,8 +132,22 @@ def launch_window(host, port):
     def on_closing():
         stop_server()
 
+    def on_shown():
+        ready_file = os.environ.get("BREACHWRIGHT_DESKTOP_READY_FILE")
+        if not ready_file:
+            return
+        try:
+            ready_directory = os.path.dirname(ready_file)
+            if ready_directory:
+                os.makedirs(ready_directory, exist_ok=True)
+            with open(ready_file, "w", encoding="utf-8") as marker:
+                marker.write("ready\n")
+        except OSError as exc:
+            logger.warning("Unable to write desktop readiness marker: %s", exc)
+
     window.events.closing += on_closing
-    # Force EdgeChromium on Windows (avoid pythonnet/WinForms fallback)
+    window.events.shown += on_shown
+    # Use the WebView2 renderer inside pywebview's Windows Forms host.
     import platform
     gui_backend = 'edgechromium' if platform.system() == 'Windows' else None
     webview.start(debug=False, private_mode=True, gui=gui_backend)

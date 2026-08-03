@@ -54,20 +54,25 @@ class OpenSourceReleaseTests(unittest.TestCase):
         self.assertIn("Created by [Advent Cybersecurity]", readme)
         self.assertIn("Apache License 2.0", readme)
 
-    def test_public_onboarding_matches_the_2_4_release(self):
+    def test_public_onboarding_matches_the_current_release(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
         security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
         bug_report = (
             ROOT / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml"
         ).read_text(encoding="utf-8")
+        version_source = (ROOT / "backend" / "app" / "version.py").read_text(
+            encoding="utf-8"
+        )
+        version_match = re.search(r'^APP_VERSION = "([^"]+)"$', version_source, re.M)
+        self.assertIsNotNone(version_match)
 
         self.assertIn("does not invoke a command shell", security)
         self.assertNotIn("executes operator-supplied shell commands", security)
         for source in (readme, install):
             self.assertIn("not currently Authenticode-signed", source)
             self.assertIn("SHA-256", source)
-        self.assertIn("placeholder: 2.4.0", bug_report)
+        self.assertIn(f"placeholder: {version_match.group(1)}", bug_report)
         self.assertIn("## Quick start", readme)
         self.assertNotIn("60-second product tour", readme)
         self.assertNotIn("breachwright-quick-tour.gif", readme)
@@ -138,6 +143,27 @@ class OpenSourceReleaseTests(unittest.TestCase):
         for source in (user_journey, upgrade):
             self.assertIn('"--ws",', source)
             self.assertIn('"none",', source)
+
+    def test_windows_package_handles_download_origin_marking(self):
+        runtime_config = (
+            ROOT / "packaging" / "windows" / "Breachwright.exe.config"
+        ).read_text(encoding="utf-8")
+        builder = (ROOT / "build.py").read_text(encoding="utf-8")
+        verifier = (ROOT / "scripts" / "verify_archive.py").read_text(
+            encoding="utf-8"
+        )
+        desktop_smoke = (ROOT / "scripts" / "smoke_desktop.py").read_text(
+            encoding="utf-8"
+        )
+        workflow = (
+            ROOT / ".github" / "workflows" / "candidate-build.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('<loadFromRemoteSources enabled="true" />', runtime_config)
+        self.assertIn('bundle_dir / f"{executable_name}.config"', builder)
+        self.assertIn('"Breachwright/Breachwright.exe.config"', verifier)
+        self.assertIn('"BREACHWRIGHT_DESKTOP_READY_FILE"', desktop_smoke)
+        self.assertIn("smoke_windows_motw.ps1", workflow)
 
     def test_release_documents_follow_the_application_version(self):
         version_source = (ROOT / "backend" / "app" / "version.py").read_text(

@@ -46,11 +46,13 @@ def main() -> int:
 
     port = free_port()
     with tempfile.TemporaryDirectory(prefix="breachwright-desktop-smoke-") as temp_dir:
+        ready_file = Path(temp_dir) / "desktop-ready"
         env = os.environ.copy()
         env.update(
             {
                 "DATA_DIR": str(Path(temp_dir) / "data"),
                 "DESKTOP": "true",
+                "BREACHWRIGHT_DESKTOP_READY_FILE": str(ready_file),
             }
         )
         process = subprocess.Popen(
@@ -70,7 +72,7 @@ def main() -> int:
                         )
                     try:
                         health = client.get("/api/health").json()
-                        if health.get("status") == "healthy":
+                        if health.get("status") == "healthy" and ready_file.is_file():
                             time.sleep(3)
                             if process.poll() is not None:
                                 raise RuntimeError(
@@ -83,7 +85,9 @@ def main() -> int:
                             return 0
                     except (httpx.HTTPError, ValueError):
                         time.sleep(0.2)
-            raise RuntimeError("Desktop application did not become healthy")
+            raise RuntimeError(
+                "Desktop application did not become healthy and show its window"
+            )
         finally:
             stop_process_tree(process)
 

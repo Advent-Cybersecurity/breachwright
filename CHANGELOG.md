@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v2.4.1 (2026-08-03)
+
+### Windows packaging
+
+- Added .NET runtime configuration beside both Windows executables so
+  Python.NET and WebView2 load correctly when Windows propagates internet-zone
+  metadata from the downloaded ZIP to bundled DLLs.
+- Strengthened the desktop smoke test to require a shown window, and added a
+  Windows candidate gate that reproduces download-origin DLL marking.
+
 ## v2.4.0 (2026-08-02)
 
 ### AI provider compatibility and setup

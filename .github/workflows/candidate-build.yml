@@ -69,6 +69,10 @@ jobs:
       - name: Smoke-test Windows desktop window
         if: runner.os == 'Windows'
         run: python scripts/smoke_desktop.py dist/Breachwright/Breachwright.exe
+      - name: Smoke-test Windows marked download
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/smoke_windows_motw.ps1 dist/Breachwright
       - name: Smoke-test Windows install and uninstall
         if: runner.os == 'Windows'
         shell: pwsh
