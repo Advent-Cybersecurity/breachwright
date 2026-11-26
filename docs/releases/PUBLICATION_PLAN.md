@@ -8,8 +8,10 @@ July 28, 2026 PDT.
 - Public repository: <https://github.com/Advent-Cybersecurity/breachwright>
 - Public root commit: `4403c01f686cd67f2ecdc0a6758bf52ef7f28777`
 - Public release: <https://github.com/Advent-Cybersecurity/breachwright/releases/tag/v2.0.0>
-- Legacy repository: retained privately and archived as
-  `Advent-Cybersecurity/breachwright-legacy-private`
+- Legacy history and releases: preserved in the private
+  `Advent-Cybersecurity/Archive` repository; the former
+  `Advent-Cybersecurity/breachwright-legacy-private` repository was deleted
+  after its contents were verified there on November 26, 2026 EST.
 - Duplicate development repository: verified against the legacy repository's
   Git tree, retained privately, and archived as
   `Advent-Cybersecurity/breachwright-dev`
@@ -32,7 +34,7 @@ The reachable Git history and current prepared source were scanned with
 Gitleaks 8.30.1 with no detected secrets. The issue is product history and
 legacy distribution state, not a detected credential leak.
 
-## Implemented topology
+## Initial implemented topology (July 28, 2026)
 
 1. Keep the existing repository private as the internal legacy archive.
 2. Rename it to a clearly private archival name such as
@@ -52,3 +54,19 @@ legacy distribution state, not a detected credential leak.
 Advent Cybersecurity approved the repository and website publication sequence
 before any repository rename, public repository creation, release, archive, or
 production website change was performed.
+
+## Subsequent archive consolidation (November 26, 2026 EST)
+
+The private `breachwright-legacy-private` and `breachwright-dev` repositories
+were copied into `Advent-Cybersecurity/Archive` as browsable default-branch
+snapshots, complete Git bundles, and GitHub metadata exports. The legacy
+repository's eight releases and nine attached binaries were also copied to
+namespaced releases in Archive. The copied binary sizes and SHA-256 digests
+matched their source release assets, and the Git refs and snapshots were
+verified from a fresh Archive clone.
+
+After verification, `breachwright-legacy-private` was deleted. Its former
+repository and release URLs no longer resolve; authorized users can retrieve
+the source history, original tags, release notes, and binaries from the private
+Archive repository. `breachwright-dev` remains private and read-only at its
+original URL.
