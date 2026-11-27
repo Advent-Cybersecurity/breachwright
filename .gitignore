@@ -23,10 +23,15 @@ integrate_*.py
 wire_*.py
 harden.py
 patch_*.py
-CODEX_SESSION.md
 .breachwright-*
 .ui-test-data/
 .upgrade-baseline/
+
+# Local Codex instructions and session state. Basename and directory rules
+# without a slash apply at every depth.
+CODEX_SESSION.md
+AGENTS.md
+.codex/
 
 # Sensitive local credentials
 *.pem
